@@ -1,0 +1,1 @@
+DROP INDEX users_unique_lower_email_idx

@@ -1,0 +1,33 @@
+{
+    "bootstrap": {
+        "sha256": "18djjk5rlfq94ryr8c8dd3zlf074h80m2m5lmz6wxnj86n4p96dd",
+        "type": "file",
+        "url": "https://github.com/twbs/bootstrap/releases/download/v5.0.0-beta2/bootstrap-5.0.0-beta2-dist.zip",
+        "url_template": "https://github.com/twbs/bootstrap/releases/download/v<version>/bootstrap-<version>-dist.zip",
+        "version": "5.0.0-beta2"
+    },
+    "niv": {
+        "branch": "master",
+        "description": "Easy dependency management for Nix projects",
+        "homepage": "https://github.com/nmattia/niv",
+        "owner": "nmattia",
+        "repo": "niv",
+        "rev": "af958e8057f345ee1aca714c1247ef3ba1c15f5e",
+        "sha256": "1qjavxabbrsh73yck5dcq8jggvh3r2jkbr6b5nlz5d9yrqm9255n",
+        "type": "tarball",
+        "url": "https://github.com/nmattia/niv/archive/af958e8057f345ee1aca714c1247ef3ba1c15f5e.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "nixpkgs": {
+        "branch": "nixpkgs-unstable",
+        "description": "Nix Packages collection",
+        "homepage": "",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2996d6df1de087c18d94eda470be6b7618b8dc5c",
+        "sha256": "0q941nyx8gjsykivb17lgkn13cv9b3f7kfkxszhmdg4xnpcagg63",
+        "type": "tarball",
+        "url": "https://github.com/NixOS/nixpkgs/archive/2996d6df1de087c18d94eda470be6b7618b8dc5c.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    }
+}
