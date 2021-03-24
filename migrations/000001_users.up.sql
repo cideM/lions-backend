@@ -9,7 +9,8 @@ CREATE TABLE users
   mobile_phone_nr TEXT,
   landline_nr TEXT,
   birthday TEXT,
-  name_partner TEXT,
+  first_name_partner TEXT,
+  last_name_partner TEXT,
   birthday_partner TEXT
 )
 

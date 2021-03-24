@@ -22,10 +22,33 @@ maintainer:         yuuki@protonmail.com
 extra-source-files: CHANGELOG.md
 
 executable lions-backend
+  ghc-options:
+    -Wall
+
   main-is:          Main.hs
 
   -- Modules included in this executable, other than Main.
-  -- other-modules:
+  other-modules:
+    Layout
+    Locale
+    LandingPage.Handlers
+    LandingPage.UsersList
+    User.Form
+    User.Handlers
+    User.Domain
+    User.Profile
+    User.DB
+    Session.Domain
+    Session.Middleware
+    Session.DB
+    WelcomeMessage.DB
+    WelcomeMessage.Handlers
+    WelcomeMessage.Domain
+    WelcomeMessage.Form
+    WelcomeMessage.Card
+    Login.DB
+    Login.Handlers
+    Login.Form
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -41,10 +64,24 @@ executable lions-backend
     , cookie
     , sqlite-simple
     , text
+    , text-show
     , clientsession
     , bytestring
     , fast-logger
     , bcrypt
+    , time
+    , errors
+    , mtl
+    , transformers
+    , vault
+    , wai-session
+    , safe-exceptions
+    , unliftio
+    , containers
+    , email-validate
+    , crypto-api
+    , scotty
+    , scotty-cookie
 
-  hs-source-dirs:   app
+  hs-source-dirs:   app, src-hs
   default-language: Haskell2010

@@ -1,9 +1,9 @@
-CREATE TABLE user_roles (
+CREATE TABLE roles (
   id INTEGER PRIMARY KEY, 
   label TEXT NOT NULL
 );
 
-INSERT INTO user_roles (id, label) VALUES 
+INSERT INTO roles (id, label) VALUES 
   (0, "admin"),
   (1, "user"),
   (2, "board"),

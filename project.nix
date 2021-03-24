@@ -1,6 +1,9 @@
-{ mkDerivation, base, bcrypt, bytestring, clientsession, cookie
-, fast-logger, http-types, lib, lucid, sqlite-simple, text, wai
-, wai-extra, wai-middleware-static, wai-session, warp
+{ mkDerivation, base, bcrypt, bytestring, clientsession, containers
+, cookie, crypto-api, email-validate, errors, fast-logger
+, http-types, lib, lucid, mtl, safe-exceptions, scotty
+, scotty-cookie, sqlite-simple, text, text-show, time, transformers
+, unliftio, vault, wai, wai-extra, wai-middleware-static
+, wai-session, warp
 }:
 mkDerivation {
   pname = "lions-backend";
@@ -9,9 +12,11 @@ mkDerivation {
   isLibrary = false;
   isExecutable = true;
   executableHaskellDepends = [
-    base bcrypt bytestring clientsession cookie fast-logger http-types
-    lucid sqlite-simple text wai wai-extra wai-middleware-static
-    wai-session warp
+    base bcrypt bytestring clientsession containers cookie crypto-api
+    email-validate errors fast-logger http-types lucid mtl
+    safe-exceptions scotty scotty-cookie sqlite-simple text text-show
+    time transformers unliftio vault wai wai-extra
+    wai-middleware-static wai-session warp
   ];
   license = "unknown";
   hydraPlatforms = lib.platforms.none;

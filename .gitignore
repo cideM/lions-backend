@@ -3,3 +3,8 @@ node_modules
 dist-newstyle
 .envrc
 result
+tags
+.spago2nix/
+.purs-repl
+.spago
+output

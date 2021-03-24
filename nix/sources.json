@@ -6,6 +6,13 @@
         "url_template": "https://github.com/twbs/bootstrap/releases/download/v<version>/bootstrap-<version>-dist.zip",
         "version": "5.0.0-beta2"
     },
+    "bootstrap-icon": {
+        "sha256": "1dy39jaibz36mi8xbxmlqyqf4if2pp2fz7jv0x03r1ggdwb5bpgf",
+        "type": "file",
+        "url": "https://github.com/twbs/icons/releases/download/v1.4.1/bootstrap-icons-1.4.1.zip",
+        "url_template": "https://github.com/twbs/icons/releases/download/v<version>/bootstrap-icons-<version>.zip",
+        "version": "1.4.1"
+    },
     "niv": {
         "branch": "master",
         "description": "Easy dependency management for Nix projects",
@@ -24,10 +31,22 @@
         "homepage": "",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "2996d6df1de087c18d94eda470be6b7618b8dc5c",
-        "sha256": "0q941nyx8gjsykivb17lgkn13cv9b3f7kfkxszhmdg4xnpcagg63",
+        "rev": "c0e881852006b132236cbf0301bd1939bb50867e",
+        "sha256": "0fy7z7yxk5n7yslsvx5cyc6h21qwi4bhxf3awhirniszlbvaazy2",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/2996d6df1de087c18d94eda470be6b7618b8dc5c.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/c0e881852006b132236cbf0301bd1939bb50867e.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "spago2nix": {
+        "branch": "master",
+        "description": "Generate a derivation of Spago dependencies, and use them to install them into the directory structure used by Spago.",
+        "homepage": "",
+        "owner": "justinwoo",
+        "repo": "spago2nix",
+        "rev": "898798204fa8f53837bbcf71e30aeb425deb0906",
+        "sha256": "1igb1ldilj52f6vppsv58hxwzasd9vjcfsfhxsmk1jhs7cbnb1dq",
+        "type": "tarball",
+        "url": "https://github.com/justinwoo/spago2nix/archive/898798204fa8f53837bbcf71e30aeb425deb0906.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
