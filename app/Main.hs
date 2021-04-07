@@ -22,7 +22,6 @@ import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (run)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
-import Session.Domain (VaultKey)
 import qualified Session.Middleware
 import System.Environment (getEnv)
 import qualified System.Log.FastLogger as Log
@@ -34,10 +33,7 @@ import qualified WelcomeMessage.Handlers
 import Prelude hiding (id)
 
 app ::
-  ( MonadIO m,
-    MonadCatch m,
-    MonadReader (SQLite.Connection, ClientSession.Key, Log.FastLogger, VaultKey) m
-  ) =>
+  (MonadIO m, MonadCatch m, MonadReader Env m) =>
   Wai.Request ->
   (Wai.Response -> m Wai.ResponseReceived) ->
   m Wai.ResponseReceived
@@ -157,6 +153,10 @@ main =
                 . logStdout
                 . staticPolicy (addBase "public")
                 . Session.Middleware.middleware conn sessionKey vaultKey logger
-                $ (\req send -> unApp (app req (liftIO . send)) (conn, sessionKey, logger, vaultKey))
+                $ ( \req send ->
+                      let app' = app req (liftIO . send)
+                          env = (conn, sessionKey, logger, vaultKey)
+                       in unApp app' env
+                  )
           )
     )
