@@ -1,20 +1,22 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module LandingPage.Handlers (showLandingPage) where
 
+import App
 import Control.Exception.Safe
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import qualified Database.SQLite.Simple as SQLite
 import LandingPage.UsersList (UserGroupToShow (..))
 import qualified LandingPage.UsersList
 import Layout (ActiveNavLink (..), layout)
 import Lucid
 import qualified Network.Wai as Wai
-import qualified System.Log.FastLogger as Log
 import User.DB (getUsers)
 import User.Domain (Role (..), isAdmin)
 import Wai (parseParams)
@@ -31,20 +33,22 @@ parseSelection "president" = Right $ Some President
 parseSelection v = Left $ "unknown user group: " <> v
 
 showLandingPage ::
-  Log.FastLogger ->
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   [Role] ->
   Wai.Request ->
-  IO (Html ())
-showLandingPage _ conn roles req = do
-  params <- parseParams req
+  m (Html ())
+showLandingPage roles req = do
+  (conn, _, _, _) <- ask
+  params <- liftIO $ parseParams req
   let selectionRaw = Map.findWithDefault "all" "userselect" params
   selectionParsed <- case parseSelection selectionRaw of
-    Left e -> throwString . Text.unpack $ "invalid group selection: " <> selectionRaw <> " " <> e
+    Left e -> liftIO . throwString . Text.unpack $ "invalid group selection: " <> selectionRaw <> " " <> e
     Right (v :: UserGroupToShow) -> pure v
   msg <- getWelcomeMsgFromDb conn
-  zone <- Time.getCurrentTimeZone
-  users <- getUsers conn
+  zone <- liftIO Time.getCurrentTimeZone
+  users <- liftIO $ getUsers conn
   let msg' = (\(WelcomeMsg content datetime) -> (content, Time.utcToZonedTime zone datetime)) <$> msg
       userIsAdmin = any isAdmin roles
       usersToShow = case selectionParsed of

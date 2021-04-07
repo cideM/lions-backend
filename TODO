@@ -2,8 +2,8 @@
 - Request new password change link
 - Use proper logger
 - Give sessions numeric ID and make current ID the KEY
-- ReaderT for env
 - Replace Purescript with smth sane
+- ReaderT for env DONE
 - Dropdown for user types DONE
 - Single user profile DONE
 - User management DONE

@@ -50,6 +50,7 @@ executable lions-backend
     Login.DB
     Login.Handlers
     Login.Form
+    App
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

@@ -1,12 +1,15 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Login.Handlers (login, showLoginForm) where
 
+import App
 import Control.Error (note, runExceptT)
 import Control.Monad (unless)
 import Control.Monad.Except (liftEither, throwError)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (MonadReader, ask)
 import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
@@ -17,14 +20,13 @@ import Data.Maybe (isJust)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
-import qualified Database.SQLite.Simple as SQLite
 import Login.Form (LoginFormState (..), render)
 import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
 import Session.DB (saveSession)
-import Session.Domain (Session (..), SessionId (..), VaultKey, makeValidSession)
+import Session.Domain (Session (..), SessionId (..), makeValidSession)
 import qualified System.Log.FastLogger as Log
 import TextShow
 import User.DB (getIdAndPwByEmail)
@@ -54,19 +56,20 @@ genNewSessionExpires = do
   return $ foldl' (flip Time.addUTCTime) now thirtyDays
 
 login ::
-  ClientSession.Key ->
-  SQLite.Connection ->
-  Log.FastLogger ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   Wai.Request ->
-  (Wai.Response -> IO a) ->
-  IO a
-login sessionKey conn logger req send = do
-  params <- parseParams req
+  (Wai.Response -> m a) ->
+  m a
+login req send = do
+  (_, _, logger, _) <- ask
+  params <- liftIO $ parseParams req
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
   doLogin email formPw >>= \case
     Left e -> do
-      logger . Log.toLogStr $ show e <> "\n"
+      liftIO . logger . Log.toLogStr $ show e <> "\n"
       send
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
@@ -77,7 +80,7 @@ login sessionKey conn logger req send = do
           formPw
           (Just "Ungültige Kombination aus Email und Passwort")
     Right cookie -> do
-      logger "successful login\n"
+      liftIO $ logger "successful login\n"
       send
         . Wai.responseLBS
           status302
@@ -87,10 +90,11 @@ login sessionKey conn logger req send = do
           ]
         $ renderBS ""
   where
-    doLogin email formPw =
+    doLogin email formPw = do
+      (conn, sessionKey, _, _) <- ask
       runExceptT
         ( do
-            (userId, dbPw) <- getIdAndPwByEmail conn email >>= liftEither . note ("no user found for ID: " <> showt email)
+            (userId, dbPw) <- liftIO (getIdAndPwByEmail conn email) >>= liftEither . note ("no user found for ID: " <> showt email)
             unless (BCrypt.validatePassword (encodeUtf8 dbPw) (encodeUtf8 formPw)) $ throwError "invalid credentials"
             expires <- liftIO genNewSessionExpires
             sessionIdRaw <- decodeUtf8 <$> liftIO genSessionId
@@ -101,9 +105,12 @@ login sessionKey conn logger req send = do
         )
 
 showLoginForm ::
-  VaultKey ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   Wai.Request ->
-  IO (Html ())
-showLoginForm vaultKey req = do
+  m (Html ())
+showLoginForm req = do
+  (_, _, _, vaultKey) <- ask
   let isLoggedIn = isJust . Vault.lookup vaultKey $ Wai.vault req
   return . render $ if isLoggedIn then LoggedIn else NotLoggedInNotValidated

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -13,6 +14,9 @@ module User.Handlers
   )
 where
 
+import App
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
@@ -33,8 +37,7 @@ import User.Profile (CanDelete (..), CanEdit (..))
 import qualified User.Profile
 import Wai (parseParams)
 
-showAddUserForm ::
-  IO (Html ())
+showAddUserForm :: Monad m => m (Html ())
 showAddUserForm =
   return $
     layout "Nutzer Hinzufügen" Nothing $
@@ -50,12 +53,15 @@ renderDateForInput :: Time.Day -> Text
 renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y"
 
 showEditUserForm ::
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   [Role] ->
   UserId ->
-  IO (Html ())
-showEditUserForm conn sessionRoles userId@(UserId i) = do
-  user <- getUser conn userId
+  m (Html ())
+showEditUserForm sessionRoles userId@(UserId i) = do
+  (conn, _, _, _) <- ask
+  user <- liftIO $ getUser conn userId
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -87,15 +93,17 @@ showEditUserForm conn sessionRoles userId@(UserId i) = do
             emptyForm
 
 updateExistingUser ::
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   [Role] ->
-  Log.FastLogger ->
-  SQLite.Connection ->
   UserId ->
   Wai.Request ->
-  IO (Html ())
-updateExistingUser sessionRoles logger conn userId req = do
-  rolesForUserToUpdate <- getRolesFromDb conn userId
-  params <- parseParams req
+  m (Html ())
+updateExistingUser sessionRoles userId req = do
+  (conn, _, logger, _) <- ask
+  rolesForUserToUpdate <- liftIO $ getRolesFromDb conn userId
+  params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
       loggedInAsAdmin = any isAdmin sessionRoles
@@ -129,9 +137,9 @@ updateExistingUser sessionRoles logger conn userId req = do
               input
               state
     Right (profile, roles) -> do
-      updateUser conn userId roles profile
-      logger . Log.toLogStr $ "editing user: " <> show profile <> "\n"
-      logger . Log.toLogStr $ "editing user roles: " <> show roles <> "\n"
+      liftIO $ updateUser conn userId roles profile
+      liftIO . logger . Log.toLogStr $ "editing user: " <> show profile <> "\n"
+      liftIO . logger . Log.toLogStr $ "editing user roles: " <> show roles <> "\n"
       return $
         layout "Nutzer Editieren" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -141,12 +149,14 @@ updateExistingUser sessionRoles logger conn userId req = do
 
 -- TODO: Duplication
 saveNewUser ::
-  Log.FastLogger ->
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   Wai.Request ->
-  IO (Html ())
-saveNewUser logger conn req = do
-  params <- parseParams req
+  m (Html ())
+saveNewUser req = do
+  (conn, _, logger, _) <- ask
+  params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
       input =
@@ -176,14 +186,15 @@ saveNewUser logger conn req = do
               input
               state
     Right (profile, roles) -> do
-      SQLite.withTransaction
-        conn
-        $ do
-          saveUser conn profile
-          (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
-          saveUserRoles conn (UserId (traceShow ("userid " <> show userid) userid)) roles
-      logger . Log.toLogStr $ "adding user: " <> show profile <> "\n"
-      logger . Log.toLogStr $ "adding user roles: " <> show roles <> "\n"
+      liftIO $
+        SQLite.withTransaction
+          conn
+          $ do
+            saveUser conn profile
+            (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
+            saveUserRoles conn (UserId (traceShow ("userid " <> show userid) userid)) roles
+      liftIO . logger . Log.toLogStr $ "adding user: " <> show profile <> "\n"
+      liftIO . logger . Log.toLogStr $ "adding user roles: " <> show roles <> "\n"
       return $
         layout "Nutzer Hinzufügen" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -192,17 +203,20 @@ saveNewUser logger conn req = do
                 "Nutzer " <> show (userEmail profile) <> " erfolgreich erstellt"
 
 showProfile ::
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   [Role] ->
   Int ->
   UserId ->
   Wai.Request ->
-  IO (Html ())
-showProfile conn roles paramId loggedInUserId _ = do
+  m (Html ())
+showProfile roles paramId loggedInUserId _ = do
+  (conn, _, _, _) <- ask
   let userIdToShow = UserId paramId
       userIsAdmin = any isAdmin roles
       isOwnProfile = loggedInUserId == userIdToShow
-  user <- getUser conn userIdToShow
+  user <- liftIO $ getUser conn userIdToShow
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -221,11 +235,14 @@ showProfile conn roles paramId loggedInUserId _ = do
           )
 
 deleteUser ::
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   UserId ->
-  IO (Html ())
-deleteUser conn userId = do
-  user <- getUser conn userId
+  m (Html ())
+deleteUser userId = do
+  (conn, _, _, _) <- ask
+  user <- liftIO $ getUser conn userId
   case user of
     Nothing -> return . layout "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -241,11 +258,14 @@ deleteUser conn userId = do
                 "Nutzer " <> show (userEmail userProfile) <> " erfolgreich gelöscht"
 
 showDeleteConfirmation ::
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader Env m
+  ) =>
   UserId ->
-  IO (Html ())
-showDeleteConfirmation conn userId = do
-  user <- getUser conn userId
+  m (Html ())
+showDeleteConfirmation userId = do
+  (conn, _, _, _) <- ask
+  user <- liftIO $ getUser conn userId
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
