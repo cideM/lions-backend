@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module WelcomeMessage.Domain (WelcomeMsg (..)) where
 
 import Data.Text (Text)

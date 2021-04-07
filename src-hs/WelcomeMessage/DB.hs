@@ -1,7 +1,6 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module WelcomeMessage.DB (getWelcomeMsgFromDb, saveNewWelcomeMsg) where
@@ -19,8 +18,7 @@ newtype DBWelcomeMsg = DBWelcomeMsg WelcomeMsg deriving (Show)
 instance FromRow DBWelcomeMsg where
   fromRow = do
     content <- SQLite.field
-    createdAt <- SQLite.field
-    return $ DBWelcomeMsg (WelcomeMsg content createdAt)
+    DBWelcomeMsg . WelcomeMsg content <$> SQLite.field
 
 -- | getWelcomeMsgFromDb returns the MOST RECENT welcome message, if there is one
 getWelcomeMsgFromDb :: (MonadIO m) => SQLite.Connection -> m (Maybe WelcomeMsg)

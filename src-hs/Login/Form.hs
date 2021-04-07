@@ -1,7 +1,6 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Login.Form (render, LoginFormState(..)) where
+module Login.Form (render, LoginFormState (..)) where
 
 import Data.Maybe (isJust)
 import Data.Text (Text)

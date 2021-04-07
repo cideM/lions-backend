@@ -9,7 +9,10 @@ import Control.Monad.Except (liftEither, throwError)
 import Control.Monad.IO.Class (liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Builder as BSBuilder
+import qualified Data.ByteString.Lazy as LBS
 import Data.List (foldl')
+import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
@@ -17,32 +20,32 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Login.Form (LoginFormState (..), render)
 import Lucid
-import Network.HTTP.Types (status401)
+import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
 import Session.DB (saveSession)
-import Session.Domain (Session (..), SessionId (..), makeValidSession, VaultKey)
+import Session.Domain (Session (..), SessionId (..), VaultKey, makeValidSession)
 import qualified System.Log.FastLogger as Log
 import TextShow
 import User.DB (getIdAndPwByEmail)
+import Wai (parseParams)
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
-import qualified Web.Scotty as S
-import qualified Web.Scotty.Cookie as SCookie
 import Prelude hiding (id)
 
-genNewSessionCookie :: ByteString -> Time.UTCTime -> Cookie.SetCookie
+genNewSessionCookie :: ByteString -> Time.UTCTime -> ByteString
 genNewSessionCookie encryptedSessionId expires =
-  Cookie.def
-    { Cookie.setCookieName = "lions_session",
-      Cookie.setCookieValue = encryptedSessionId,
-      Cookie.setCookieExpires = Just expires,
-      Cookie.setCookiePath = Just "/",
-      -- TODO: Needs to depend on env dev vs. prod
-      Cookie.setCookieSecure = False,
-      Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
-      Cookie.setCookieHttpOnly = True
-    }
+  LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
+    Cookie.defaultSetCookie
+      { Cookie.setCookieName = "lions_session",
+        Cookie.setCookieValue = encryptedSessionId,
+        Cookie.setCookieExpires = Just expires,
+        Cookie.setCookiePath = Just "/",
+        -- TODO: Needs to depend on env dev vs. prod
+        Cookie.setCookieSecure = False,
+        Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
+        Cookie.setCookieHttpOnly = True
+      }
 
 genNewSessionExpires :: IO Time.UTCTime
 genNewSessionExpires = do
@@ -54,15 +57,19 @@ login ::
   ClientSession.Key ->
   SQLite.Connection ->
   Log.FastLogger ->
-  S.ActionM ()
-login sessionKey conn logger = do
-  email <- S.param "email" `S.rescue` const (return "")
-  formPw <- S.param "password" `S.rescue` const (return "")
-  S.liftAndCatchIO (doLogin email formPw) >>= \case
+  Wai.Request ->
+  (Wai.Response -> IO a) ->
+  IO a
+login sessionKey conn logger req send = do
+  params <- parseParams req
+  let email = Map.findWithDefault "" "email" params
+      formPw = Map.findWithDefault "" "password" params
+  doLogin email formPw >>= \case
     Left e -> do
-      S.liftAndCatchIO . logger . Log.toLogStr $ show e <> "\n"
-      S.status status401
-      S.html . renderText
+      logger . Log.toLogStr $ show e <> "\n"
+      send
+        . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
+        . renderBS
         . render
         $ NotLoggedInValidated
           email
@@ -70,11 +77,17 @@ login sessionKey conn logger = do
           formPw
           (Just "Ungültige Kombination aus Email und Passwort")
     Right cookie -> do
-      S.liftAndCatchIO $ logger "successful login\n"
-      SCookie.setCookie cookie
-      S.redirect "/"
+      logger "successful login\n"
+      send
+        . Wai.responseLBS
+          status302
+          [ ("Content-Type", "text/html; charset=UTF-8"),
+            ("Set-Cookie", cookie),
+            ("Location", "/")
+          ]
+        $ renderBS ""
   where
-    doLogin email formPw = do
+    doLogin email formPw =
       runExceptT
         ( do
             (userId, dbPw) <- getIdAndPwByEmail conn email >>= liftEither . note ("no user found for ID: " <> showt email)
@@ -89,7 +102,8 @@ login sessionKey conn logger = do
 
 showLoginForm ::
   VaultKey ->
-  S.ActionM ()
-showLoginForm vaultKey = do
-  isLoggedIn <- S.request >>= return . isJust . Vault.lookup vaultKey . Wai.vault
-  S.html . renderText . render $ if isLoggedIn then LoggedIn else NotLoggedInNotValidated
+  Wai.Request ->
+  IO (Html ())
+showLoginForm vaultKey req = do
+  let isLoggedIn = isJust . Vault.lookup vaultKey $ Wai.vault req
+  return . render $ if isLoggedIn then LoggedIn else NotLoggedInNotValidated

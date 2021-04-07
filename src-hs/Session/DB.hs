@@ -1,7 +1,6 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Session.DB (getSessionFromDb, saveSession) where
@@ -22,8 +21,7 @@ instance FromRow DBSession where
   fromRow = do
     id <- SQLite.field
     expires <- SQLite.field
-    userid <- SQLite.field
-    return $ DBSession (Session (SessionId id) expires (UserId userid))
+    DBSession . Session (SessionId id) expires . UserId <$> SQLite.field
 
 instance ToRow DBSession where
   toRow (DBSession (Session (SessionId id) expires (UserId userId))) = [toField id, toField expires, toField userId]

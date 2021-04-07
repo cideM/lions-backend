@@ -1,13 +1,13 @@
-- Edit own user
-- Admin edit other user
 - Event shit
 - Request new password change link
-- Move DB functions into feature files
 - Use proper logger
 - Give sessions numeric ID and make current ID the KEY
 - ReaderT for env
-- Use Scotty again
 - Replace Purescript with smth sane
 - Dropdown for user types DONE
 - Single user profile DONE
 - User management DONE
+- Edit own user DONE
+- Admin edit other user DONE
+- Use Scotty again DONE
+- Move DB functions into feature files DONE
