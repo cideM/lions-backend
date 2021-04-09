@@ -18,6 +18,8 @@ import App (App (..), Env (..))
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Log (MonadLog, Severity (..), WithSeverity (..), logMessage, runLoggingT)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
@@ -47,12 +49,14 @@ app ::
     HasReader "logger" Log.FastLogger m,
     HasReader "dbConn" SQLite.Connection m,
     HasReader "sessionKey" ClientSession.Key m,
-    HasReader "vaultKey" VaultKey m
+    HasReader "vaultKey" VaultKey m,
+    MonadLog (WithSeverity Text) m
   ) =>
   Wai.Request ->
   (Wai.Response -> m Wai.ResponseReceived) ->
   m Wai.ResponseReceived
 app req send = do
+  logMessage (WithSeverity Informational "Don't mind me")
   logger <- ask @"logger"
   vaultKey <- ask @"vaultKey"
   let adminOnly = authorized (any isAdmin . fst) . const
@@ -171,7 +175,8 @@ main =
                 . Session.Middleware.middleware conn sessionKey vaultKey logger
                 $ ( \req send ->
                       let app' = app req (liftIO . send)
-                       in unApp app' $ Env conn sessionKey logger vaultKey
+                          appWithEnv = unApp app' $ Env conn sessionKey logger vaultKey
+                       in runLoggingT appWithEnv print
                   )
           )
     )
