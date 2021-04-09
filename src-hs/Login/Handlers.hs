@@ -1,15 +1,17 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Login.Handlers (login, showLoginForm) where
 
-import App
+import Capability.Reader (HasReader (..), ask)
 import Control.Error (note, runExceptT)
 import Control.Monad (unless)
 import Control.Monad.Except (liftEither, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (MonadReader, ask)
 import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
@@ -17,16 +19,18 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.List (foldl')
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
+import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
+import qualified Database.SQLite.Simple as SQLite
 import Login.Form (LoginFormState (..), render)
 import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
 import Session.DB (saveSession)
-import Session.Domain (Session (..), SessionId (..), makeValidSession)
+import Session.Domain (Session (..), SessionId (..), VaultKey, makeValidSession)
 import qualified System.Log.FastLogger as Log
 import TextShow
 import User.DB (getIdAndPwByEmail)
@@ -57,18 +61,20 @@ genNewSessionExpires = do
 
 login ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "logger" Log.FastLogger m,
+    HasReader "dbConn" SQLite.Connection m,
+    HasReader "sessionKey" ClientSession.Key m
   ) =>
   Wai.Request ->
   (Wai.Response -> m a) ->
   m a
 login req send = do
-  (_, _, logger, _) <- ask
+  logger <- ask @"logger"
   params <- liftIO $ parseParams req
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
   doLogin email formPw >>= \case
-    Left e -> do
+    Left (e :: Text) -> do
       liftIO . logger . Log.toLogStr $ show e <> "\n"
       send
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
@@ -91,7 +97,8 @@ login req send = do
         $ renderBS ""
   where
     doLogin email formPw = do
-      (conn, sessionKey, _, _) <- ask
+      conn <- ask @"dbConn"
+      sessionKey <- ask @"sessionKey"
       runExceptT
         ( do
             (userId, dbPw) <- liftIO (getIdAndPwByEmail conn email) >>= liftEither . note ("no user found for ID: " <> showt email)
@@ -106,11 +113,11 @@ login req send = do
 
 showLoginForm ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "vaultKey" VaultKey m
   ) =>
   Wai.Request ->
   m (Html ())
 showLoginForm req = do
-  (_, _, _, vaultKey) <- ask
+  vaultKey <- ask @"vaultKey"
   let isLoggedIn = isJust . Vault.lookup vaultKey $ Wai.vault req
   return . render $ if isLoggedIn then LoggedIn else NotLoggedInNotValidated

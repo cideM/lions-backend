@@ -1,15 +1,23 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Main where
 
-import App
+import App (App (..), Env (..))
+import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
@@ -22,6 +30,7 @@ import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (run)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
+import Session.Domain (VaultKey)
 import qualified Session.Middleware
 import System.Environment (getEnv)
 import qualified System.Log.FastLogger as Log
@@ -33,12 +42,19 @@ import qualified WelcomeMessage.Handlers
 import Prelude hiding (id)
 
 app ::
-  (MonadIO m, MonadCatch m, MonadReader Env m) =>
+  ( MonadIO m,
+    MonadCatch m,
+    HasReader "logger" Log.FastLogger m,
+    HasReader "dbConn" SQLite.Connection m,
+    HasReader "sessionKey" ClientSession.Key m,
+    HasReader "vaultKey" VaultKey m
+  ) =>
   Wai.Request ->
   (Wai.Response -> m Wai.ResponseReceived) ->
   m Wai.ResponseReceived
 app req send = do
-  (_, _, logger, vaultKey) <- ask
+  logger <- ask @"logger"
+  vaultKey <- ask @"vaultKey"
   let adminOnly = authorized (any isAdmin . fst) . const
       authorizedOnly = authorized (const True)
       authorized check next = do
@@ -155,8 +171,7 @@ main =
                 . Session.Middleware.middleware conn sessionKey vaultKey logger
                 $ ( \req send ->
                       let app' = app req (liftIO . send)
-                          env = (conn, sessionKey, logger, vaultKey)
-                       in unApp app' env
+                       in unApp app' $ Env conn sessionKey logger vaultKey
                   )
           )
     )

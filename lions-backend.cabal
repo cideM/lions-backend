@@ -82,6 +82,7 @@ executable lions-backend
     , containers
     , email-validate
     , crypto-api
+    , capability
 
   hs-source-dirs:   app, src-hs
   default-language: Haskell2010

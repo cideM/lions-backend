@@ -1,7 +1,13 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module User.Handlers
   ( showProfile,
@@ -14,9 +20,8 @@ module User.Handlers
   )
 where
 
-import App
+import Capability.Reader (HasReader (..), ask)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
@@ -54,13 +59,13 @@ renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y"
 
 showEditUserForm ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "dbConn" SQLite.Connection m
   ) =>
   [Role] ->
   UserId ->
   m (Html ())
 showEditUserForm sessionRoles userId@(UserId i) = do
-  (conn, _, _, _) <- ask
+  conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
@@ -94,14 +99,16 @@ showEditUserForm sessionRoles userId@(UserId i) = do
 
 updateExistingUser ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "logger" Log.FastLogger m,
+    HasReader "dbConn" SQLite.Connection m
   ) =>
   [Role] ->
   UserId ->
   Wai.Request ->
   m (Html ())
 updateExistingUser sessionRoles userId req = do
-  (conn, _, logger, _) <- ask
+  conn <- ask @"dbConn"
+  logger <- ask @"logger"
   rolesForUserToUpdate <- liftIO $ getRolesFromDb conn userId
   params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
@@ -150,12 +157,14 @@ updateExistingUser sessionRoles userId req = do
 -- TODO: Duplication
 saveNewUser ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "logger" Log.FastLogger m,
+    HasReader "dbConn" SQLite.Connection m
   ) =>
   Wai.Request ->
   m (Html ())
 saveNewUser req = do
-  (conn, _, logger, _) <- ask
+  conn <- ask @"dbConn"
+  logger <- ask @"logger"
   params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
@@ -204,7 +213,7 @@ saveNewUser req = do
 
 showProfile ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "dbConn" SQLite.Connection m
   ) =>
   [Role] ->
   Int ->
@@ -212,7 +221,7 @@ showProfile ::
   Wai.Request ->
   m (Html ())
 showProfile roles paramId loggedInUserId _ = do
-  (conn, _, _, _) <- ask
+  conn <- ask @"dbConn"
   let userIdToShow = UserId paramId
       userIsAdmin = any isAdmin roles
       isOwnProfile = loggedInUserId == userIdToShow
@@ -236,12 +245,12 @@ showProfile roles paramId loggedInUserId _ = do
 
 deleteUser ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "dbConn" SQLite.Connection m
   ) =>
   UserId ->
   m (Html ())
 deleteUser userId = do
-  (conn, _, _, _) <- ask
+  conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
   case user of
     Nothing -> return . layout "Fehler" Nothing $
@@ -259,12 +268,12 @@ deleteUser userId = do
 
 showDeleteConfirmation ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "dbConn" SQLite.Connection m
   ) =>
   UserId ->
   m (Html ())
 showDeleteConfirmation userId = do
-  (conn, _, _, _) <- ask
+  conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
   return $ case user of
     Nothing -> layout "Fehler" Nothing $

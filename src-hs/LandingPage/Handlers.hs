@@ -1,17 +1,23 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module LandingPage.Handlers (showLandingPage) where
 
-import App
+import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (MonadReader, ask)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
+import qualified Database.SQLite.Simple as SQLite
 import LandingPage.UsersList (UserGroupToShow (..))
 import qualified LandingPage.UsersList
 import Layout (ActiveNavLink (..), layout)
@@ -34,13 +40,13 @@ parseSelection v = Left $ "unknown user group: " <> v
 
 showLandingPage ::
   ( MonadIO m,
-    MonadReader Env m
+    HasReader "dbConn" SQLite.Connection m
   ) =>
   [Role] ->
   Wai.Request ->
   m (Html ())
 showLandingPage roles req = do
-  (conn, _, _, _) <- ask
+  conn <- ask @"dbConn"
   params <- liftIO $ parseParams req
   let selectionRaw = Map.findWithDefault "all" "userselect" params
   selectionParsed <- case parseSelection selectionRaw of
