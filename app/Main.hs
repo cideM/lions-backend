@@ -81,7 +81,7 @@ app req send = do
             then next xs
             else send403
   K.katipAddContext (K.sl "request_id" requestId) $ do
-    handleAny send500 $ case Wai.pathInfo req of
+    case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
           "GET" -> authorizedOnly $ \(roles, _) -> LandingPage.Handlers.showLandingPage roles req >>= send200
@@ -132,21 +132,16 @@ app req send = do
           "POST" -> Login.Handlers.login req send
           "GET" -> Login.Handlers.showLoginForm req >>= send200
           _ -> send404
+      ["logout"] ->
+        case Wai.requestMethod req of
+          "POST" -> Login.Handlers.logout req send
+          _ -> send404
       _ -> send404
   where
     send200 =
       send
         . Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-    send500 e = do
-      K.logLocM K.ErrorS $ K.showLS e
-      send
-        . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
-        . renderBS
-        . layout "Fehler" Nothing
-        $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-          div_ [class_ "row col-6"] $ do
-            p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"
     send403 =
       send
         . Wai.responseLBS status403 [("Content-Type", "text/html; charset=UTF-8")]
@@ -202,7 +197,19 @@ main = do
                 . logStdout
                 . staticPolicy (addBase "public")
                 $ ( \r s ->
-                      flip unApp env $
-                        (RequestID.Middleware.middleware . Session.Middleware.middleware) app r (liftIO . s)
+                      let send = liftIO . s
+                       in flip unApp env
+                            . handleAny (send500 send)
+                            $ (RequestID.Middleware.middleware . Session.Middleware.middleware) app r send
                   )
     )
+  where
+    send500 send e = do
+      K.logLocM K.ErrorS $ K.showLS e
+      send
+        . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
+        . renderBS
+        . layout "Fehler" Nothing
+        $ div_ [class_ "container p-3 d-flex justify-content-center"] $
+          div_ [class_ "row col-6"] $ do
+            p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"

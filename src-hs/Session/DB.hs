@@ -3,7 +3,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Session.DB (getSessionFromDb, saveSession) where
+module Session.DB
+  ( getSessionFromDbByUser,
+    getSessionFromDb,
+    saveSession,
+    deleteSession,
+  )
+where
 
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -35,6 +41,19 @@ getSessionFromDb conn (SessionId id) =
         [] -> return Nothing
         other -> throwString $ "unexpected DB result: " <> show other
 
+getSessionFromDbByUser :: (MonadIO m) => SQLite.Connection -> UserId -> m (Maybe Session)
+getSessionFromDbByUser conn (UserId id) =
+  liftIO $
+    SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE userid = ?" [id]
+      >>= \case
+        [DBSession s] -> return $ Just s
+        [] -> return Nothing
+        other -> throwString $ "unexpected DB result: " <> show other
+
 saveSession :: (MonadIO m) => SQLite.Connection -> ValidSession -> m ()
 saveSession conn (ValidSession session) =
   liftIO $ SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (DBSession session)
+
+deleteSession :: (MonadIO m) => SQLite.Connection -> Session -> m ()
+deleteSession conn (Session (SessionId id) _ _) =
+  liftIO $ SQLite.execute conn "DELETE FROM sessions WHERE key = ?" $ SQLite.Only id

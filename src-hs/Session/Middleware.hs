@@ -17,7 +17,7 @@ import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Katip
-import Network.HTTP.Types (status302, status500)
+import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
 import RequestID.Middleware (RequestIdVaultKey)
 import Session.DB (getSessionFromDb)
@@ -72,16 +72,12 @@ middleware nextApp req send = do
   sessionKey <- ask @"sessionKey"
   dbConn <- ask @"dbConn"
   sessionDataVaultKey <- ask @"sessionDataVaultKey"
-  (tryAny . runExceptT $ tryLogin dbConn sessionKey sessionDataVaultKey req) >>= \case
-    Left ex -> do
-      logLocM ErrorS (showLS ex)
-      send $ Wai.responseBuilder status500 [] "Interner Fehler"
-    Right v -> case v of
-      Left e -> do
-        logLocM InfoS (ls e)
-        case Wai.pathInfo req of
-          ["login"] -> do
-            nextApp req send
-          _ -> do
-            send $ Wai.responseBuilder status302 [("Location", "/login")] ""
-      Right req' -> nextApp req' send
+  (runExceptT $ tryLogin dbConn sessionKey sessionDataVaultKey req) >>= \case
+    Left e -> do
+      logLocM InfoS (ls e)
+      case Wai.pathInfo req of
+        ["login"] -> do
+          nextApp req send
+        _ -> do
+          send $ Wai.responseBuilder status302 [("Location", "/login")] ""
+    Right req' -> nextApp req' send
