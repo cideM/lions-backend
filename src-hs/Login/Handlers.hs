@@ -10,8 +10,12 @@ module Login.Handlers (login, showLoginForm) where
 
 import App (Environment (..))
 import Capability.Reader (HasReader (..), ask)
+import Control.Error (note)
+import Control.Exception.Safe
+import Control.Monad.Except (MonadError, liftEither, runExceptT, throwError, unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
 import Data.List (foldl')
@@ -36,14 +40,43 @@ import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
-genNewSessionExpires :: IO Time.UTCTime
+genNewSessionExpires :: (MonadIO m) => m Time.UTCTime
 genNewSessionExpires = do
-  now <- Time.getCurrentTime
+  now <- liftIO Time.getCurrentTime
   let thirtyDays = replicate 30 Time.nominalDay
   return $ foldl' (flip Time.addUTCTime) now thirtyDays
 
+tryLogin ::
+  (MonadError Text m, KatipContext m) =>
+  SQLite.Connection ->
+  ClientSession.Key ->
+  Environment ->
+  Text ->
+  Text ->
+  m ByteString
+tryLogin conn sessionKey env email formPw = do
+  (userId, dbPw) <- getIdAndPwByEmail conn email >>= liftEither . note "no user found"
+  katipAddContext (sl "user_id" $ show userId) $ do
+    unless (BCrypt.validatePassword (encodeUtf8 dbPw) (encodeUtf8 formPw)) $ throwError "incorrect password"
+    expires <- genNewSessionExpires
+    sessionIdRaw <- liftIO $ decodeUtf8 <$> genSessionId
+    s <- makeValidSession $ Session (SessionId sessionIdRaw) expires userId
+    saveSession conn s
+    encryptedSessionId <- liftIO $ ClientSession.encryptIO sessionKey (encodeUtf8 sessionIdRaw)
+    logLocM InfoS "successful login"
+    return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
+      Cookie.defaultSetCookie
+        { Cookie.setCookieName = "lions_session",
+          Cookie.setCookieValue = encryptedSessionId,
+          Cookie.setCookieExpires = Just expires,
+          Cookie.setCookiePath = Just "/",
+          Cookie.setCookieSecure = env == Production,
+          Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
+          Cookie.setCookieHttpOnly = True
+        }
+
 login ::
-  ( MonadIO m,
+  ( MonadCatch m,
     KatipContext m,
     HasReader "dbConn" SQLite.Connection m,
     HasReader "appEnv" Environment m,
@@ -60,55 +93,31 @@ login req send = do
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
   katipAddContext (sl "email" email) $ do
-    getIdAndPwByEmail conn email >>= \case
-      Nothing -> onUnauthenticated email formPw "no user found"
-      Just (userId, dbPw) -> do
-        katipAddContext (sl "user_id" $ show userId) $ do
-          case BCrypt.validatePassword (encodeUtf8 dbPw) (encodeUtf8 formPw) of
-            False -> onUnauthenticated email formPw "incorrect password"
-            True -> do
-              expires <- liftIO genNewSessionExpires
-              sessionIdRaw <- liftIO $ decodeUtf8 <$> genSessionId
-              liftIO (makeValidSession $ Session (SessionId sessionIdRaw) expires userId) >>= \case
-                Left e -> onExcept e
-                Right s -> do
-                  liftIO $ saveSession conn s
-                  encryptedSessionId <- liftIO $ ClientSession.encryptIO sessionKey (encodeUtf8 sessionIdRaw)
-                  let cookie =
-                        LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
-                          Cookie.defaultSetCookie
-                            { Cookie.setCookieName = "lions_session",
-                              Cookie.setCookieValue = encryptedSessionId,
-                              Cookie.setCookieExpires = Just expires,
-                              Cookie.setCookiePath = Just "/",
-                              Cookie.setCookieSecure = env == Production,
-                              Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
-                              Cookie.setCookieHttpOnly = True
-                            }
-                  logLocM InfoS "successful login"
-                  send
-                    . Wai.responseLBS
-                      status302
-                      [ ("Content-Type", "text/html; charset=UTF-8"),
-                        ("Set-Cookie", cookie),
-                        ("Location", "/")
-                      ]
-                    $ renderBS ""
-  where
-    onExcept e = do
-      logLocM ErrorS (showLS e)
-      send $ Wai.responseBuilder status500 [] "Interner Fehler"
-    onUnauthenticated email pw (e :: Text) = do
-      logLocM ErrorS $ showLS e
-      send
-        . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
-        . renderBS
-        . render
-        $ NotLoggedInValidated
-          email
-          (Just "Ungültige Kombination aus Email und Passwort")
-          pw
-          (Just "Ungültige Kombination aus Email und Passwort")
+    (tryAny . runExceptT $ tryLogin conn sessionKey env email formPw) >>= \case
+      Left ex -> do
+        logLocM ErrorS (showLS ex)
+        send $ Wai.responseBuilder status500 [] "Interner Fehler"
+      Right v -> case v of
+        Left err -> do
+          logLocM ErrorS $ showLS err
+          send
+            . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
+            . renderBS
+            . render
+            $ NotLoggedInValidated
+              email
+              (Just "Ungültige Kombination aus Email und Passwort")
+              formPw
+              (Just "Ungültige Kombination aus Email und Passwort")
+        Right cookie -> do
+          send
+            . Wai.responseLBS
+              status302
+              [ ("Content-Type", "text/html; charset=UTF-8"),
+                ("Set-Cookie", cookie),
+                ("Location", "/")
+              ]
+            $ renderBS ""
 
 showLoginForm ::
   ( MonadIO m,

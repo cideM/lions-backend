@@ -11,6 +11,8 @@ module Session.Domain
   )
 where
 
+import Control.Monad.Except (MonadError, throwError)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
@@ -28,10 +30,9 @@ newtype SessionId = SessionId Text
 
 newtype ValidSession = ValidSession Session deriving (Show)
 
-makeValidSession :: Session -> IO (Either Text ValidSession)
+makeValidSession :: (MonadIO m, MonadError Text m) => Session -> m ValidSession
 makeValidSession s@(Session _ expires _) = do
-  now <- Time.getCurrentTime
-  return $
-    if now >= expires
-      then Left $ "session expired at: " <> Text.pack (show expires)
-      else Right $ ValidSession s
+  now <- liftIO Time.getCurrentTime
+  if now >= expires
+    then throwError $ "session expired at: " <> Text.pack (show expires)
+    else pure $ ValidSession s

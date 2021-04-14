@@ -35,6 +35,6 @@ getSessionFromDb conn (SessionId id) =
         [] -> return Nothing
         other -> throwString $ "unexpected DB result: " <> show other
 
-saveSession :: SQLite.Connection -> ValidSession -> IO ()
+saveSession :: (MonadIO m) => SQLite.Connection -> ValidSession -> m ()
 saveSession conn (ValidSession session) =
-  SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (DBSession session)
+  liftIO $ SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (DBSession session)

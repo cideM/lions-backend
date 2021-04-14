@@ -253,7 +253,7 @@ saveUser conn profile = do
     |]
     $ UserProfileWithPw (hashed, profile)
 
-getRolesFromDb :: (MonadIO m) => SQLite.Connection -> UserId -> m (Maybe [Role])
+getRolesFromDb :: (MonadIO m, MonadThrow m) => SQLite.Connection -> UserId -> m (Maybe [Role])
 getRolesFromDb conn (UserId userId) =
   let q =
         [sql|

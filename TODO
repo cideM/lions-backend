@@ -2,6 +2,8 @@
 - Request new password change link
 - Logout
 - Replace Purescript with smth sane
+- Can I catch middleware AND app errors centrally?
+- Renew session ID more oftne
 - Proper app env parsing DONE
 - Give sessions numeric ID and make current ID the KEY DONE
 - Figure out how to add Wai.Transformers DONE

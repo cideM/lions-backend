@@ -11,7 +11,7 @@ module Session.Middleware (middleware) where
 import Capability.Reader (HasReader (..), ask)
 import Control.Error (note)
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except (MonadError, liftEither, runExceptT)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vault.Lazy as Vault
@@ -29,18 +29,37 @@ import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
-getSessionIdFromReq :: ClientSession.Key -> Wai.Request -> Either Text SessionId
+getSessionIdFromReq :: (MonadError Text m) => ClientSession.Key -> Wai.Request -> m SessionId
 getSessionIdFromReq sessionKey req =
-  (note "no cookie header" . lookup "cookie" $ Wai.requestHeaders req)
-    >>= note "no session cookie" . lookup "lions_session" . Cookie.parseCookies
-    >>= fmap (SessionId . decodeUtf8) . note "empty session cookie" . ClientSession.decrypt sessionKey
+  liftEither $
+    (note "no cookie header" . lookup "cookie" $ Wai.requestHeaders req)
+      >>= note "no session cookie" . lookup "lions_session" . Cookie.parseCookies
+      >>= fmap (SessionId . decodeUtf8) . note "empty session cookie" . ClientSession.decrypt sessionKey
+
+tryLogin ::
+  (MonadError Text m, KatipContext m, MonadThrow m) =>
+  SQLite.Connection ->
+  ClientSession.Key ->
+  SessionDataVaultKey ->
+  Wai.Request ->
+  m Wai.Request
+tryLogin dbConn sessionKey sessionDataVaultKey req = do
+  sessionId <- getSessionIdFromReq sessionKey req
+  katipAddContext (sl "session_id" (show sessionId)) $ do
+    session@(Session _ _ userId) <- getSessionFromDb dbConn sessionId >>= liftEither . note "no session found"
+    katipAddContext (sl "user_id" (show userId)) $ do
+      _ <- makeValidSession session
+      roles <- getRolesFromDb dbConn userId >>= liftEither . note "no roles found"
+      let vault = Wai.vault req
+          vault' = Vault.insert sessionDataVaultKey (roles, userId) vault
+          req' = req {Wai.vault = vault'}
+      logLocM InfoS "successful session authentication in middleware"
+      pure req'
 
 type WaiApp m = Wai.Request -> (Wai.Response -> m Wai.ResponseReceived) -> m Wai.ResponseReceived
 
--- Consider renewing session ID everytime
 middleware ::
-  ( MonadIO m,
-    MonadCatch m,
+  ( MonadCatch m,
     HasReader "sessionDataVaultKey" SessionDataVaultKey m,
     HasReader "requestIdVaultKey" RequestIdVaultKey m,
     HasReader "dbConn" SQLite.Connection m,
@@ -53,34 +72,16 @@ middleware nextApp req send = do
   sessionKey <- ask @"sessionKey"
   dbConn <- ask @"dbConn"
   sessionDataVaultKey <- ask @"sessionDataVaultKey"
-  handleAny onExcept $
-    case getSessionIdFromReq sessionKey req of
-      Left e -> onUnauthenticated e
-      Right sessionId -> do
-        katipAddContext (sl "session_id" (show sessionId)) $ do
-          getSessionFromDb dbConn sessionId >>= \case
-            Nothing -> onUnauthenticated "no session for id"
-            Just session@(Session _ _ userId) -> do
-              katipAddContext (sl "user_id" (show userId)) $ do
-                (liftIO $ makeValidSession session) >>= \case
-                  Left e -> onUnauthenticated e
-                  Right _ -> do
-                    getRolesFromDb dbConn userId >>= \case
-                      Nothing -> onUnauthenticated "no roles for user"
-                      Just roles -> do
-                        let vault = Wai.vault req
-                            vault' = Vault.insert sessionDataVaultKey (roles, userId) vault
-                            req' = req {Wai.vault = vault'}
-                        logLocM InfoS "successful session authentication in middleware"
-                        nextApp req' send
-  where
-    onExcept e = do
-      logLocM ErrorS (showLS e)
+  (tryAny . runExceptT $ tryLogin dbConn sessionKey sessionDataVaultKey req) >>= \case
+    Left ex -> do
+      logLocM ErrorS (showLS ex)
       send $ Wai.responseBuilder status500 [] "Interner Fehler"
-    onUnauthenticated (e :: Text) = do
-      logLocM InfoS (ls e)
-      case Wai.pathInfo req of
-        ["login"] -> do
-          nextApp req send
-        _ -> do
-          send $ Wai.responseBuilder status302 [("Location", "/login")] ""
+    Right v -> case v of
+      Left e -> do
+        logLocM InfoS (ls e)
+        case Wai.pathInfo req of
+          ["login"] -> do
+            nextApp req send
+          _ -> do
+            send $ Wai.responseBuilder status302 [("Location", "/login")] ""
+      Right req' -> nextApp req' send
