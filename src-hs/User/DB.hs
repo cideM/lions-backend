@@ -34,7 +34,7 @@ import Database.SQLite.Simple.ToRow (ToRow (..))
 import Text.Email.Validate (EmailAddress)
 import qualified Text.Email.Validate as Email
 import TextShow
-import User.Domain (Role (..), UserId (..), UserProfile (..), parseRole)
+import User.Domain (Role (..), UserId (..), UserEmail(..), UserProfile (..), parseRole)
 import Prelude hiding (id)
 
 newtype DBRole = DBRole Role
@@ -83,7 +83,7 @@ instance ToRow DBUserProfile where
   toRow
     ( DBUserProfile
         ( UserProfile
-            _userEmail
+            (UserEmail _userEmail)
             _userFirstName
             _userLastName
             _userAddress
@@ -131,7 +131,7 @@ instance FromRow RoleAndProfile where
     f9 <- SQLite.field
     f10 <- SQLite.field
     f11 <- SQLite.field
-    return $ RoleAndProfile (rolesCommaSep, userId, UserProfile email f3 f4 f5 f6 f7 f8 f9 f10 f11)
+    return $ RoleAndProfile (rolesCommaSep, userId, UserProfile (UserEmail email) f3 f4 f5 f6 f7 f8 f9 f10 f11)
 
 -- I've spent about 2h debugging this GROUP BY NULL shit, fml
 -- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present

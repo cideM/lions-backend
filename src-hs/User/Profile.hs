@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module User.Profile (render, CanDelete(..), CanEdit(..)) where
+module User.Profile (render, CanDelete (..), CanEdit (..)) where
 
 import Control.Monad (when)
 import Data.Maybe (fromMaybe)
@@ -9,7 +9,7 @@ import qualified Data.Time as Time
 import Locale (german)
 import Lucid
 import TextShow
-import User.Domain (Role (..), UserId (..), UserProfile (..), showEmail)
+import User.Domain (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
 
 newtype CanDelete = CanDelete Bool
 
@@ -26,7 +26,8 @@ render roles userId profile (CanDelete canDelete) (CanEdit canEdit) = do
       div_ [class_ "row"] $ do
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Email"
-          p_ [class_ "fs-5"] $ a_ [href_ $ "mailto:" <> showEmail (userEmail profile)] $ toHtml $ showEmail (userEmail profile)
+          let (UserEmail email) = userEmail profile
+          p_ [class_ "fs-5"] $ a_ [href_ $ "mailto:" <> showEmail email] $ toHtml $ showEmail email
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Addresse"
           p_ [class_ "fs-5", style_ "whitespace: pre"] $ toHtml' (userAddress profile)

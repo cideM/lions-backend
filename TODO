@@ -1,8 +1,11 @@
 - Event shit
 - Request new password change link
-- Use proper logger
-- Give sessions numeric ID and make current ID the KEY
+- Logout
 - Replace Purescript with smth sane
+- Proper app env parsing DONE
+- Give sessions numeric ID and make current ID the KEY DONE
+- Figure out how to add Wai.Transformers DONE
+- Use proper logger DONE
 - ReaderT for env DONE
 - Dropdown for user types DONE
 - Single user profile DONE

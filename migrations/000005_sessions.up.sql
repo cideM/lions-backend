@@ -1,6 +1,9 @@
 CREATE TABLE sessions (
-  id TEXT PRIMARY KEY NOT NULL check(length(id) >= 24),
+  id INTEGER PRIMARY KEY,
+  key TEXT NOT NULL check(length(key) >= 24),
   expires TEXT,
   userid INTEGER,
   FOREIGN KEY(userid) REFERENCES users(id)
 );
+
+CREATE UNIQUE INDEX sessions_by_key ON sessions (key);

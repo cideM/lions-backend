@@ -28,15 +28,14 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Debug.Trace
+import Katip
 import Layout (layout)
 import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
-import qualified System.Log.FastLogger as Log
 import TextShow
 import User.DB (deleteUserById, getRolesFromDb, getUser, saveUser, saveUserRoles, updateUser)
-import User.Domain (Role (..), UserId (..), UserProfile (..), isAdmin, isBoard, isPresident, showEmail)
+import User.Domain (Role (..), UserEmail (..), UserId (..), UserProfile (..), isAdmin, isBoard, isPresident, showEmail)
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import User.Profile (CanDelete (..), CanEdit (..))
 import qualified User.Profile
@@ -73,33 +72,34 @@ showEditUserForm sessionRoles userId@(UserId i) = do
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just (roles, (_, UserProfile {..})) ->
-      layout "Nutzer Editieren" Nothing $
-        div_ [class_ "container p-3 d-flex justify-content-center"] $
-          render
-            (CanEditRoles $ any isAdmin sessionRoles)
-            "Nutzer editieren"
-            ("/nutzer/" <> Text.pack (show i) <> "/editieren")
-            ( FormInput
-                { inputEmail = showEmail userEmail,
-                  inputBirthday = maybe "" renderDateForInput userBirthday,
-                  inputBirthdayPartner = maybe "" renderDateForInput userBirthdayPartner,
-                  inputIsAdmin = any isAdmin roles,
-                  inputIsBoard = any isBoard roles,
-                  inputIsPresident = any isPresident roles,
-                  inputAddress = fromMaybe "" userAddress,
-                  inputFirstName = fromMaybe "" userFirstName,
-                  inputFirstNamePartner = fromMaybe "" userFirstNamePartner,
-                  inputLastName = fromMaybe "" userLastName,
-                  inputMobile = fromMaybe "" userMobilePhoneNr,
-                  inputLandline = fromMaybe "" userLandlineNr,
-                  inputLastNamePartner = fromMaybe "" userLastNamePartner
-                }
-            )
-            emptyForm
+      let (UserEmail email) = userEmail
+       in layout "Nutzer Editieren" Nothing $
+            div_ [class_ "container p-3 d-flex justify-content-center"] $
+              render
+                (CanEditRoles $ any isAdmin sessionRoles)
+                "Nutzer editieren"
+                ("/nutzer/" <> Text.pack (show i) <> "/editieren")
+                ( FormInput
+                    { inputEmail = showEmail email,
+                      inputBirthday = maybe "" renderDateForInput userBirthday,
+                      inputBirthdayPartner = maybe "" renderDateForInput userBirthdayPartner,
+                      inputIsAdmin = any isAdmin roles,
+                      inputIsBoard = any isBoard roles,
+                      inputIsPresident = any isPresident roles,
+                      inputAddress = fromMaybe "" userAddress,
+                      inputFirstName = fromMaybe "" userFirstName,
+                      inputFirstNamePartner = fromMaybe "" userFirstNamePartner,
+                      inputLastName = fromMaybe "" userLastName,
+                      inputMobile = fromMaybe "" userMobilePhoneNr,
+                      inputLandline = fromMaybe "" userLandlineNr,
+                      inputLastNamePartner = fromMaybe "" userLastNamePartner
+                    }
+                )
+                emptyForm
 
 updateExistingUser ::
   ( MonadIO m,
-    HasReader "logger" Log.FastLogger m,
+    KatipContext m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
   [Role] ->
@@ -108,7 +108,6 @@ updateExistingUser ::
   m (Html ())
 updateExistingUser sessionRoles userId req = do
   conn <- ask @"dbConn"
-  logger <- ask @"logger"
   rolesForUserToUpdate <- liftIO $ getRolesFromDb conn userId
   params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
@@ -132,7 +131,7 @@ updateExistingUser sessionRoles userId req = do
           (paramt "inputLastNamePartner")
           (paramt "inputMobile")
           (paramt "inputLandline")
-  case makeProfile (traceShowId input) of
+  case makeProfile input of
     Left state ->
       return $
         layout "Nutzer Editieren" Nothing $
@@ -145,26 +144,26 @@ updateExistingUser sessionRoles userId req = do
               state
     Right (profile, roles) -> do
       liftIO $ updateUser conn userId roles profile
-      liftIO . logger . Log.toLogStr $ "editing user: " <> show profile <> "\n"
-      liftIO . logger . Log.toLogStr $ "editing user roles: " <> show roles <> "\n"
-      return $
-        layout "Nutzer Editieren" Nothing $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> show (userEmail profile) <> " erfolgreich editiert"
+      katipAddContext (sl "roles" roles) $
+        katipAddContext (sl "profile" profile) $ do
+          logLocM DebugS "editing user"
+          return $
+            layout "Nutzer Editieren" Nothing $
+              div_ [class_ "container p-3 d-flex justify-content-center"] $
+                div_ [class_ "row col-6"] $ do
+                  p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
+                    "Nutzer " <> show (userEmail profile) <> " erfolgreich editiert"
 
 -- TODO: Duplication
 saveNewUser ::
   ( MonadIO m,
-    HasReader "logger" Log.FastLogger m,
-    HasReader "dbConn" SQLite.Connection m
+    HasReader "dbConn" SQLite.Connection m,
+    KatipContext m
   ) =>
   Wai.Request ->
   m (Html ())
 saveNewUser req = do
   conn <- ask @"dbConn"
-  logger <- ask @"logger"
   params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
@@ -183,7 +182,7 @@ saveNewUser req = do
           (paramt "inputLastNamePartner")
           (paramt "inputMobile")
           (paramt "inputLandline")
-  case makeProfile (traceShowId input) of
+  case makeProfile input of
     Left state ->
       return $
         layout "Nutzer Hinzufügen" Nothing $
@@ -201,15 +200,16 @@ saveNewUser req = do
           $ do
             saveUser conn profile
             (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
-            saveUserRoles conn (UserId (traceShow ("userid " <> show userid) userid)) roles
-      liftIO . logger . Log.toLogStr $ "adding user: " <> show profile <> "\n"
-      liftIO . logger . Log.toLogStr $ "adding user roles: " <> show roles <> "\n"
-      return $
-        layout "Nutzer Hinzufügen" Nothing $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> show (userEmail profile) <> " erfolgreich erstellt"
+            saveUserRoles conn (UserId userid) roles
+      katipAddContext (sl "roles" roles) $
+        katipAddContext (sl "profile" profile) $ do
+          logLocM DebugS "adding user"
+          return $
+            layout "Nutzer Hinzufügen" Nothing $
+              div_ [class_ "container p-3 d-flex justify-content-center"] $
+                div_ [class_ "row col-6"] $ do
+                  p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
+                    "Nutzer " <> show (userEmail profile) <> " erfolgreich erstellt"
 
 showProfile ::
   ( MonadIO m,

@@ -9,7 +9,7 @@ import qualified Data.Text as Text
 import Layout (ariaLabel_)
 import Lucid
 import TextShow
-import User.Domain (Role (..), UserId, UserProfile (..), showEmail)
+import User.Domain (Role (..), UserEmail (..), UserId, UserProfile (..), showEmail)
 
 data UserGroupToShow = All | Some Role deriving (Eq)
 
@@ -36,12 +36,13 @@ render users userIsAdmin activeGroup = do
     mapM_
       ( \(userRoles, (userId, p)) -> do
           let name = fromMaybe "" (userFirstName p) <> " " <> fromMaybe "" (userLastName p)
-          li_ [class_ "p-0 list-group-item d-flex align-items-center", data_ "email" (showEmail $ userEmail p)] $ do
+              (UserEmail email) = userEmail p
+          li_ [class_ "p-0 list-group-item d-flex align-items-center", data_ "email" (showEmail email)] $ do
             a_ [class_ "flex-grow-1 py-2 px-3 list-group-item-action text-decoration-none text-body", href_ ("/nutzer/" <> showt userId)] $ do
               div_ [class_ "me-auto d-grid gap-2"] $ do
                 unless (Text.null name) $
                   p_ [class_ "fw-bold m-0"] $ toHtml name
-                p_ [class_ "m-0"] $ toHtml (showEmail $ userEmail p)
+                p_ [class_ "m-0"] $ toHtml (showEmail email)
                 div_ [class_ "text-muted"] $ toHtml . displayBadges $ userRoles
       )
       users

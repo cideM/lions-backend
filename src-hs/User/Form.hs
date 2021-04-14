@@ -21,7 +21,7 @@ import Layout (describedBy_)
 import Locale (german)
 import Lucid
 import qualified Text.Email.Validate as Email
-import User.Domain (Role (..), UserProfile (..))
+import User.Domain (Role (..), UserProfile (..), UserEmail(..))
 
 data FormFieldState a = NotValidated | Valid a | Invalid Text deriving (Show)
 
@@ -195,7 +195,7 @@ makeProfile FormInput {..} =
     (EditFormState (Valid email) (Valid bday) (Valid bdayp)) ->
       Right
         ( UserProfile
-            email
+            (UserEmail email)
             (Just inputFirstName)
             (Just inputLastName)
             (Just inputAddress)

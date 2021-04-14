@@ -1,8 +1,10 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module User.Domain
   ( UserProfile (..),
+    UserEmail (..),
     showEmail,
     UserId (..),
     Role (..),
@@ -13,15 +15,22 @@ module User.Domain
   )
 where
 
+import Data.Aeson (ToJSON, Value (..), defaultOptions, genericToEncoding, toEncoding, toJSON)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
+import GHC.Generics
 import Text.Email.Validate (EmailAddress, toByteString)
 import TextShow
 
+newtype UserEmail = UserEmail EmailAddress deriving (Show)
+
+instance ToJSON UserEmail where
+  toJSON (UserEmail email) = String $ showEmail email
+
 data UserProfile = UserProfile
-  { userEmail :: EmailAddress,
+  { userEmail :: UserEmail,
     userFirstName :: Maybe Text,
     userLastName :: Maybe Text,
     userAddress :: Maybe Text,
@@ -32,9 +41,15 @@ data UserProfile = UserProfile
     userLastNamePartner :: Maybe Text,
     userBirthdayPartner :: Maybe Time.Day
   }
-  deriving (Show)
+  deriving (Show, Generic)
 
-data Role = Admin | User | Board | President deriving (Eq)
+instance ToJSON UserProfile where
+  toEncoding = genericToEncoding defaultOptions
+
+data Role = Admin | User | Board | President deriving (Eq, Generic)
+
+instance ToJSON Role where
+  toEncoding = genericToEncoding defaultOptions
 
 instance Show Role where
   show Admin = "admin"

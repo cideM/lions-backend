@@ -19,9 +19,9 @@ newtype DBSession = DBSession Session deriving (Show)
 
 instance FromRow DBSession where
   fromRow = do
-    id <- SQLite.field
+    key <- SQLite.field
     expires <- SQLite.field
-    DBSession . Session (SessionId id) expires . UserId <$> SQLite.field
+    DBSession . Session (SessionId key) expires . UserId <$> SQLite.field
 
 instance ToRow DBSession where
   toRow (DBSession (Session (SessionId id) expires (UserId userId))) = [toField id, toField expires, toField userId]
@@ -29,7 +29,7 @@ instance ToRow DBSession where
 getSessionFromDb :: (MonadIO m) => SQLite.Connection -> SessionId -> m (Maybe Session)
 getSessionFromDb conn (SessionId id) =
   liftIO $
-    SQLite.query conn "SELECT id,expires,userid FROM sessions WHERE id = ?" [id]
+    SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE key = ?" [id]
       >>= \case
         [DBSession s] -> return $ Just s
         [] -> return Nothing
@@ -37,4 +37,4 @@ getSessionFromDb conn (SessionId id) =
 
 saveSession :: SQLite.Connection -> ValidSession -> IO ()
 saveSession conn (ValidSession session) =
-  SQLite.execute conn "INSERT INTO sessions (id,expires,userid) VALUES (?,?,?)" (DBSession session)
+  SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (DBSession session)

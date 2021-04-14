@@ -9,6 +9,7 @@
 module WelcomeMessage.Handlers (saveNewMessage, showMessageEditForm) where
 
 import Capability.Reader (HasReader (..), ask)
+import Katip
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map.Strict as Map
@@ -20,7 +21,6 @@ import qualified Database.SQLite.Simple as SQLite
 import WelcomeMessage.DB (getWelcomeMsgFromDb, saveNewWelcomeMsg)
 import WelcomeMessage.Domain (WelcomeMsg (..))
 import WelcomeMessage.Form (WelcomeMsgFormState (..))
-import qualified System.Log.FastLogger as Log
 import qualified WelcomeMessage.Form
 
 saveNewMessage ::
@@ -40,13 +40,12 @@ saveNewMessage req = do
 
 showMessageEditForm ::
   ( MonadIO m,
-    HasReader "logger" Log.FastLogger m,
+    KatipContext m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
   m (Html ())
 showMessageEditForm = do
   conn <- ask @"dbConn"
-  logger <- ask @"logger"
   msg <- liftIO $ getWelcomeMsgFromDb conn
-  when (isNothing msg) $ liftIO $ logger "no welcome msg\n"
+  when (isNothing msg) $ logLocM InfoS "no welcome msg"
   return $ WelcomeMessage.Form.render NotValidated (maybe "" (\(WelcomeMsg content _) -> content) msg)
