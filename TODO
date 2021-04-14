@@ -1,18 +1,18 @@
 - Event shit
 - Request new password change link
-- Logout
-- Replace Purescript with smth sane
-- Can I catch middleware AND app errors centrally?
-- Renew session ID more oftne
-- Proper app env parsing DONE
+- Renew session ID more often                          MAYBE
+- Replace Purescript with smth sane                    MAYBE
+- Can I catch middleware AND app errors centrally?     DONE
+- Logout                                               DONE
+- Proper app env parsing                               DONE
 - Give sessions numeric ID and make current ID the KEY DONE
-- Figure out how to add Wai.Transformers DONE
-- Use proper logger DONE
-- ReaderT for env DONE
-- Dropdown for user types DONE
-- Single user profile DONE
-- User management DONE
-- Edit own user DONE
-- Admin edit other user DONE
-- Use Scotty again DONE
-- Move DB functions into feature files DONE
+- Figure out how to add Wai.Transformers               DONE
+- Use proper logger                                    DONE
+- ReaderT for env                                      DONE
+- Dropdown for user types                              DONE
+- Single user profile                                  DONE
+- User management                                      DONE
+- Edit own user                                        DONE
+- Admin edit other user                                DONE
+- Use Scotty again                                     DONE
+- Move DB functions into feature files                 DONE
