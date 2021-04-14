@@ -28,6 +28,14 @@ let
 
   projectEnv = (import ./release.nix).project.env;
 
+  lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
+    for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
+  '';
+
+  lions-ghcid = pkgs.writeScriptBin "lions-ghcid" ''
+    ghcid --no-height-limit --clear --reverse
+  '';
+
   lions-dev = pkgs.writeScriptBin "lions-dev" ''
     #!/bin/sh
     nix-build -A assets release.nix
@@ -68,5 +76,7 @@ pkgs.mkShell {
 
       # Scripts
       lions-dev
+      lions-ghcid
+      lions-dummy
     ];
 }
