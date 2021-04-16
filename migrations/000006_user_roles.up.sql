@@ -5,5 +5,3 @@ CREATE TABLE user_roles (
   FOREIGN KEY (roleid) REFERENCES roles(id) ON DELETE CASCADE,
   UNIQUE (userid,roleid)
 )
-
-

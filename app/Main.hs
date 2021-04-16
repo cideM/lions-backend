@@ -19,6 +19,7 @@ import App (App (..), Env (..), Environment, LogEnv (..), parseEnv)
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import qualified Events.Handlers
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Data.UUID (toText)
@@ -84,7 +85,24 @@ app req send = do
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
+          -- TODO: I think every handler can just access stuff through vault,
+          -- no need for authorizedOnly to call the callback with anything.
+          -- It's validation rather than parsing which sucks. What would be an
+          -- appropriate type?
+          -- data RouteData = NotLoggedIn | Authorized
+          -- data FooData = FooData { userid, roles, sessionid }
+          -- Interesting question is arguments vs. App vs. Vault, what goes where?
+          -- No handler should talk to Vault, they all just need to pattern
+          -- match on route data and handle all cases, OR they don't because
+          -- app already did that and now they just expect Authorized or Admin.
+          -- data Authorized = AuthorizedUser FooData | AuthorizedAdmin FooData
+          -- I think I like that
           "GET" -> authorizedOnly $ \(roles, _) -> LandingPage.Handlers.showLandingPage roles req >>= send200
+          _ -> send404
+      ["veranstaltungen"] ->
+        case Wai.requestMethod req of
+          "GET" -> authorizedOnly $ \(_,_) -> Events.Handlers.showAllEvents >>= send200
+          -- TODO: Send unsupported method 405
           _ -> send404
       -- TODO: translate
       ["edit"] ->

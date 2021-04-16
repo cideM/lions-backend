@@ -29,10 +29,12 @@ let
   projectEnv = (import ./release.nix).project.env;
 
   lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
+    #!${pkgs.fish}/bin/fish
     for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
   '';
 
   lions-ghcid = pkgs.writeScriptBin "lions-ghcid" ''
+    #!/bin/sh
     ghcid --no-height-limit --clear --reverse
   '';
 

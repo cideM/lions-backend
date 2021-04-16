@@ -52,6 +52,7 @@ executable lions-backend
     Login.Form
     App
     RequestID.Middleware
+    Events.Handlers
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

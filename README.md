@@ -1,5 +1,7 @@
 ## Migrations
 
+### Running Migrations
+
 ```shell
 $ migrate -path migrations -database "sqlite3://$LIONS_SQLITE_PATH" up
 1/u users (23.971333ms)
@@ -11,12 +13,26 @@ $ migrate create -ext sql -dir migrations/ -seq users_email_index
 /home/tifa/lions-backend/migrations/000004_users_email_index.down.sql
 ```
 
+### Creating Migrations
+
+```
+$ migrate create -ext sql -dir migrations/ -seq events
+/home/tifa/lions-backend/migrations/000007_events.up.sql
+/home/tifa/lions-backend/migrations/000007_events.down.sql
+```
+
 ## SQLite Dummy Data
 
+*There's now a command called `lions-dummy` that loads all*
+
 ```shell
-$ cd dev
-$ sqlite3 $LIONS_SQLITE_PATH
-sqlite> .read add_user.sql
-sqlite> select * from users ;
-1|foo@bar.com|$2y$04$cZQmyFjUahmyZnojYpM4rOhwWI629ulZKI2Un92/ysvovfMnzN2/e||||||||
+for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
+```
+
+## Development
+
+Rebuild and restart when source changes.
+
+```shell
+$ fd . -e hs | entr -cr lions-dev
 ```
