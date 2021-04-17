@@ -18,6 +18,7 @@ import qualified Data.Text as Text
 import Data.UUID (toText)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
+import Events.Domain (EventId (..))
 import qualified Events.Handlers
 import qualified Katip as K
 import qualified LandingPage.Handlers
@@ -104,6 +105,13 @@ app req send = do
           "GET" -> authenticatedOnly' (Events.Handlers.showAllEvents >=> send200)
           -- TODO: Send unsupported method 405
           _ -> send404
+      ["veranstaltungen", i, "antwort"] ->
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+          Right (parsed :: Int) ->
+            case Wai.requestMethod req of
+              "POST" -> authenticatedOnly' (Events.Handlers.replyToEvent req (EventId parsed) >=> send200)
+              _ -> send404
       -- TODO: translate
       ["edit"] ->
         case Wai.requestMethod req of

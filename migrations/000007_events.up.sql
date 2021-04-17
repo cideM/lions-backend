@@ -16,3 +16,5 @@ create table event_replies (
   foreign key (eventid) references events(id) on delete cascade,
   unique (userid, eventid)
 );
+
+create index userreplies on event_replies (userid, eventid);

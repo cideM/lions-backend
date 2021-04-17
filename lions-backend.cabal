@@ -53,6 +53,7 @@ executable lions-backend
     App
     RequestID.Middleware
     Events.Handlers
+    Events.EventCard
     Events.Domain
     Events.DB
     Routes.Data

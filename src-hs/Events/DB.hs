@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Events.DB (getAll) where
+module Events.DB (getAll, deleteReply, upsertReply) where
 
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -91,3 +91,32 @@ getAll conn = do
                 [reply]
           alterFn (Just e@Event {..}) = Just $ e {eventReplies = reply : eventReplies}
        in Map.alter alterFn (EventId _eventId) xs
+
+deleteReply ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  EventId ->
+  UserId ->
+  m ()
+deleteReply conn (EventId eventid) (UserId userid) =
+  liftIO $ SQLite.execute conn "delete from event_replies where userid = ? and eventid = ?" [userid, eventid]
+
+upsertReply ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  EventId ->
+  Reply ->
+  m ()
+upsertReply conn (EventId eventid) (Reply coming _ (UserId userid) guests) =
+  liftIO $
+    SQLite.execute
+      conn
+      [sql|
+    insert into event_replies (userid, eventid, coming, guests)
+    values (?,?,?,?)
+    on conflict (userid,eventid) do update set
+      coming=excluded.coming,
+      guests=excluded.guests
+    where userid = ? and eventid = ?
+  |]
+      [userid, eventid, if coming then 1 else 0, guests, userid, eventid]
