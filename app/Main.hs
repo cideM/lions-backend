@@ -170,7 +170,7 @@ app req send = do
             p_ [class_ "alert alert-secondary", role_ "alert"] "Du hast keinen Zugriff auf diese Seite"
     send404 =
       send
-        . Wai.responseLBS status404 [("Content-Type", "text/plain; charset=UTF-8")]
+        . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
         . layout "Nicht gefunden" Nothing
         $ div_ [class_ "container p-3 d-flex justify-content-center"] $
