@@ -110,7 +110,7 @@ app req send = do
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "POST" -> authenticatedOnly' (Events.Handlers.replyToEvent req (EventId parsed) >=> send200)
+              "POST" -> authenticatedOnly' (Events.Handlers.replyToEvent req send (EventId parsed))
               _ -> send404
       -- TODO: translate
       ["edit"] ->

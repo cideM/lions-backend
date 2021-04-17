@@ -66,9 +66,11 @@ render (EventId eventid, Event {..}, ownReply) = do
     div_ [class_ "row g-0 border-top"] $ do
       replyThing "Zusagen" (Text.pack $ show coming)
       replyThing "Absagen" (Text.pack $ show notComing)
-      replyThing "Gäste" (Text.pack $ show guests)
+      replyThing "Teilnehmer" (Text.pack $ show (guests + coming))
   where
-    replyGuests' = maybe mempty (Text.pack . show . replyGuests) ownReply
+    replyGuests' = case replyComing' of
+      Just True -> maybe mempty (Text.pack . show . replyGuests) ownReply
+      _ -> mempty
     replyComing' = fmap replyComing ownReply
     replyThing :: Text -> Text -> Html ()
     replyThing label num = do

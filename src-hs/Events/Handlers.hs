@@ -32,6 +32,7 @@ import Katip
 import Layout (ActiveNavLink (..), ariaLabel_, layout)
 import Locale (german)
 import Lucid
+import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
 import Text.Read (readEither)
@@ -70,6 +71,7 @@ parseComing "noreply" = return Nothing
 parseComing s = throwString . Text.unpack $ "unknown 'coming' value: " <> s
 
 parseNumGuests :: (MonadThrow m) => Text -> m Int
+parseNumGuests "" = return 0
 parseNumGuests s =
   case readEither (Text.unpack s) of
     Left e -> throwString . Text.unpack $ "couldn't parse '" <> s <> "' number of guests as number: " <> Text.pack (show e)
@@ -82,10 +84,11 @@ replyToEvent ::
     KatipContext m
   ) =>
   Wai.Request ->
+  (Wai.Response -> m a) ->
   EventId ->
   Auth.Authenticated ->
-  m (Html ())
-replyToEvent req eventid auth = do
+  m a
+replyToEvent req send eventid auth = do
   let (_, Auth.UserSession {..}) = case auth of
         Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
         Auth.IsUser session -> (False, session)
@@ -104,5 +107,4 @@ replyToEvent req eventid auth = do
   case coming of
     Nothing -> deleteReply conn eventid userSessionUserId
     Just yesno -> upsertReply conn eventid (Reply yesno userEmail userSessionUserId numberOfGuests)
-  return . layout "Veranstaltungen" (Just Events) $
-    div_ [class_ "container p-3"] "hi"
+  send $ Wai.responseLBS status303 [("Location", "/veranstaltungen")] mempty

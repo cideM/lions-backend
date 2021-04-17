@@ -153,13 +153,12 @@ login req send = do
             (Just "Ungültige Kombination aus Email und Passwort")
       Right cookie -> do
         send
-          . Wai.responseLBS
+          $ Wai.responseLBS
             status302
-            [ ("Content-Type", "text/html; charset=UTF-8"),
-              ("Set-Cookie", cookie),
+            [ ("Set-Cookie", cookie),
               ("Location", "/")
             ]
-          $ renderBS ""
+            mempty
 
 showLoginForm ::
   ( MonadIO m,
