@@ -19,6 +19,7 @@ import qualified Data.Text as Text
 import qualified Data.Time as Time
 import Events.Domain (Event (..), EventId (..), Reply (..))
 import Layout (ariaLabel_)
+import Control.Monad (when)
 import Locale (german)
 import Lucid
 
@@ -29,9 +30,11 @@ render (EventId eventid, Event {..}, ownReply) = do
       notComing = eventReplies & filter (not . replyComing) & length
       guests = eventReplies & filter replyComing & map replyGuests & sum
   div_ [class_ "card"] $ do
+    div_ [class_ "card-header"] $ do
+      span_ [] $ toHtml formatted
+      when eventFamilyAllowed $ do span_ [class_ "ms-2 badge bg-primary"] "Mit Familie"
     div_ [class_ "card-body"] $ do
       h1_ [class_ "card-title fs-4"] $ toHtml eventTitle
-      h2_ [class_ "card-subtitle fs-5 mb-3 text-muted"] $ toHtml formatted
       p_ [class_ "card-text"] $ toHtml eventDescription
       form_
         [ class_ "row my-2 g-3",
