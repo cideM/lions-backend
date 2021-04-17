@@ -1,16 +1,10 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Main where
@@ -18,13 +12,13 @@ module Main where
 import App (App (..), Env (..), Environment, LogEnv (..), parseEnv)
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
+import Control.Monad ((>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import qualified Events.Handlers
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Data.UUID (toText)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
+import qualified Events.Handlers
 import qualified Katip as K
 import qualified LandingPage.Handlers
 import Layout (layout)
@@ -37,6 +31,7 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import RequestID.Middleware (RequestIdVaultKey)
 import qualified RequestID.Middleware
+import qualified Routes.Data as Auth
 import Session.Domain (SessionDataVaultKey)
 import qualified Session.Middleware
 import System.Environment (getEnv)
@@ -66,21 +61,26 @@ app req send = do
   sessionDataVaultKey <- ask @"sessionDataVaultKey"
   requestIdVaultKey <- ask @"requestIdVaultKey"
   let vault = Wai.vault req
-      requestId = fromMaybe "" $ toText <$> Vault.lookup requestIdVaultKey vault
-      adminOnly = authorized (any isAdmin . fst) . const
-      authorizedOnly = authorized (const True)
-      authorized check next = do
-        case Vault.lookup sessionDataVaultKey vault of
-          Nothing -> throwString "no data in vault but is protected route"
-          Just roles ->
-            if check roles
-              then next roles
-              else send403
-      isOwnIdOrAdmin userToEdit next = do
-        authorizedOnly $ \xs@(roles, userid) -> do
-          if userToEdit == userid || any isAdmin roles
-            then next xs
-            else send403
+      requestId = maybe "" toText $ Vault.lookup requestIdVaultKey vault
+      adminOnlyOrOwn id next = case routeData of
+        Auth.IsAuthenticated auth@(Auth.IsAdmin _) -> next (id, auth)
+        Auth.IsAuthenticated auth@(Auth.IsUser Auth.UserSession {Auth.userSessionUserId = userId}) ->
+          if userId == id then next (id, auth) else send403
+        _ -> send403
+      adminOnly' next = case routeData of
+        Auth.IsAuthenticated (Auth.IsAdmin auth) -> next auth
+        _ -> send403
+      authenticatedOnly' next = case routeData of
+        Auth.IsAuthenticated auth -> next auth
+        _ -> send403
+      -- TODO: Add sessionid to session data
+      routeData = case Vault.lookup sessionDataVaultKey vault of
+        Nothing -> Auth.IsNotAuthenticated
+        Just (roles, userid) ->
+          Auth.IsAuthenticated $
+            if any isAdmin roles
+              then Auth.IsAdmin . Auth.AdminUser $ Auth.UserSession userid roles
+              else Auth.IsUser $ Auth.UserSession userid roles
   K.katipAddContext (K.sl "request_id" requestId) $ do
     case Wai.pathInfo req of
       [] ->
@@ -97,27 +97,27 @@ app req send = do
           -- app already did that and now they just expect Authorized or Admin.
           -- data Authorized = AuthorizedUser FooData | AuthorizedAdmin FooData
           -- I think I like that
-          "GET" -> authorizedOnly $ \(roles, _) -> LandingPage.Handlers.showLandingPage roles req >>= send200
+          "GET" -> authenticatedOnly' (LandingPage.Handlers.showLandingPage req >=> send200)
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authorizedOnly $ \(_,_) -> Events.Handlers.showAllEvents >>= send200
+          "GET" -> authenticatedOnly' (Events.Handlers.showAllEvents >=> send200)
           -- TODO: Send unsupported method 405
           _ -> send404
       -- TODO: translate
       ["edit"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly $ WelcomeMessage.Handlers.saveNewMessage req >>= send200
-          "GET" -> adminOnly $ WelcomeMessage.Handlers.showMessageEditForm >>= send200
+          "POST" -> adminOnly' (WelcomeMessage.Handlers.saveNewMessage req >=> send200)
+          "GET" -> adminOnly' (WelcomeMessage.Handlers.showMessageEditForm >=> send200)
           _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authorizedOnly $ \(roles, _) -> LandingPage.Handlers.showLandingPage roles req >>= send200
+          "GET" -> authenticatedOnly' (LandingPage.Handlers.showLandingPage req >=> send200)
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly $ User.Handlers.saveNewUser req >>= send200
-          "GET" -> adminOnly $ User.Handlers.showAddUserForm >>= send200
+          "POST" -> adminOnly' (User.Handlers.saveNewUser req >=> send200)
+          "GET" -> adminOnly' (User.Handlers.showAddUserForm >=> send200)
           _ -> send404
       ["nutzer", int, "editieren"] ->
         case readEither (Text.unpack int) of
@@ -125,8 +125,8 @@ app req send = do
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> isOwnIdOrAdmin userId $ \(roles, _) -> User.Handlers.showEditUserForm roles userId >>= send200
-                  "POST" -> isOwnIdOrAdmin userId $ \(roles, _) -> User.Handlers.updateExistingUser roles userId req >>= send200
+                  "GET" -> adminOnlyOrOwn userId (uncurry User.Handlers.showEditUserForm >=> send200)
+                  "POST" -> adminOnlyOrOwn userId (uncurry (User.Handlers.updateExistingUser req) >=> send200)
                   _ -> send404
       ["nutzer", int] ->
         case Wai.requestMethod req of
@@ -134,7 +134,7 @@ app req send = do
             case readEither (Text.unpack int) of
               Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
               Right (parsed :: Int) ->
-                authorizedOnly $ \(roles, userid) -> User.Handlers.showProfile roles parsed userid req >>= send200
+                authenticatedOnly' (User.Handlers.showProfile parsed >=> send200)
           _ -> send404
       ["nutzer", int, "löschen"] ->
         case readEither (Text.unpack int) of
@@ -142,8 +142,8 @@ app req send = do
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly $ User.Handlers.showDeleteConfirmation userId >>= send200
-                  "POST" -> adminOnly $ User.Handlers.deleteUser userId >>= send200
+                  "GET" -> adminOnly' (User.Handlers.showDeleteConfirmation userId >=> send200)
+                  "POST" -> adminOnly' (User.Handlers.deleteUser userId >=> send200)
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of

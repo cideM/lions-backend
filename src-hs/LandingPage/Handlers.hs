@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -23,8 +24,9 @@ import qualified LandingPage.UsersList
 import Layout (ActiveNavLink (..), layout)
 import Lucid
 import qualified Network.Wai as Wai
+import qualified Routes.Data as Auth
 import User.DB (getUsers)
-import User.Domain (Role (..), isAdmin)
+import User.Domain (Role (..))
 import Wai (parseParams)
 import qualified WelcomeMessage.Card
 import WelcomeMessage.DB (getWelcomeMsgFromDb)
@@ -42,10 +44,13 @@ showLandingPage ::
   ( MonadIO m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
-  [Role] ->
   Wai.Request ->
+  Auth.Authenticated ->
   m (Html ())
-showLandingPage roles req = do
+showLandingPage req auth = do
+  let userIsAdmin = case auth of
+        Auth.IsAdmin _ -> True
+        _ -> False
   conn <- ask @"dbConn"
   params <- liftIO $ parseParams req
   let selectionRaw = Map.findWithDefault "all" "userselect" params
@@ -56,15 +61,14 @@ showLandingPage roles req = do
   zone <- liftIO Time.getCurrentTimeZone
   users <- liftIO $ getUsers conn
   let msg' = (\(WelcomeMsg content datetime) -> (content, Time.utcToZonedTime zone datetime)) <$> msg
-      userIsAdmin = any isAdmin roles
       usersToShow = case selectionParsed of
         All -> users
         Some role -> filterUsers role users
   return $
     layout "Willkommen" (Just Welcome) $
       div_ [class_ "container"] $
-        div_ [class_ "row g-5"] $ do
-          section_ [class_ "justify-content-center col-md-6"] (WelcomeMessage.Card.render msg' userIsAdmin)
-          section_ [class_ "justify-content-center col-md-6"] (LandingPage.UsersList.render usersToShow userIsAdmin selectionParsed)
+        div_ [class_ "row row-cols-1 row-cols-lg-2 g-5"] $ do
+          section_ [class_ "justify-content-center col"] (WelcomeMessage.Card.render msg' userIsAdmin)
+          section_ [class_ "justify-content-center col"] (LandingPage.UsersList.render usersToShow userIsAdmin selectionParsed)
   where
     filterUsers keep = filter (elem keep . fst)

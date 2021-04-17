@@ -139,7 +139,7 @@ login req send = do
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
   katipAddContext (sl "email" email) $ do
-    (runExceptT $ tryLogin conn sessionKey env email formPw) >>= \case
+    runExceptT (tryLogin conn sessionKey env email formPw) >>= \case
       Left err -> do
         logLocM ErrorS $ showLS err
         send

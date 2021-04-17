@@ -9,15 +9,16 @@
 module WelcomeMessage.Handlers (saveNewMessage, showMessageEditForm) where
 
 import Capability.Reader (HasReader (..), ask)
-import Katip
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isNothing)
+import qualified Database.SQLite.Simple as SQLite
+import Katip
 import Lucid
 import qualified Network.Wai as Wai
+import qualified Routes.Data as Auth
 import Wai (parseParams)
-import qualified Database.SQLite.Simple as SQLite
 import WelcomeMessage.DB (getWelcomeMsgFromDb, saveNewWelcomeMsg)
 import WelcomeMessage.Domain (WelcomeMsg (..))
 import WelcomeMessage.Form (WelcomeMsgFormState (..))
@@ -28,8 +29,9 @@ saveNewMessage ::
     HasReader "dbConn" SQLite.Connection m
   ) =>
   Wai.Request ->
+  Auth.AdminUser ->
   m (Html ())
-saveNewMessage req = do
+saveNewMessage req _ = do
   conn <- ask @"dbConn"
   params <- liftIO $ parseParams req
   case Map.lookup "message" params of
@@ -43,8 +45,9 @@ showMessageEditForm ::
     KatipContext m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
+  Auth.AdminUser ->
   m (Html ())
-showMessageEditForm = do
+showMessageEditForm _ = do
   conn <- ask @"dbConn"
   msg <- liftIO $ getWelcomeMsgFromDb conn
   when (isNothing msg) $ logLocM InfoS "no welcome msg"

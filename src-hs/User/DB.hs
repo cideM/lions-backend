@@ -13,6 +13,7 @@ module User.DB
     getRolesFromDb,
     saveUserRoles,
     updateUser,
+    DBEmail(..),
   )
 where
 
@@ -64,7 +65,7 @@ newtype UserProfileWithPw = UserProfileWithPw (Text, UserProfile)
 instance ToRow UserProfileWithPw where
   toRow (UserProfileWithPw (pw, profile)) = toField pw : toRow (DBUserProfile profile)
 
-newtype DBEmail = DBEmail EmailAddress
+newtype DBEmail = DBEmail EmailAddress deriving Show
 
 instance FromField DBEmail where
   fromField f =

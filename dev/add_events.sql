@@ -7,14 +7,14 @@ insert into events (
 ) values
   (
     "Some event",
-    "05.12.2015",
+    "2015-25-01",
     "This is a random description of a
     random event",
     1,
     "some place else"
   ), (
     "Some other event",
-    "15.02.2018",
+    "2015-25-01",
     "Whoa super cool event stuff happening!",
     0,
     "totally not zoom"

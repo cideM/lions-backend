@@ -53,6 +53,9 @@ executable lions-backend
     App
     RequestID.Middleware
     Events.Handlers
+    Events.Domain
+    Events.DB
+    Routes.Data
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

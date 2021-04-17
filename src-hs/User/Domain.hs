@@ -78,8 +78,12 @@ parseRole v = Left $ "unknown role: " <> Text.pack (show v)
 
 newtype UserId = UserId Int
   deriving (Show)
+  deriving (Generic)
   deriving (Eq)
   deriving (TextShow) via Int
+
+instance ToJSON UserId where
+  toEncoding = genericToEncoding defaultOptions
 
 showEmail :: EmailAddress -> Text
 showEmail = decodeUtf8 . toByteString

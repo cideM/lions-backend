@@ -25,7 +25,7 @@ data Session = Session SessionId Time.UTCTime UserId deriving (Show)
 type SessionDataVaultKey = Vault.Key ([Role], UserId)
 
 newtype SessionId = SessionId Text
-  deriving (Show)
+  deriving (Show, Eq)
   deriving (TextShow) via Text
 
 newtype ValidSession = ValidSession Session deriving (Show)

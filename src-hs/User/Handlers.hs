@@ -33,16 +33,20 @@ import Layout (layout)
 import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
+import qualified Routes.Data as Auth
 import TextShow
 import User.DB (deleteUserById, getRolesFromDb, getUser, saveUser, saveUserRoles, updateUser)
-import User.Domain (Role (..), UserEmail (..), UserId (..), UserProfile (..), isAdmin, isBoard, isPresident, showEmail)
+import User.Domain (UserEmail (..), UserId (..), UserProfile (..), isAdmin, isBoard, isPresident, showEmail)
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import User.Profile (CanDelete (..), CanEdit (..))
 import qualified User.Profile
 import Wai (parseParams)
 
-showAddUserForm :: Monad m => m (Html ())
-showAddUserForm =
+showAddUserForm ::
+  Monad m =>
+  Auth.AdminUser ->
+  m (Html ())
+showAddUserForm _ =
   return $
     layout "Nutzer Hinzufügen" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -60,10 +64,13 @@ showEditUserForm ::
   ( MonadIO m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
-  [Role] ->
   UserId ->
+  Auth.Authenticated ->
   m (Html ())
-showEditUserForm sessionRoles userId@(UserId i) = do
+showEditUserForm userId@(UserId i) auth = do
+  let Auth.UserSession _ sessionRoles = case auth of
+        Auth.IsUser session -> session
+        Auth.IsAdmin (Auth.AdminUser session) -> session
   conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
   return $ case user of
@@ -102,11 +109,11 @@ updateExistingUser ::
     KatipContext m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
-  [Role] ->
-  UserId ->
   Wai.Request ->
+  UserId ->
+  Auth.Authenticated ->
   m (Html ())
-updateExistingUser sessionRoles userId req = do
+updateExistingUser req userId auth = do
   conn <- ask @"dbConn"
   rolesForUserToUpdate <- liftIO $ getRolesFromDb conn userId
   params <- liftIO $ parseParams req
@@ -116,6 +123,9 @@ updateExistingUser sessionRoles userId req = do
       isAdminNow = maybe False (any isAdmin) rolesForUserToUpdate
       isBoardNow = maybe False (any isBoard) rolesForUserToUpdate
       isPresidentNow = maybe False (any isPresident) rolesForUserToUpdate
+      Auth.UserSession _ sessionRoles = case auth of
+        Auth.IsUser session -> session
+        Auth.IsAdmin (Auth.AdminUser session) -> session
       input =
         FormInput
           (paramt "inputEmail")
@@ -161,8 +171,9 @@ saveNewUser ::
     KatipContext m
   ) =>
   Wai.Request ->
+  Auth.AdminUser ->
   m (Html ())
-saveNewUser req = do
+saveNewUser req _ = do
   conn <- ask @"dbConn"
   params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
@@ -215,15 +226,18 @@ showProfile ::
   ( MonadIO m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
-  [Role] ->
   Int ->
-  UserId ->
-  Wai.Request ->
+  Auth.Authenticated ->
   m (Html ())
-showProfile roles paramId loggedInUserId _ = do
+showProfile paramId auth = do
   conn <- ask @"dbConn"
   let userIdToShow = UserId paramId
-      userIsAdmin = any isAdmin roles
+      userIsAdmin = case auth of
+        Auth.IsAdmin _ -> True
+        _ -> False
+      Auth.UserSession loggedInUserId _ = case auth of
+        Auth.IsUser session -> session
+        Auth.IsAdmin (Auth.AdminUser session) -> session
       isOwnProfile = loggedInUserId == userIdToShow
   user <- liftIO $ getUser conn userIdToShow
   return $ case user of
@@ -248,8 +262,9 @@ deleteUser ::
     HasReader "dbConn" SQLite.Connection m
   ) =>
   UserId ->
+  Auth.AdminUser ->
   m (Html ())
-deleteUser userId = do
+deleteUser userId _ = do
   conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
   case user of
@@ -271,8 +286,9 @@ showDeleteConfirmation ::
     HasReader "dbConn" SQLite.Connection m
   ) =>
   UserId ->
+  Auth.AdminUser ->
   m (Html ())
-showDeleteConfirmation userId = do
+showDeleteConfirmation userId _ = do
   conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
   return $ case user of
