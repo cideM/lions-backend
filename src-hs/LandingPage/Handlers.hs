@@ -26,7 +26,7 @@ import Lucid
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
 import User.DB (getUsers)
-import User.Domain (Role (..))
+import User.Domain (Role (..), UserProfile (..))
 import Wai (parseParams)
 import qualified WelcomeMessage.Card
 import WelcomeMessage.DB (getWelcomeMsgFromDb)
@@ -71,4 +71,4 @@ showLandingPage req auth = do
           section_ [class_ "justify-content-center col"] (WelcomeMessage.Card.render msg' userIsAdmin)
           section_ [class_ "justify-content-center col"] (LandingPage.UsersList.render usersToShow userIsAdmin selectionParsed)
   where
-    filterUsers keep = filter (elem keep . fst)
+    filterUsers keep = filter (elem keep . userRoles)

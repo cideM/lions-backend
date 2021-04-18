@@ -11,6 +11,8 @@ module User.Form
   )
 where
 
+import Control.Exception.Safe
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes, isJust)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -21,7 +23,7 @@ import Layout (describedBy_)
 import Locale (german)
 import Lucid
 import qualified Text.Email.Validate as Email
-import User.Domain (Role (..), UserProfile (..), UserEmail(..))
+import User.Domain (Role (..), UserEmail (..), UserProfileCreate (..))
 
 data FormFieldState a = NotValidated | Valid a | Invalid Text deriving (Show)
 
@@ -189,30 +191,35 @@ data FormInput = FormInput
   }
   deriving (Show)
 
-makeProfile :: FormInput -> Either EditFormState (UserProfile, [Role])
+makeProfile :: MonadThrow m => FormInput -> m (Either EditFormState UserProfileCreate)
 makeProfile FormInput {..} =
   case EditFormState (validateEmail inputEmail) (validateDate inputBirthday) (validateDate inputBirthdayPartner) of
     (EditFormState (Valid email) (Valid bday) (Valid bdayp)) ->
-      Right
-        ( UserProfile
-            (UserEmail email)
-            (Just inputFirstName)
-            (Just inputLastName)
-            (Just inputAddress)
-            (Just inputMobile)
-            (Just inputLandline)
-            bday
-            (Just inputFirstNamePartner)
-            (Just inputLastNamePartner)
-            bdayp,
-          catMaybes
-            [ if inputIsAdmin then Just Admin else Nothing,
-              if inputIsBoard then Just Board else Nothing,
-              if inputIsPresident then Just President else Nothing,
-              Just User
-            ]
-        )
-    state -> Left state
+      let roles =
+            NE.nonEmpty $
+              catMaybes
+                [ if inputIsAdmin then Just Admin else Nothing,
+                  if inputIsBoard then Just Board else Nothing,
+                  if inputIsPresident then Just President else Nothing,
+                  Just User
+                ]
+       in case roles of
+            Nothing -> throwString "empty roles in user creation form"
+            Just roles' ->
+              return . Right $
+                UserProfileCreate
+                  (UserEmail email)
+                  (Just inputFirstName)
+                  (Just inputLastName)
+                  (Just inputAddress)
+                  (Just inputMobile)
+                  (Just inputLandline)
+                  bday
+                  (Just inputFirstNamePartner)
+                  (Just inputLastNamePartner)
+                  bdayp
+                  roles'
+    state -> return $ Left state
   where
     validateEmail "" = Invalid "Email darf nicht leer sein"
     validateEmail email =

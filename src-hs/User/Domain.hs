@@ -4,6 +4,7 @@
 
 module User.Domain
   ( UserProfile (..),
+    UserProfileCreate (..),
     UserEmail (..),
     showEmail,
     UserId (..),
@@ -16,6 +17,7 @@ module User.Domain
 where
 
 import Data.Aeson (ToJSON, Value (..), defaultOptions, genericToEncoding, toEncoding, toJSON)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
@@ -29,6 +31,24 @@ newtype UserEmail = UserEmail EmailAddress deriving (Show)
 instance ToJSON UserEmail where
   toJSON (UserEmail email) = String $ showEmail email
 
+data UserProfileCreate = UserProfileCreate
+  { userCreateEmail :: UserEmail,
+    userCreateFirstName :: Maybe Text,
+    userCreateLastName :: Maybe Text,
+    userCreateAddress :: Maybe Text,
+    userCreateMobilePhoneNr :: Maybe Text,
+    userCreateLandlineNr :: Maybe Text,
+    userCreateBirthday :: Maybe Time.Day,
+    userCreateFirstNamePartner :: Maybe Text,
+    userCreateLastNamePartner :: Maybe Text,
+    userCreateBirthdayPartner :: Maybe Time.Day,
+    userCreateRoles :: NonEmpty Role
+  }
+  deriving (Show, Generic)
+
+instance ToJSON UserProfileCreate where
+  toEncoding = genericToEncoding defaultOptions
+
 data UserProfile = UserProfile
   { userEmail :: UserEmail,
     userFirstName :: Maybe Text,
@@ -39,7 +59,9 @@ data UserProfile = UserProfile
     userBirthday :: Maybe Time.Day,
     userFirstNamePartner :: Maybe Text,
     userLastNamePartner :: Maybe Text,
-    userBirthdayPartner :: Maybe Time.Day
+    userBirthdayPartner :: Maybe Time.Day,
+    userId :: UserId,
+    userRoles :: NonEmpty Role
   }
   deriving (Show, Generic)
 

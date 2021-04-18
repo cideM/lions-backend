@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module User.DB
@@ -13,7 +14,7 @@ module User.DB
     getRolesFromDb,
     saveUserRoles,
     updateUser,
-    DBEmail(..),
+    DBEmail (..),
   )
 where
 
@@ -22,9 +23,11 @@ import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
+import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromField (FromField (..), ResultError (..), fieldData, returnError)
 import Database.SQLite.Simple.FromRow (FromRow)
@@ -35,7 +38,14 @@ import Database.SQLite.Simple.ToRow (ToRow (..))
 import Text.Email.Validate (EmailAddress)
 import qualified Text.Email.Validate as Email
 import TextShow
-import User.Domain (Role (..), UserId (..), UserEmail(..), UserProfile (..), parseRole)
+import User.Domain
+  ( Role (..),
+    UserEmail (..),
+    UserId (..),
+    UserProfile (..),
+    UserProfileCreate (..),
+    parseRole,
+  )
 import Prelude hiding (id)
 
 newtype DBRole = DBRole Role
@@ -60,12 +70,12 @@ newtype DBUserId = DBUserId UserId
   deriving (ToField) via Int
   deriving (ToRow) via (SQLite.Only Int)
 
-newtype UserProfileWithPw = UserProfileWithPw (Text, UserProfile)
+newtype UserProfileCreateWithPw = UserProfileCreateWithPw (Text, UserProfileCreate)
 
-instance ToRow UserProfileWithPw where
-  toRow (UserProfileWithPw (pw, profile)) = toField pw : toRow (DBUserProfile profile)
+instance ToRow UserProfileCreateWithPw where
+  toRow (UserProfileCreateWithPw (pw, profile)) = toField pw : toRow (DBUserProfileCreate profile)
 
-newtype DBEmail = DBEmail EmailAddress deriving Show
+newtype DBEmail = DBEmail EmailAddress deriving (Show)
 
 instance FromField DBEmail where
   fromField f =
@@ -77,6 +87,37 @@ instance FromField DBEmail where
       >>= \email -> case Email.emailAddress email of
         Nothing -> returnError ConversionFailed f ("couldn't parse email from DB: " <> show email)
         Just parsed -> Ok $ DBEmail parsed
+
+newtype DBUserProfileCreate = DBUserProfileCreate UserProfileCreate deriving (Show)
+
+instance ToRow DBUserProfileCreate where
+  toRow
+    ( DBUserProfileCreate
+        ( UserProfileCreate
+            (UserEmail _userEmail)
+            _userFirstName
+            _userLastName
+            _userAddress
+            _userMobilePhoneNr
+            _userLandlineNr
+            _userBirthday
+            _userFirstNamePartner
+            _userLastNamePartner
+            _userBirthdayPartner
+            _userRoles
+          )
+      ) =
+      [ toField (Email.toByteString _userEmail),
+        toField _userFirstName,
+        toField _userLastName,
+        toField _userAddress,
+        toField _userMobilePhoneNr,
+        toField _userLandlineNr,
+        toField _userBirthday,
+        toField _userFirstNamePartner,
+        toField _userLastNamePartner,
+        toField _userBirthdayPartner
+      ]
 
 newtype DBUserProfile = DBUserProfile UserProfile deriving (Show)
 
@@ -94,6 +135,8 @@ instance ToRow DBUserProfile where
             _userFirstNamePartner
             _userLastNamePartner
             _userBirthdayPartner
+            (UserId _userId)
+            _userRoles
           )
       ) =
       [ toField (Email.toByteString _userEmail),
@@ -105,74 +148,107 @@ instance ToRow DBUserProfile where
         toField _userBirthday,
         toField _userFirstNamePartner,
         toField _userLastNamePartner,
-        toField _userBirthdayPartner
+        toField _userBirthdayPartner,
+        toField _userId
       ]
 
-newtype UserIdAndProfile = UserIdAndProfile (DBUserId, DBUserProfile)
+data GetUserRow = GetUserRow
+  { _getUserRowRoles :: Text,
+    _getUserRowUserid :: Int,
+    _getUserRowEmail :: DBEmail,
+    _getUserRowFirstName :: Maybe Text,
+    _getUserRowLastName :: Maybe Text,
+    _getUserRowAddress :: Maybe Text,
+    _getUserRowMobilePhoneNr :: Maybe Text,
+    _getUserRowLandlineNr :: Maybe Text,
+    _getUserRowBirthday :: Maybe Time.Day,
+    _getUserRowFirstNamePartner :: Maybe Text,
+    _getUserRowLastNamePartner :: Maybe Text,
+    _getUserRowBirthdayPartner :: Maybe Time.Day
+  }
   deriving (Show)
 
--- Profile and ID are flipped!
-instance ToRow UserIdAndProfile where
-  toRow (UserIdAndProfile (userid, profile)) = toRow profile ++ toRow userid
+instance FromRow GetUserRow where
+  fromRow =
+    GetUserRow
+      <$> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
 
-newtype RoleAndProfile = RoleAndProfile (Text, DBUserId, UserProfile)
-  deriving (Show)
-
-instance FromRow RoleAndProfile where
-  fromRow = do
-    rolesCommaSep <- SQLite.field
-    userId <- SQLite.field
-    (DBEmail email) <- SQLite.field
-    f3 <- SQLite.field
-    f4 <- SQLite.field
-    f5 <- SQLite.field
-    f6 <- SQLite.field
-    f7 <- SQLite.field
-    f8 <- SQLite.field
-    f9 <- SQLite.field
-    f10 <- SQLite.field
-    f11 <- SQLite.field
-    return $ RoleAndProfile (rolesCommaSep, userId, UserProfile (UserEmail email) f3 f4 f5 f6 f7 f8 f9 f10 f11)
-
+-- TODO: Merge roles and ID into profile and then have separate version of profile for form create without ID
 -- I've spent about 2h debugging this GROUP BY NULL shit, fml
 -- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present
-getUser :: (MonadIO m, MonadThrow m) => SQLite.Connection -> UserId -> m (Maybe ([Role], (UserId, UserProfile)))
-getUser conn userid =
-  do
-    liftIO
-      ( SQLite.query
-          conn
-          [sql|
-           SELECT GROUP_CONCAT(label,","), users.id, email, first_name, last_name, address, mobile_phone_nr, landline_nr,
-                  birthday, first_name_partner, last_name_partner, birthday_partner
+getUser :: (MonadIO m, MonadThrow m) => SQLite.Connection -> UserId -> m (Maybe UserProfile)
+getUser conn userid = do
+  rows <-
+    liftIO $
+      SQLite.query
+        conn
+        [sql|
+           SELECT
+              GROUP_CONCAT(label,","),
+              users.id,
+              email,
+              first_name,
+              last_name,
+              address,
+              mobile_phone_nr,
+              landline_nr,
+              birthday,
+              first_name_partner,
+              last_name_partner,
+              birthday_partner
            FROM users
            JOIN user_roles ON users.id = userid
            JOIN roles ON roles.id = roleid
            WHERE users.id = ?
            GROUP BY NULL
           |]
-          (SQLite.Only (DBUserId userid))
-      )
-    >>= \case
-      [] -> return Nothing
-      [v :: RoleAndProfile] ->
-        case makeProfile v of
-          Left e -> throwString $ Text.unpack ("couldn't get user: " <> e)
-          Right v' -> return $ Just v'
-      result -> throwString $ "got unexpected getUser result" <> show result
+        (SQLite.Only (DBUserId userid))
+  case rows of
+    [] -> return Nothing
+    [getUserRows :: GetUserRow] -> do
+      case makeProfile getUserRows of
+        Left e -> throwString $ Text.unpack ("couldn't get user: " <> e)
+        Right v' -> return $ Just v'
+    result -> throwString $ "got unexpected getUser result" <> show result
 
--- TODO: This stuff here is something I could test
-makeProfile :: RoleAndProfile -> Either Text ([Role], (UserId, UserProfile))
-makeProfile (RoleAndProfile (roles, DBUserId userid, profile)) = do
-  roles' <- traverse parseRole (Text.splitOn "," roles)
-  pure (roles', (userid, profile))
+makeProfile :: GetUserRow -> Either Text UserProfile
+makeProfile GetUserRow {_getUserRowEmail = (DBEmail email), ..} = do
+  parsed <- NE.nonEmpty <$> traverse parseRole (Text.splitOn "," _getUserRowRoles)
+  case parsed of
+    Nothing -> Left $ "user without roles: " <> Text.pack (show _getUserRowUserid) <> " " <> Text.pack (show email)
+    Just roles ->
+      Right $
+        UserProfile
+          (UserEmail email)
+          _getUserRowFirstName
+          _getUserRowLastName
+          _getUserRowAddress
+          _getUserRowMobilePhoneNr
+          _getUserRowLandlineNr
+          _getUserRowBirthday
+          _getUserRowFirstNamePartner
+          _getUserRowLastNamePartner
+          _getUserRowBirthdayPartner
+          (UserId _getUserRowUserid)
+          roles
 
 deleteUserById :: (MonadIO m) => SQLite.Connection -> UserId -> m ()
 deleteUserById conn userid = do
   liftIO $ SQLite.execute conn "DELETE FROM users WHERE id = ?" . SQLite.Only $ DBUserId userid
   liftIO $ SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" . SQLite.Only $ DBUserId userid
 
-getUsers :: (MonadIO m, MonadCatch m, MonadThrow m) => SQLite.Connection -> m [([Role], (UserId, UserProfile))]
+getUsers :: (MonadIO m, MonadCatch m, MonadThrow m) => SQLite.Connection -> m [UserProfile]
 getUsers conn =
   handleAny
     (\e -> throwString $ "error getting users: " <> show e)
@@ -203,10 +279,10 @@ getIdAndPwByEmail conn email = do
     [] -> Nothing
     other -> throwString $ "unexpected result from DB for password" <> show other
 
-updateUser :: SQLite.Connection -> UserId -> [Role] -> UserProfile -> IO ()
-updateUser conn userid roles profile = do
+updateUser :: SQLite.Connection -> UserId -> UserProfileCreate -> IO ()
+updateUser conn userid profile@UserProfileCreate {..} = do
   SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" (SQLite.Only (DBUserId userid))
-  saveUserRoles conn userid roles
+  saveUserRoles conn userid (NE.toList userCreateRoles)
   SQLite.execute
     conn
     [sql|
@@ -223,9 +299,9 @@ updateUser conn userid roles profile = do
     ,   birthday_partner = ?
     WHERE id = ?
     |]
-    $ UserIdAndProfile (DBUserId userid, DBUserProfile profile)
+    $ DBUserProfileCreate profile
 
-saveUser :: SQLite.Connection -> UserProfile -> IO ()
+saveUser :: SQLite.Connection -> UserProfileCreate -> IO ()
 saveUser conn profile = do
   g <- newGenIO :: IO SystemRandom
   password <- case genBytes 20 g of
@@ -252,7 +328,7 @@ saveUser conn profile = do
       birthday_partner 
     ) VALUES (?, ?, ?, ?, ?, ?, ? , ? , ? , ? , ?)
     |]
-    $ UserProfileWithPw (hashed, profile)
+    $ UserProfileCreateWithPw (hashed, profile)
 
 getRolesFromDb :: (MonadIO m, MonadThrow m) => SQLite.Connection -> UserId -> m (Maybe [Role])
 getRolesFromDb conn (UserId userId) =

@@ -1,15 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module LandingPage.UsersList (render, UserGroupToShow (..)) where
 
 import Control.Monad (unless, when)
+import Data.List.NonEmpty (toList)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Layout (ariaLabel_)
 import Lucid
 import TextShow
-import User.Domain (Role (..), UserEmail (..), UserId, UserProfile (..), showEmail)
+import User.Domain (Role (..), UserEmail (..), UserProfile (..), showEmail)
 
 data UserGroupToShow = All | Some Role deriving (Eq)
 
@@ -17,7 +19,7 @@ instance Show UserGroupToShow where
   show All = "all"
   show (Some r) = show r
 
-render :: [([Role], (UserId, UserProfile))] -> Bool -> UserGroupToShow -> Html ()
+render :: [UserProfile] -> Bool -> UserGroupToShow -> Html ()
 render users userIsAdmin activeGroup = do
   div_ [class_ "d-flex justify-content-between align-items-center mb-3 flex-wrap"] $ do
     h1_ [class_ "card-title fs-3"] "Mitgliederliste"
@@ -34,16 +36,16 @@ render users userIsAdmin activeGroup = do
       button_ [class_ "btn btn-sm btn-secondary", type_ "submit"] "Ok"
   ul_ [class_ "list-group mb-3", id_ "userslist"] $
     mapM_
-      ( \(userRoles, (userId, p)) -> do
-          let name = fromMaybe "" (userFirstName p) <> " " <> fromMaybe "" (userLastName p)
-              (UserEmail email) = userEmail p
+      ( \UserProfile {..} -> do
+          let name = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
+              (UserEmail email) = userEmail
           li_ [class_ "p-0 list-group-item d-flex align-items-center", data_ "email" (showEmail email)] $ do
             a_ [class_ "flex-grow-1 py-2 px-3 list-group-item-action text-decoration-none text-body", href_ ("/nutzer/" <> showt userId)] $ do
               div_ [class_ "me-auto d-grid gap-2"] $ do
                 unless (Text.null name) $
                   p_ [class_ "fw-bold m-0"] $ toHtml name
                 p_ [class_ "m-0"] $ toHtml (showEmail email)
-                div_ [class_ "text-muted"] $ toHtml . displayBadges $ userRoles
+                div_ [class_ "text-muted"] $ toHtml . displayBadges $ toList userRoles
       )
       users
   when userIsAdmin $ a_ [class_ "link-primary", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"

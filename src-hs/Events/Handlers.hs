@@ -16,28 +16,24 @@ import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (find)
-import Data.Function ((&))
 import qualified Data.Map.Strict as Map
-import Data.Maybe (isNothing)
 import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Events.DB (deleteReply, getAll, upsertReply)
 import Events.Domain (Event (..), EventId (..), Reply (..))
 import qualified Events.EventCard
 import GHC.Exts (sortWith)
 import Katip
-import Layout (ActiveNavLink (..), ariaLabel_, layout)
-import Locale (german)
+import Layout (ActiveNavLink (..), layout)
 import Lucid
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
 import Text.Read (readEither)
 import User.DB (getUser)
-import User.Domain (Role (..), UserEmail (..), UserId (..), UserProfile (..), parseRole)
+import User.Domain (UserProfile (..))
 import Wai (parseParams)
 
 sortByDateDesc :: [(EventId, Event)] -> [(EventId, Event)]
@@ -51,7 +47,7 @@ showAllEvents ::
   Auth.Authenticated ->
   m (Html ())
 showAllEvents auth = do
-  let (userIsAdmin, Auth.UserSession {..}) = case auth of
+  let (_, Auth.UserSession {..}) = case auth of
         Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
         Auth.IsUser session -> (False, session)
   conn <- ask @"dbConn"
@@ -93,7 +89,7 @@ replyToEvent req send eventid auth = do
         Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
         Auth.IsUser session -> (False, session)
   conn <- ask @"dbConn"
-  (_, (_, UserProfile {..})) <-
+  UserProfile {..} <-
     getUser conn userSessionUserId >>= \case
       Nothing -> throwString "no user for userid from session"
       Just v -> return v

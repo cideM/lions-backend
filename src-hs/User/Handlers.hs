@@ -21,7 +21,9 @@ module User.Handlers
 where
 
 import Capability.Reader (HasReader (..), ask)
+import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
@@ -36,7 +38,16 @@ import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
 import TextShow
 import User.DB (deleteUserById, getRolesFromDb, getUser, saveUser, saveUserRoles, updateUser)
-import User.Domain (UserEmail (..), UserId (..), UserProfile (..), isAdmin, isBoard, isPresident, showEmail)
+import User.Domain
+  ( UserEmail (..),
+    UserId (..),
+    UserProfile (..),
+    UserProfileCreate (..),
+    isAdmin,
+    isBoard,
+    isPresident,
+    showEmail,
+  )
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import User.Profile (CanDelete (..), CanEdit (..))
 import qualified User.Profile
@@ -67,18 +78,18 @@ showEditUserForm ::
   UserId ->
   Auth.Authenticated ->
   m (Html ())
-showEditUserForm userId@(UserId i) auth = do
+showEditUserForm userIdToEdit@(UserId i) auth = do
   let Auth.UserSession _ sessionRoles = case auth of
         Auth.IsUser session -> session
         Auth.IsAdmin (Auth.AdminUser session) -> session
   conn <- ask @"dbConn"
-  user <- liftIO $ getUser conn userId
+  user <- liftIO $ getUser conn userIdToEdit
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
-    Just (roles, (_, UserProfile {..})) ->
+    Just UserProfile {..} ->
       let (UserEmail email) = userEmail
        in layout "Nutzer Editieren" Nothing $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -90,9 +101,9 @@ showEditUserForm userId@(UserId i) auth = do
                     { inputEmail = showEmail email,
                       inputBirthday = maybe "" renderDateForInput userBirthday,
                       inputBirthdayPartner = maybe "" renderDateForInput userBirthdayPartner,
-                      inputIsAdmin = any isAdmin roles,
-                      inputIsBoard = any isBoard roles,
-                      inputIsPresident = any isPresident roles,
+                      inputIsAdmin = any isAdmin userRoles,
+                      inputIsBoard = any isBoard userRoles,
+                      inputIsPresident = any isPresident userRoles,
                       inputAddress = fromMaybe "" userAddress,
                       inputFirstName = fromMaybe "" userFirstName,
                       inputFirstNamePartner = fromMaybe "" userFirstNamePartner,
@@ -106,6 +117,7 @@ showEditUserForm userId@(UserId i) auth = do
 
 updateExistingUser ::
   ( MonadIO m,
+    MonadThrow m,
     KatipContext m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
@@ -131,9 +143,9 @@ updateExistingUser req userId auth = do
           (paramt "inputEmail")
           (paramt "inputBirthday")
           (paramt "inputBirthdayPartner")
-          ((if loggedInAsAdmin then paramb "inputIsAdmin" else isAdminNow))
-          ((if loggedInAsAdmin then paramb "inputIsBoard" else isBoardNow))
-          ((if loggedInAsAdmin then paramb "inputIsPresident" else isPresidentNow))
+          (if loggedInAsAdmin then paramb "inputIsAdmin" else isAdminNow)
+          (if loggedInAsAdmin then paramb "inputIsBoard" else isBoardNow)
+          (if loggedInAsAdmin then paramb "inputIsPresident" else isPresidentNow)
           (paramt "inputAddress")
           (paramt "inputFirstName")
           (paramt "inputFirstNamePartner")
@@ -141,7 +153,7 @@ updateExistingUser req userId auth = do
           (paramt "inputLastNamePartner")
           (paramt "inputMobile")
           (paramt "inputLandline")
-  case makeProfile input of
+  makeProfile input >>= \case
     Left state ->
       return $
         layout "Nutzer Editieren" Nothing $
@@ -152,9 +164,9 @@ updateExistingUser req userId auth = do
               "/nutzer/neu"
               input
               state
-    Right (profile, roles) -> do
-      liftIO $ updateUser conn userId roles profile
-      katipAddContext (sl "roles" roles) $
+    Right profile@UserProfileCreate {..} -> do
+      liftIO $ updateUser conn userId profile
+      katipAddContext (sl "roles" userCreateRoles) $
         katipAddContext (sl "profile" profile) $ do
           logLocM DebugS "editing user"
           return $
@@ -162,11 +174,12 @@ updateExistingUser req userId auth = do
               div_ [class_ "container p-3 d-flex justify-content-center"] $
                 div_ [class_ "row col-6"] $ do
                   p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                    "Nutzer " <> show (userEmail profile) <> " erfolgreich editiert"
+                    "Nutzer " <> show userCreateEmail <> " erfolgreich editiert"
 
 -- TODO: Duplication
 saveNewUser ::
   ( MonadIO m,
+    MonadThrow m,
     HasReader "dbConn" SQLite.Connection m,
     KatipContext m
   ) =>
@@ -193,7 +206,7 @@ saveNewUser req _ = do
           (paramt "inputLastNamePartner")
           (paramt "inputMobile")
           (paramt "inputLandline")
-  case makeProfile input of
+  makeProfile input >>= \case
     Left state ->
       return $
         layout "Nutzer Hinzufügen" Nothing $
@@ -204,15 +217,15 @@ saveNewUser req _ = do
               "/nutzer/neu"
               input
               state
-    Right (profile, roles) -> do
+    Right (profile@UserProfileCreate {..}) -> do
       liftIO $
         SQLite.withTransaction
           conn
           $ do
             saveUser conn profile
             (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
-            saveUserRoles conn (UserId userid) roles
-      katipAddContext (sl "roles" roles) $
+            saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
+      katipAddContext (sl "roles" $ NE.toList userCreateRoles) $
         katipAddContext (sl "profile" profile) $ do
           logLocM DebugS "adding user"
           return $
@@ -220,7 +233,7 @@ saveNewUser req _ = do
               div_ [class_ "container p-3 d-flex justify-content-center"] $
                 div_ [class_ "row col-6"] $ do
                   p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                    "Nutzer " <> show (userEmail profile) <> " erfolgreich erstellt"
+                    "Nutzer " <> show userCreateEmail <> " erfolgreich erstellt"
 
 showProfile ::
   ( MonadIO m,
@@ -245,13 +258,11 @@ showProfile paramId auth = do
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
-    Just (userRoles, (otherUserId, userProfile)) -> do
+    Just userProfile -> do
       layout "Nutzerprofil" Nothing $
         div_
           [class_ "container p-3"]
           ( User.Profile.render
-              userRoles
-              otherUserId
               userProfile
               (CanDelete userIsAdmin)
               (CanEdit (isOwnProfile || userIsAdmin))
@@ -272,7 +283,7 @@ deleteUser userId _ = do
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
-    Just (_, (_, userProfile)) -> do
+    Just userProfile -> do
       deleteUserById conn userId
       return $
         layout "Nutzerprofil" Nothing $
@@ -296,7 +307,7 @@ showDeleteConfirmation userId _ = do
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
-    Just (_, (_, userProfile)) -> do
+    Just userProfile -> do
       layout "Nutzerprofil" Nothing $
         div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
