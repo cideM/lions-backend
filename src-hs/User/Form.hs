@@ -13,19 +13,18 @@ where
 
 import Control.Exception.Safe
 import qualified Data.List.NonEmpty as NE
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Time.Format as TF
+import Form.Form (FormFieldState (..), processField)
 import Layout (describedBy_)
 import Locale (german)
 import Lucid
 import qualified Text.Email.Validate as Email
 import User.Domain (Role (..), UserEmail (..), UserProfileCreate (..))
-
-data FormFieldState a = NotValidated | Valid a | Invalid Text deriving (Show)
 
 data EditFormState = EditFormState
   { formStateEmail :: FormFieldState Email.EmailAddress,
@@ -150,21 +149,6 @@ render (CanEditRoles canEditRoles) btnlabel action FormInput {..} EditFormState 
         input_ [type_ "hidden", checked_, name_ "inputIsUser"]
         label_ [class_ "form-check-label", for_ "inputIsUser"] "Nutzer"
     button_ [type_ "submit", class_ "btn btn-primary"] $ toHtml btnlabel
-  where
-    classValidated :: [(Text, Bool)] -> Text
-    classValidated pairs = Text.intercalate " " [className | (className, predicate) <- pairs, predicate]
-
-    processField :: FormFieldState a -> (Text, Maybe Text)
-    processField field = (makeInputClass field, getErrorMsg field)
-
-    getErrorMsg (Invalid msg) = Just msg
-    getErrorMsg _ = Nothing
-
-    fieldIsValid (Valid _) = True
-    fieldIsValid _ = False
-
-    makeInputClass :: FormFieldState a -> Text
-    makeInputClass field = classValidated [("form-control", True), ("is-invalid", isJust $ getErrorMsg field), ("is-valid", fieldIsValid field)]
 
 emptyForm :: EditFormState
 emptyForm =

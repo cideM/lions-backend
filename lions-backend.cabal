@@ -47,16 +47,18 @@ executable lions-backend
     WelcomeMessage.Form
     Wai
     WelcomeMessage.Card
-    Login.DB
     Login.Handlers
     Login.Form
     App
     RequestID.Middleware
     Events.Handlers
+    Events.EventForm
     Events.EventCard
+    Events.SingleEvent
     Events.Domain
     Events.DB
     Routes.Data
+    Form.Form
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

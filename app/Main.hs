@@ -105,6 +105,19 @@ app req send = do
           "GET" -> authenticatedOnly' (Events.Handlers.showAllEvents >=> send200)
           -- TODO: Send unsupported method 405
           _ -> send404
+      ["veranstaltungen", "neu"] ->
+        case Wai.requestMethod req of
+          "GET" -> adminOnly' (Events.Handlers.showCreateEvent >=> send200)
+          "POST" -> adminOnly' (Events.Handlers.handleCreateEvent req >=> send200)
+          -- TODO: Send unsupported method 405
+          _ -> send404
+      ["veranstaltungen", i] ->
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+          Right (parsed :: Int) ->
+            case Wai.requestMethod req of
+              "GET" -> authenticatedOnly' (Events.Handlers.showEvent (EventId parsed) send)
+              _ -> send404
       ["veranstaltungen", i, "antwort"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i

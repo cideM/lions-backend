@@ -253,6 +253,7 @@ showProfile paramId auth = do
         Auth.IsAdmin (Auth.AdminUser session) -> session
       isOwnProfile = loggedInUserId == userIdToShow
   user <- liftIO $ getUser conn userIdToShow
+  -- TODO: This needs to return a 404
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $

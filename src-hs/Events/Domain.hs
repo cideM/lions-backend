@@ -2,7 +2,13 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Events.Domain (Reply (..), Event (..), EventId (..)) where
+module Events.Domain
+  ( Reply (..),
+    Event (..),
+    EventCreate (..),
+    EventId (..),
+  )
+where
 
 import Data.Aeson (ToJSON, defaultOptions, genericToEncoding, toEncoding)
 import Data.Text (Text)
@@ -11,7 +17,7 @@ import Data.Text (Text)
 import qualified Data.Time as Time
 import GHC.Generics
 -- import TextShow
-import User.Domain (UserEmail (..), UserId(..))
+import User.Domain (UserEmail (..), UserId (..))
 
 data Reply = Reply
   { replyComing :: Bool,
@@ -22,6 +28,19 @@ data Reply = Reply
   deriving (Show, Generic)
 
 instance ToJSON Reply where
+  toEncoding = genericToEncoding defaultOptions
+
+-- TODO: Ok this duplication also sucks... maybe tuples again? :(
+data EventCreate = EventCreate
+  { eventCreateTitle :: Text,
+    eventCreateDate :: Time.UTCTime,
+    eventCreateFamilyAllowed :: Bool,
+    eventCreateDescription :: Text,
+    eventCreateLocation :: Text
+  }
+  deriving (Show, Generic)
+
+instance ToJSON EventCreate where
   toEncoding = genericToEncoding defaultOptions
 
 data Event = Event
@@ -38,6 +57,6 @@ instance ToJSON Event where
   toEncoding = genericToEncoding defaultOptions
 
 newtype EventId = EventId Int
-  deriving Show
-  deriving Ord via Int
-  deriving Eq via Int
+  deriving (Show)
+  deriving (Ord) via Int
+  deriving (Eq) via Int

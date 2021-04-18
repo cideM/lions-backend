@@ -6,11 +6,19 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Events.DB (getAll, deleteReply, upsertReply) where
+module Events.DB
+  ( getEvent,
+    getAll,
+    deleteReply,
+    createEvent,
+    upsertReply,
+  )
+where
 
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (foldr')
+import Debug.Trace
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -18,28 +26,28 @@ import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
-import Events.Domain (Event (..), EventId (..), Reply (..))
+import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
 import User.DB (DBEmail (..))
 import User.Domain (UserEmail (..), UserId (..))
 import Prelude hiding (id)
 
-data GetAllEventsRow = GetAllEventsRow
+data GetEventRow = GetEventRow
   { _eventId :: Int,
     _eventTitle :: Text,
     _eventDate :: Time.UTCTime,
     _eventFamilyAllowed :: Bool,
     _eventDescription :: Text,
     _eventLocation :: Text,
-    _eventReplyUserId :: Int,
-    _eventReplyComing :: Bool,
-    _eventReplyNumGuests :: Int,
-    _eventReplyEmail :: DBEmail
+    _eventReplyUserId :: Maybe Int,
+    _eventReplyComing :: Maybe Bool,
+    _eventReplyNumGuests :: Maybe Int,
+    _eventReplyEmail :: Maybe DBEmail
   }
   deriving (Show)
 
-instance FromRow GetAllEventsRow where
+instance FromRow GetEventRow where
   fromRow =
-    GetAllEventsRow
+    GetEventRow
       <$> SQLite.field
         <*> SQLite.field
         <*> SQLite.field
@@ -51,12 +59,97 @@ instance FromRow GetAllEventsRow where
         <*> SQLite.field
         <*> SQLite.field
 
+createEvent ::
+  ( MonadIO m,
+    MonadThrow m
+  ) =>
+  SQLite.Connection ->
+  EventCreate ->
+  m ()
+createEvent conn EventCreate {..} = do
+  liftIO $
+    SQLite.execute
+      conn
+      [sql|
+        insert into events (
+          title,
+          date,
+          family_allowed,
+          description,
+          location
+        ) values (?,?,?,?,?)
+      |]
+      (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation)
+
+makeEvents :: GetEventRow -> Map EventId Event -> Map EventId Event
+makeEvents GetEventRow {..} xs =
+  let eventWithoutReplies =
+        Event
+          _eventTitle
+          _eventDate
+          _eventFamilyAllowed
+          _eventDescription
+          _eventLocation
+      replyRaw =
+        (,,,)
+          <$> _eventReplyUserId
+          <*> _eventReplyComing
+          <*> _eventReplyEmail
+          <*> _eventReplyNumGuests
+      alterFn Nothing Nothing = Just $ eventWithoutReplies []
+      alterFn (Just reply) Nothing = Just $ eventWithoutReplies [reply]
+      alterFn Nothing (Just e) = Just e
+      alterFn (Just reply) (Just e@Event {..}) = Just e {eventReplies = reply : eventReplies}
+   in case replyRaw of
+        -- If one of the reply fields is Nothing assume they're all Nothing.
+        -- Not sure how to best handle this but if I do a left join and only
+        -- get the left part of the select then all other fields will be null
+        Nothing -> Map.alter (alterFn Nothing) (EventId _eventId) xs
+        Just (replyUserId, replyComing, DBEmail replyEmail, replyNumGuests) ->
+          let reply = Reply replyComing (UserEmail replyEmail) (UserId replyUserId) replyNumGuests
+           in Map.alter (alterFn $ Just reply) (EventId _eventId) xs
+
+getEvent ::
+  ( MonadIO m,
+    MonadThrow m
+  ) =>
+  SQLite.Connection ->
+  EventId ->
+  m (Maybe Event)
+getEvent conn (EventId eventid) = do
+  rows <-
+    liftIO $
+      SQLite.query
+        conn
+        [sql|
+        select events.id as eventid,
+               title,
+               date,
+               family_allowed,
+               description,
+               location,
+               userid,
+               coming,
+               guests,
+               users.email as email
+        from events
+        left join event_replies on events.id = eventid
+        left join users on userid = users.id
+        where events.id = ?
+      |]
+        [eventid]
+  let events = foldr' makeEvents Map.empty rows
+  case Map.toList (traceShowId events) of
+    [] -> return Nothing
+    [x] -> return . Just $ snd x
+    v -> throwString $ "got more than one result from getEvent" <> show v
+
 getAll ::
   (MonadIO m, MonadThrow m) =>
   SQLite.Connection ->
   m (Map EventId Event)
 getAll conn = do
-  (rows :: [GetAllEventsRow]) <-
+  (rows :: [GetEventRow]) <-
     liftIO $
       SQLite.query_
         conn
@@ -72,25 +165,11 @@ getAll conn = do
                guests,
                users.email as email
         from events
-        join event_replies on events.id = eventid
-        join users on userid = users.id
+        left join event_replies on events.id = eventid
+        left join users on userid = users.id
       |]
   return $
-    foldr' f Map.empty rows
-  where
-    f GetAllEventsRow {_eventReplyEmail = (DBEmail email), ..} xs =
-      let reply = Reply _eventReplyComing (UserEmail email) (UserId _eventReplyUserId) _eventReplyNumGuests
-          alterFn Nothing =
-            Just $
-              Event
-                _eventTitle
-                _eventDate
-                _eventFamilyAllowed
-                _eventDescription
-                _eventLocation
-                [reply]
-          alterFn (Just e@Event {..}) = Just $ e {eventReplies = reply : eventReplies}
-       in Map.alter alterFn (EventId _eventId) xs
+    foldr' makeEvents Map.empty rows
 
 deleteReply ::
   (MonadIO m, MonadThrow m) =>
