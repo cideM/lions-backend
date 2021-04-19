@@ -16,6 +16,7 @@ type Pw = Text
 
 type PwError = Text
 
+-- TODO: Would be nice to make this use my Form utils stuff
 data LoginFormState = NotLoggedInNotValidated | NotLoggedInValidated Email (Maybe EmailError) Pw (Maybe PwError) | LoggedIn
 
 render :: LoginFormState -> Html ()
@@ -46,38 +47,42 @@ render formState =
               makeErrMsg "invalidPasswordFeedback" Nothing
             )
    in layout "Login" (Just Login) $
-        div_ [class_ "container-md p-3"] $
-          div_ [class_ "row d-flex justify-content-center"] $
-            form_ [class_ "col-8", method_ "post", action_ "/login"] $
-              fieldset_ $ do
-                div_ [class_ "mb-3 form-floating"] $ do
-                  input_
-                    [ class_ emailClass,
-                      type_ "email",
-                      name_ "email",
-                      id_ "email",
-                      required_ "required",
-                      value_ email,
-                      autofocus_,
-                      describedBy_ "invalidEmailFeedback",
-                      placeholder_ "hallo@gmail.com"
-                    ]
-                  label_ [class_ "form-label", for_ "email"] "Email Adresse"
-                  emailErr
-                div_ [class_ "mb-3 form-floating"] $ do
-                  input_
-                    [ class_ pwClass,
-                      type_ "password",
-                      name_ "password",
-                      id_ "password",
-                      required_ "required",
-                      value_ pw,
-                      describedBy_ "invalidPasswordFeedback",
-                      placeholder_ "foobar"
-                    ]
-                  label_ [class_ "form-label", for_ "password"] "Passwort"
-                  pwErr
-                button_ [class_ "btn btn-primary", type_ "submit"] "Einloggen"
+        div_ [class_ "container-md d-flex justify-content-center p-3"] $ do
+          form_ [class_ "col-8", method_ "post", action_ "/login"] $ do
+            div_ [class_ "row row-cols-8 g-2"] $ do
+              div_ [class_ "mb-3 form-floating"] $ do
+                input_
+                  [ class_ emailClass,
+                    type_ "email",
+                    name_ "email",
+                    id_ "email",
+                    required_ "required",
+                    value_ email,
+                    autofocus_,
+                    describedBy_ "invalidEmailFeedback",
+                    placeholder_ "hallo@gmail.com"
+                  ]
+                label_ [class_ "form-label", for_ "email"] "Email Adresse"
+                emailErr
+            div_ [class_ "row row-cols-8 g-2"] $ do
+              div_ [class_ "mb-3 form-floating"] $ do
+                input_
+                  [ class_ pwClass,
+                    type_ "password",
+                    name_ "password",
+                    id_ "password",
+                    required_ "required",
+                    value_ pw,
+                    describedBy_ "invalidPasswordFeedback",
+                    placeholder_ "foobar"
+                  ]
+                label_ [class_ "form-label", for_ "password"] "Passwort"
+                pwErr
+            div_ [class_ "row g-2"] $ do
+              div_ [class_ "col-md-6"] $ do
+                button_ [class_ "w-100 btn btn-primary", type_ "submit"] "Einloggen"
+              div_ [class_ "col-md-6"] $ do
+                a_ [class_ "w-100 btn btn-secondary", href_ "/passwort/link", role_ "button"] "Passwort vergessen"
   where
     makeFormClass e = "form-control" <> if isJust e then " is-invalid" else ""
     makeErrMsg :: Text -> Maybe Text -> Html ()

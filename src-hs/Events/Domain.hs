@@ -12,11 +12,8 @@ where
 
 import Data.Aeson (ToJSON, defaultOptions, genericToEncoding, toEncoding)
 import Data.Text (Text)
--- import qualified Data.Text as Text
--- import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import GHC.Generics
--- import TextShow
 import User.Domain (UserEmail (..), UserId (..))
 
 data Reply = Reply

@@ -72,11 +72,15 @@ middleware nextApp req send = do
   sessionKey <- ask @"sessionKey"
   dbConn <- ask @"dbConn"
   sessionDataVaultKey <- ask @"sessionDataVaultKey"
-  (runExceptT $ tryLogin dbConn sessionKey sessionDataVaultKey req) >>= \case
+  runExceptT (tryLogin dbConn sessionKey sessionDataVaultKey req) >>= \case
     Left e -> do
       logLocM InfoS (ls e)
       case Wai.pathInfo req of
         ["login"] -> do
+          nextApp req send
+        ["passwort", "link"] -> do
+          nextApp req send
+        ["passwort", "aendern"] -> do
           nextApp req send
         _ -> do
           send $ Wai.responseBuilder status302 [("Location", "/login")] ""

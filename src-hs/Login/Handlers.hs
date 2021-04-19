@@ -18,12 +18,11 @@ import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
-import Data.List (foldl')
+import Time.Time (timeDaysFromNow)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Katip hiding (Environment)
@@ -40,12 +39,6 @@ import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
-genNewSessionExpires :: (MonadIO m) => m Time.UTCTime
-genNewSessionExpires = do
-  now <- liftIO Time.getCurrentTime
-  let thirtyDays = replicate 30 Time.nominalDay
-  return $ foldl' (flip Time.addUTCTime) now thirtyDays
-
 tryLogin ::
   (MonadError Text m, KatipContext m) =>
   SQLite.Connection ->
@@ -58,7 +51,7 @@ tryLogin conn sessionKey env email formPw = do
   (userId, dbPw) <- getIdAndPwByEmail conn email >>= liftEither . note "no user found"
   katipAddContext (sl "user_id" $ show userId) $ do
     unless (BCrypt.validatePassword (encodeUtf8 dbPw) (encodeUtf8 formPw)) $ throwError "incorrect password"
-    expires <- genNewSessionExpires
+    expires <- timeDaysFromNow 30
     sessionIdRaw <- liftIO $ decodeUtf8 <$> genSessionId
     s <- makeValidSession $ Session (SessionId sessionIdRaw) expires userId
     saveSession conn s

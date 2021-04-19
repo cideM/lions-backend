@@ -312,7 +312,7 @@ showDeleteConfirmation userId _ = do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
               toHtml ("Nutzer " <> show (userEmail userProfile) <> " wirklich löschen?")
             form_
-              [ action_ . Text.pack $ "/nutzer/" <> show userId <> "/löschen",
+              [ action_ . Text.pack $ "/nutzer/" <> show userId <> "/loeschen",
                 method_ "post",
                 class_ "d-flex justify-content-center"
               ]

@@ -21,8 +21,6 @@ module Events.EventForm
 where
 
 import Data.Text (Text)
--- import qualified Data.Text as Text
-
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Data.Time.Format as TF

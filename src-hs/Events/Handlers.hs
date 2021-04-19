@@ -224,7 +224,7 @@ showDeleteEventConfirmation eid@(EventId eventid) _ = do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
               toHtml ("Veranstaltung " <> eventTitle event <> " wirklich löschen?")
             form_
-              [ action_ . Text.pack $ "/veranstaltungen/" <> show eventid <> "/löschen",
+              [ action_ . Text.pack $ "/veranstaltungen/" <> show eventid <> "/loeschen",
                 method_ "post",
                 class_ "d-flex justify-content-center"
               ]

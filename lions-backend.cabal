@@ -59,6 +59,11 @@ executable lions-backend
     Events.DB
     Routes.Data
     Form.Form
+    PasswordReset.DB
+    PasswordReset.Handlers
+    PasswordReset.Domain
+    PasswordReset.Form
+    Time.Time
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:

@@ -19,6 +19,7 @@ import Data.UUID (toText)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Events.Domain (EventId (..))
+import qualified PasswordReset.Handlers
 import qualified Events.Handlers
 import qualified Katip as K
 import qualified LandingPage.Handlers
@@ -125,7 +126,7 @@ app req send = do
             case Wai.requestMethod req of
               "POST" -> authenticatedOnly' (Events.Handlers.replyToEvent req send (EventId parsed))
               _ -> send404
-      ["veranstaltungen", i, "löschen"] ->
+      ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
@@ -173,7 +174,7 @@ app req send = do
               Right (parsed :: Int) ->
                 authenticatedOnly' (User.Handlers.showProfile parsed >=> send200)
           _ -> send404
-      ["nutzer", int, "löschen"] ->
+      ["nutzer", int, "loeschen"] ->
         case readEither (Text.unpack int) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
           Right (parsed :: Int) ->
@@ -190,6 +191,16 @@ app req send = do
       ["logout"] ->
         case Wai.requestMethod req of
           "POST" -> Login.Handlers.logout req send
+          _ -> send404
+      ["passwort", "aendern"] ->
+        case Wai.requestMethod req of
+          "GET" -> PasswordReset.Handlers.showChangePwForm req >>= send200
+          "POST" -> PasswordReset.Handlers.handleChangePw req >>= send200
+          _ -> send404
+      ["passwort", "link"] ->
+        case Wai.requestMethod req of
+          "GET" -> PasswordReset.Handlers.showResetForm >>= send200
+          "POST" -> PasswordReset.Handlers.handleReset req >>= send200
           _ -> send404
       _ -> send404
   where

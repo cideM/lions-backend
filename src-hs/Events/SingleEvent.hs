@@ -46,7 +46,7 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
                 div_ [class_ "px-1 mt-2 d-flex flex-wrap"] $ do
                   a_
                     [ class_ "link-danger me-4",
-                      href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/löschen"
+                      href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/loeschen"
                     ]
                     "Veranstaltung löschen"
                   a_

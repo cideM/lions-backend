@@ -55,7 +55,7 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
           p_ [class_ "fs-5"] $ toHtml' formatted
     div_ [class_ "card-footer d-flex d-grid"] $ do
       when canDelete $ do
-        form_ [action_ . Text.pack $ "/nutzer/" <> show userId <> "/löschen", method_ "get"] $
+        form_ [action_ . Text.pack $ "/nutzer/" <> show userId <> "/loeschen", method_ "get"] $
           button_ [class_ "btn btn-danger me-4", type_ "submit"] "Nutzer löschen"
       when canEdit $ do
         form_ [action_ $ "/nutzer/" <> showt userId <> "/editieren", method_ "get"] $
