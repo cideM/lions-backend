@@ -247,6 +247,7 @@ deleteUserById :: (MonadIO m) => SQLite.Connection -> UserId -> m ()
 deleteUserById conn userid = do
   liftIO $ SQLite.execute conn "DELETE FROM users WHERE id = ?" . SQLite.Only $ DBUserId userid
   liftIO $ SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" . SQLite.Only $ DBUserId userid
+  liftIO $ SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" . SQLite.Only $ DBUserId userid
 
 getUsers :: (MonadIO m, MonadCatch m, MonadThrow m) => SQLite.Connection -> m [UserProfile]
 getUsers conn =
