@@ -36,7 +36,6 @@ import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
-import TextShow
 import User.DB (deleteUserById, getRolesFromDb, getUser, saveUser, saveUserRoles, updateUser)
 import User.Domain
   ( UserEmail (..),
@@ -295,6 +294,7 @@ deleteUser userId _ = do
 
 showDeleteConfirmation ::
   ( MonadIO m,
+    MonadThrow m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
   UserId ->
@@ -303,19 +303,16 @@ showDeleteConfirmation ::
 showDeleteConfirmation userId _ = do
   conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
-  return $ case user of
-    Nothing -> layout "Fehler" Nothing $
-      div_ [class_ "container p-3 d-flex justify-content-center"] $
-        div_ [class_ "row col-6"] $ do
-          p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
+  case user of
+    Nothing -> throwString $ "delete user but no user for eid found: " <> show userId
     Just userProfile -> do
-      layout "Nutzerprofil" Nothing $
+      return . layout "Nutzerprofil" Nothing $
         div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
               toHtml ("Nutzer " <> show (userEmail userProfile) <> " wirklich löschen?")
             form_
-              [ action_ $ "/nutzer/" <> showt userId <> "/löschen",
+              [ action_ . Text.pack $ "/nutzer/" <> show userId <> "/löschen",
                 method_ "post",
                 class_ "d-flex justify-content-center"
               ]

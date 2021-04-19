@@ -125,6 +125,22 @@ app req send = do
             case Wai.requestMethod req of
               "POST" -> authenticatedOnly' (Events.Handlers.replyToEvent req send (EventId parsed))
               _ -> send404
+      ["veranstaltungen", i, "löschen"] ->
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+          Right (parsed :: Int) ->
+            case Wai.requestMethod req of
+              "GET" -> adminOnly' (Events.Handlers.showDeleteEventConfirmation (EventId parsed) >=> send200)
+              "POST" -> adminOnly' (Events.Handlers.handleDeleteEvent (EventId parsed) >=> send200)
+              _ -> send404
+      ["veranstaltungen", i, "editieren"] ->
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+          Right (parsed :: Int) ->
+            case Wai.requestMethod req of
+              "GET" -> adminOnly' (Events.Handlers.showEditEventForm (EventId parsed) >=> send200)
+              "POST" -> adminOnly' (Events.Handlers.handleUpdateEvent req (EventId parsed) >=> send200)
+              _ -> send404
       -- TODO: translate
       ["edit"] ->
         case Wai.requestMethod req of

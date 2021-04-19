@@ -70,7 +70,7 @@ makeEvent FormInput {..} =
     (notEmpty createEventInputLocation)
     (notEmpty createEventInputDescription) of
     FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
-      Right $ EventCreate title date createEventInputFamilyAllowed location description
+      Right $ EventCreate title date createEventInputFamilyAllowed description location
     state -> Left state
   where
     notEmpty "" = Invalid "Feld darf nicht leer sein"
@@ -82,9 +82,9 @@ makeEvent FormInput {..} =
         Nothing -> Invalid "Falsches Format"
         Just date -> Valid date
 
-render :: FormInput -> FormState -> Html ()
-render FormInput {..} FormState {..} = do
-  form_ [class_ "row g-4", action_ "/veranstaltungen/neu", method_ "post"] $ do
+render :: Text -> Text -> FormInput -> FormState -> Html ()
+render btnLabel action FormInput {..} FormState {..} = do
+  form_ [class_ "row g-4", action_ action, method_ "post"] $ do
     div_ [class_ "col-md-6"] $ do
       let (className, errMsg) = processField createEventStateTitle
       label_ [for_ "eventTitleInput", class_ "form-label"] "Name"
@@ -117,7 +117,7 @@ render FormInput {..} FormState {..} = do
       input_
         [ type_ "text",
           id_ "eventDateInput",
-          value_ createEventInputLocation,
+          value_ createEventInputDate,
           class_ className,
           required_ "required",
           name_ "eventDateInput",
@@ -154,4 +154,4 @@ render FormInput {..} FormState {..} = do
           )
         label_ [class_ "form-check-label", for_ "eventFamAllowedInput"] "Mit Familie?"
     div_ [class_ "col-md-4"] $
-      button_ [class_ "btn btn-primary", type_ "submit"] "Speichern"
+      button_ [class_ "btn btn-primary", type_ "submit"] $ toHtml btnLabel

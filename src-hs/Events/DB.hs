@@ -11,14 +11,15 @@ module Events.DB
     getAll,
     deleteReply,
     createEvent,
+    updateEvent,
     upsertReply,
+    deleteEvent,
   )
 where
 
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (foldr')
-import Debug.Trace
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -26,6 +27,7 @@ import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
+import Debug.Trace
 import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
 import User.DB (DBEmail (..))
 import User.Domain (UserEmail (..), UserId (..))
@@ -179,6 +181,37 @@ deleteReply ::
   m ()
 deleteReply conn (EventId eventid) (UserId userid) =
   liftIO $ SQLite.execute conn "delete from event_replies where userid = ? and eventid = ?" [userid, eventid]
+
+deleteEvent ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  EventId ->
+  m ()
+deleteEvent conn (EventId eventid) = do
+  liftIO $ SQLite.execute conn "delete from event_replies where eventid = ?" [eventid]
+  liftIO $ SQLite.execute conn "delete from events where id = ?" [eventid]
+
+updateEvent ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  EventId ->
+  EventCreate ->
+  m ()
+updateEvent conn (EventId eventid) EventCreate {..} =
+  liftIO $
+    SQLite.execute
+      conn
+      [sql|
+        update events
+        set
+          title = ?,
+          date = ?,
+          family_allowed = ?,
+          description = ?,
+          location = ?
+        where id = ?
+      |]
+      (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation, eventid)
 
 upsertReply ::
   (MonadIO m, MonadThrow m) =>
