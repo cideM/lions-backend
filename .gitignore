@@ -8,3 +8,5 @@ tags
 .purs-repl
 .spago
 output
+terraform/.terraform
+terraform/.terraform.lock.hcl

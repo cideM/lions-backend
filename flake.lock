@@ -1,0 +1,87 @@
+{
+  "nodes": {
+    "bootstrap": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-SdODrmnaIeoZ/KxIkrYqxBoaTrB1IvbOz3FXcL/r4Hk=",
+        "type": "tarball",
+        "url": "https://github-releases.githubusercontent.com/2126244/4af4f500-6bcc-11eb-96ba-a5f8e215ee0b?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20210427%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20210427T100926Z&X-Amz-Expires=300&X-Amz-Signature=236df46273202c3559b0a60019674b7ea1b6fb814282b640a89889b18d937e61&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=2126244&response-content-disposition=attachment%3B%20filename%3Dbootstrap-5.0.0-beta2-dist.zip&response-content-type=application%2Foctet-stream"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/twbs/bootstrap/releases/download/v5.0.0-beta2/bootstrap-5.0.0-beta2-dist.zip"
+      }
+    },
+    "bootstrap-icons": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-qhZxovp8oibIVX1+4auVuhnj/O56VbbnoPZ/FNBip6Y=",
+        "type": "tarball",
+        "url": "https://github-releases.githubusercontent.com/198878888/e6ccb880-90c7-11eb-875a-efb25ee22b2f?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20210427%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20210427T101105Z&X-Amz-Expires=300&X-Amz-Signature=0714a6f7e72e3f8c470d89c066e51a6434181404d411aeff8238b10bd2b8512c&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=198878888&response-content-disposition=attachment%3B%20filename%3Dbootstrap-icons-1.4.1.zip&response-content-type=application%2Foctet-stream"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/twbs/icons/releases/download/v1.4.1/bootstrap-icons-1.4.1.zip"
+      }
+    },
+    "flake-utils": {
+      "locked": {
+        "lastModified": 1619345332,
+        "narHash": "sha256-qHnQkEp1uklKTpx3MvKtY6xzgcqXDsz5nLilbbuL+3A=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "2ebf2558e5bf978c7fb8ea927dfaed8fefab2e28",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1619491792,
+        "narHash": "sha256-aQbD8LQzokrAJzKWDkkRuIT87jWI1WJenBgkEinCBiU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "bb149eb1192f278f95d0b870140750aac1bd81c0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "bootstrap": "bootstrap",
+        "bootstrap-icons": "bootstrap-icons",
+        "flake-utils": "flake-utils",
+        "nixpkgs": "nixpkgs",
+        "spago2nix": "spago2nix"
+      }
+    },
+    "spago2nix": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1602604874,
+        "narHash": "sha256-uIVlFzsayjCr7tBpx+ROTavPO0Rl63u3caJIGhsN68U=",
+        "owner": "justinwoo",
+        "repo": "spago2nix",
+        "rev": "898798204fa8f53837bbcf71e30aeb425deb0906",
+        "type": "github"
+      },
+      "original": {
+        "owner": "justinwoo",
+        "ref": "master",
+        "repo": "spago2nix",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
