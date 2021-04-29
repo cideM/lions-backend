@@ -10,3 +10,4 @@ tags
 output
 terraform/.terraform
 terraform/.terraform.lock.hcl
+nixos.*

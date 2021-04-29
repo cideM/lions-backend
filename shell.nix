@@ -1,4 +1,4 @@
-{ pkgs, spago2nix, projectEnv }:
+{ pkgs, spago2nix, projectEnv, deploy-rs, sops-nix }:
 let
 
   lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
@@ -22,8 +22,15 @@ let
 
 in
 pkgs.mkShell {
+  sopsPGPKeyDirs = [
+    "./keys/hosts"
+    "./keys/users"
+  ];
   inputsFrom = [ projectEnv ];
-  nativeBuildInputs = [ spago2nix' ];
+  nativeBuildInputs = [
+    sops-nix.packages.x86_64-linux.sops-pgp-hook
+    spago2nix'
+  ];
   buildInputs = with pkgs.haskellPackages;
     [
       # Haskell
@@ -61,5 +68,6 @@ pkgs.mkShell {
       pkgs.cli53
       pkgs.packer
       pkgs.awscli2
+      deploy-rs.packages.x86_64-linux.deploy-rs
     ];
 }

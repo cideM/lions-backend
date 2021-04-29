@@ -41,7 +41,11 @@ let
 
   clientside = pkgs.stdenv.mkDerivation {
     name = "lions-client";
-    src = builtins.path { name = "purescript"; path = ./.; };
+    src = [
+      ./packages.dhall
+      ./spago.dhall
+      ./src
+    ];
     buildInputs = [
       spagoPkgs.installSpagoStyle
       spagoPkgs.buildSpagoStyle
@@ -51,9 +55,9 @@ let
       spago
     ];
     unpackPhase = ''
-      cp $src/spago.dhall .
-      cp $src/packages.dhall .
-      cp -r $src/src .
+      for srcFile in $src; do
+        cp -r $srcFile $(stripHash $srcFile)
+      done
       install-spago-style
     '';
     buildPhase = ''

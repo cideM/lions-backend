@@ -1,9 +1,3 @@
-locals {
-  role_arns = {
-    "shared" = "arn:aws:iam::094398396563:role/OrganizationAccountAccessRole"
-  }
-}
-
 # https://www.digitalocean.com/community/tutorials/how-to-use-terraform-with-digitalocean
 variable "do_token" {}
 variable "pvt_key" {}
@@ -282,28 +276,26 @@ resource "aws_iam_group_policy_attachment" "AdministratorAccess" {
 #      DIGITAL OCEAN    #
 #########################
 
-data "digitalocean_image" "docker-snapshot" {
-  name = "packer-docker-0.0.1"
-}
+# I created this manually because it uses a NixOS image build with Nix and
+# uploaded manually
 
-resource "digitalocean_droplet" "lions-api" {
-  image              = data.digitalocean_image.docker-snapshot.image
-  name               = "lions-api"
-  region             = "fra1"
-  size               = "s-1vcpu-1gb"
-  private_networking = true
-  ssh_keys = [
-    data.digitalocean_ssh_key.terraform.id
-  ]
-  connection {
-    host        = self.ipv4_address
-    user        = "root"
-    type        = "ssh"
-    private_key = file(var.pvt_key)
-    timeout     = "2m"
-  }
-}
+# resource "digitalocean_droplet" "lions-api" {
+#   name               = "lions-api"
+#   region             = "fra1"
+#   size               = "s-1vcpu-1gb"
+#   private_networking = true
+#   ssh_keys = [
+#     data.digitalocean_ssh_key.terraform.id
+#   ]
+#   connection {
+#     host        = self.ipv4_address
+#     user        = "root"
+#     type        = "ssh"
+#     private_key = file(var.pvt_key)
+#     timeout     = "2m"
+#   }
+# }
 
-output "droplet-ip" {
-  value = digitalocean_droplet.lions-api.ipv4_address
-}
+# output "droplet-ip" {
+#   value = digitalocean_droplet.lions-api.ipv4_address
+# }
