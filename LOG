@@ -1,0 +1,9 @@
+2021-05-12
+I don't need to generate and store the actual key for session encryption. I can
+just point the lib at a file and it will then take care of either reading from
+that file or writing to it first.
+
+Next step is to run migrations at app start and add the Litestream SQLite sync.
+This will allow me to actually run the app on the server successfully and then
+populate the DB from my local machine. I just need to run sync locally and
+point it at the remote S3 bucket.

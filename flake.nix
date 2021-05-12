@@ -49,6 +49,7 @@
                   };
               }).vm;
               server = release.production;
+              assets = release.assets;
             };
 
             defaultPackage = packages.server;

@@ -1,5 +1,13 @@
-- Event shit
+- Run migrations at app start so I can use the actual app
+- Set up litestream which requires an S3 bucket so I can create an admin user
+- Edit the remote litestream DB locally and add admin account
+- Actually use SES to send emails, there should already be an IAM user
 - Request new password change link
+- Refactor the Nix code and put in subfolder and add documentation
+- Add command to run local QEMU
+- Event shit -> I don't know what that means? Events are set up
+- Add all secrets and salts etc. in SOPS               DONE
+- Make sure terraform stuff works                      DONE
 - Renew session ID more often                          MAYBE
 - Replace Purescript with smth sane                    MAYBE
 - Can I catch middleware AND app errors centrally?     DONE

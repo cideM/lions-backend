@@ -13,7 +13,8 @@ let
 
   lions-dev = pkgs.writeScriptBin "lions-dev" ''
     #!/bin/sh
-    nix-build -A assets release.nix
+    echo hi
+    nix build .#assets
     cp -r -n ./result/* ./public/
     cabal v2-run
   '';

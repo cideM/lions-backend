@@ -4,10 +4,13 @@ dist-newstyle
 .envrc
 result
 tags
+.key.aes
 .spago2nix/
 .purs-repl
 .spago
 output
 terraform/.terraform
+terraform/*.tfstate.*
+terraform/*.tfstate
 terraform/.terraform.lock.hcl
 nixos.*

@@ -229,7 +229,8 @@ main :: IO ()
 main = do
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
   appEnv <- getEnv "LIONS_ENV" >>= parseEnv
-  sessionKey <- ClientSession.getKeyEnv "LIONS_SESSION_KEY"
+  sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
+  sessionKey <- ClientSession.getKey sessionKeyFile
   sessionDataVaultKey <- Vault.newKey
   requestIdVaultKey <- Vault.newKey
   SQLite.withConnection
