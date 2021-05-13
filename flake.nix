@@ -2,6 +2,8 @@
   description = "Lions Club Website";
 
   inputs = {
+    litestream-src.url = "github:benbjohnson/litestream/v0.3.4";
+    litestream-src.flake = false;
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixpkgs-20-09.url = "github:NixOS/nixpkgs/nixos-20.09";
     deploy-rs.url = "github:serokell/deploy-rs";
@@ -21,7 +23,18 @@
     sops-nix.url = "github:Mic92/sops-nix";
   };
 
-  outputs = { self, spago2nix, bootstrap-icons, bootstrap, nixpkgs, flake-utils, nixpkgs-20-09, deploy-rs, sops-nix }:
+  outputs =
+    { self
+    , spago2nix
+    , bootstrap-icons
+    , bootstrap
+    , nixpkgs
+    , flake-utils
+    , nixpkgs-20-09
+    , deploy-rs
+    , sops-nix
+    , litestream-src
+    }:
     let
       allSystems = flake-utils.lib.eachSystem [ "x86_64-linux" ]
         (system:
@@ -30,6 +43,13 @@
               inherit system;
               overlays = [ (import ./migrate.nix) ];
               config = import ./config.nix;
+            };
+            litestream = pkgs.buildGoModule rec {
+              pname = "litestream";
+              version = "0.3.4";
+
+              src = litestream-src;
+              vendorSha256 = "sha256-O1d2xQ+1Xn88JCaVv4ge8HmrFqEl3lRTJIhgZoAri7U=";
             };
             release = import ./release.nix { inherit bootstrap-icons bootstrap pkgs; };
             projectEnv = release.project.env;
@@ -59,7 +79,7 @@
 
             defaultApp = apps.server;
 
-            devShell = import ./shell.nix { inherit pkgs spago2nix projectEnv deploy-rs sops-nix; };
+            devShell = import ./shell.nix { inherit pkgs spago2nix projectEnv deploy-rs sops-nix litestream; };
           }
         );
 

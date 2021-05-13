@@ -86,6 +86,45 @@ resource "aws_ses_domain_dkim" "lions" {
   domain = aws_ses_domain_identity.lions.domain
 }
 
+# Litestream SQLite replication
+# This only let's use "aws ls" this specific bucket! Running just "aws s3 ls"
+# without specifying the bucket name will result in Access Denied
+# $ terraform output -json
+# $ AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= aws s3 ls lions-achern-litestream-replica-1
+module "s3_user" {
+  source = "cloudposse/iam-s3-user/aws"
+  version     = "0.15.2"
+  name         = "litestream_user"
+  s3_actions   = ["s3:*"]
+  s3_resources = [
+    "${aws_s3_bucket.litestream-replica-1.arn}/*",
+    "${aws_s3_bucket.litestream-replica-1.arn}"
+   ]
+}
+
+output "litestream_user_access_key_id" {
+  value = module.s3_user.access_key_id
+  sensitive = true
+}
+
+output "litestream_user_access_key_secret" {
+  value = module.s3_user.secret_access_key
+  sensitive = true
+}
+
+
+resource "aws_s3_bucket" "litestream-replica-1" {
+    bucket = "lions-achern-litestream-replica-1"
+
+    versioning {
+      enabled = true
+    }
+
+    lifecycle {
+      prevent_destroy = true
+    }
+}
+
 resource "aws_s3_bucket" "terraform-state-storage-s3" {
     bucket = "lions-achern-terraform-remote-state-storage-s3"
 

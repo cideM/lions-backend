@@ -1,4 +1,4 @@
-{ pkgs, spago2nix, projectEnv, deploy-rs, sops-nix }:
+{ pkgs, spago2nix, projectEnv, deploy-rs, sops-nix, litestream }:
 let
 
   lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
@@ -57,6 +57,7 @@ pkgs.mkShell {
       pkgs.go-migrate
       pkgs.sqlite-interactive
       pkgs.sqlite-web
+      litestream
 
       # Purescript
       pkgs.purescript
