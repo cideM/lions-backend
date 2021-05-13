@@ -11,9 +11,15 @@ let
     ghcid --no-height-limit --clear --reverse
   '';
 
-  lions-dev = pkgs.writeScriptBin "lions-dev" ''
-    #!/bin/sh
-    echo hi
+  lions-vm = pkgs.writeShellScriptBin "lions-vm" ''
+    nix build .#vm
+    echo "visit https://localhost:8081/"
+    echo "or http://localhost:8080/"
+    export QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"
+    ./result/bin/run-nixos-vm
+  '';
+
+  lions-dev = pkgs.writeShellScriptBin "lions-dev" ''
     nix build .#assets
     cp -r -n ./result/* ./public/
     cabal v2-run
@@ -61,6 +67,7 @@ pkgs.mkShell {
 
       # Scripts
       lions-dev
+      lions-vm
       lions-ghcid
       lions-dummy
 

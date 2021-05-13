@@ -45,16 +45,17 @@
                       ./systemd-server.nix
                     ];
 
-                    config.server = release.production;
+                    config.serverWorkingDir = "${release.lions-server}/";
+                    config.serverExe = "${release.lions-server}/bin/migrate-and-serve";
                   };
               }).vm;
-              server = release.production;
+              server = release.lions-server;
               assets = release.assets;
             };
 
             defaultPackage = packages.server;
 
-            apps.server = flake-utils.lib.mkApp { drv = packages.server; exePath = "/server"; };
+            apps.server = flake-utils.lib.mkApp { drv = packages.server; exePath = "/bin/migrate-and-serve"; };
 
             defaultApp = apps.server;
 
