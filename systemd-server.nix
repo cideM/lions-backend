@@ -23,12 +23,13 @@ with lib;
           "LIONS_SESSION_KEY_FILE=%S/lions-server/sessionkey.aes"
         ];
         ProtectSystem = "strict";
+        Group = "lions";
+        User = "lions-server";
         ProtectHome = "yes";
         PrivateDevices = "yes";
         DynamicUser = "yes";
         PrivateTmp = "yes";
         StateDirectory = "lions-server";
-        BindReadOnlyPaths = "/nix/store";
         WorkingDirectory = "${config.serverWorkingDir}";
         ExecStart = "${config.serverExe}";
         Restart = "on-failure";

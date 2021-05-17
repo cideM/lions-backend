@@ -1,10 +1,13 @@
-- Set up litestream which requires an S3 bucket so I can create an admin user
-- Edit the remote litestream DB locally and add admin account
+- multiple sessions are valid!
 - Actually use SES to send emails, there should already be an IAM user
 - Request new password change link
+- JSON logging in prod
 - Refactor the Nix code and put in subfolder and add documentation
+- Remove NIXPKGS_ALLOW_BROKEN
 - ? Renew session ID more often
 - ? Replace Purescript with smth sane
+- x Edit the remote litestream DB locally and add admin account
+- x Set up litestream which requires an S3 bucket so I can create an admin user
 - x Event shit -> I don't know what that means? Events are set up
 - x Add command to run local QEMU
 - x Run migrations at app start so I can use the actual app

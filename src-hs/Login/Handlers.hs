@@ -87,6 +87,7 @@ logout req send = do
     Just (_, userId) -> do
       katipAddContext (sl "user_id" $ show userId) $ do
         logLocM DebugS "trying to delete session"
+        -- TODO: Multiple are valid!
         getSessionFromDbByUser conn userId >>= \case
           Nothing -> throwString "logout request but no session for user"
           Just session@(Session sessionId _ _) -> do

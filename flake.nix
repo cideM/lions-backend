@@ -44,6 +44,7 @@
               overlays = [ (import ./migrate.nix) ];
               config = import ./config.nix;
             };
+
             litestream = pkgs.buildGoModule rec {
               pname = "litestream";
               version = "0.3.4";
@@ -51,11 +52,14 @@
               src = litestream-src;
               vendorSha256 = "sha256-O1d2xQ+1Xn88JCaVv4ge8HmrFqEl3lRTJIhgZoAri7U=";
             };
+
             release = import ./release.nix { inherit bootstrap-icons bootstrap pkgs; };
+
             projectEnv = release.project.env;
           in
           rec {
             packages = flake-utils.lib.flattenTree {
+              litestream = litestream;
               vm = (import "${nixpkgs}/nixos" {
                 inherit system;
                 configuration = { config, pkgs, ... }:
@@ -83,15 +87,21 @@
           }
         );
 
-      serverSystem = nixpkgs-20-09.lib.nixosSystem {
+      serverSystem = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
           sops-nix.nixosModules.sops
           {
-            config.server = allSystems.packages.x86_64-linux.server;
+            # This sucks, install the server systemwide or something
+            config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
+            config.serverExe = "${allSystems.packages.x86_64-linux.server}/bin/migrate-and-serve";
+          }
+          {
+            environment.systemPackages = [ allSystems.packages.x86_64-linux.litestream ];
           }
           ./configuration.nix
           ./systemd-server.nix
+          ./systemd-litestream.nix
           {
             imports = [
               "${nixpkgs-20-09}/nixos/modules/virtualisation/digital-ocean-image.nix"

@@ -19,8 +19,15 @@ let
     ./result/bin/run-nixos-vm
   '';
 
+  lions-vm-db = pkgs.writeShellScriptBin "lions-vm-db" ''
+    scp -P 2221 $LIONS_SQLITE_PATH root@localhost:/var/lib/lions-server/db
+  '';
+
   lions-dev = pkgs.writeShellScriptBin "lions-dev" ''
     nix build .#assets
+    trap 'kill $LITESTREAM_ID; exit' INT
+    litestream replicate $LIONS_SQLITE_PATH s3://lions-achern-litestream-replica-1/dev-db &
+    LITESTREAM_ID=$!
     cp -r -n ./result/* ./public/
     cabal v2-run
   '';
@@ -71,6 +78,7 @@ pkgs.mkShell {
       lions-vm
       lions-ghcid
       lions-dummy
+      lions-vm-db
 
       # Infra
       pkgs.terraform_0_15

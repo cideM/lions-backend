@@ -2,6 +2,8 @@
   boot.loader.grub.enable = true;
 
   sops.defaultSopsFile = ./secrets.yaml;
+  sops.secrets.litestream_aws_key = {};
+  sops.secrets.litestream_aws_secret = {};
 
   users.mutableUsers = false;
 
