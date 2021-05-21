@@ -15,34 +15,13 @@ module PasswordReset.DB
 where
 
 import Control.Exception.Safe
-import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import qualified Crypto.BCrypt as BCrypt
-import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Database.SQLite.Simple.FromField (FromField (..), ResultError (..), fieldData, returnError)
 import Database.SQLite.Simple.FromRow (FromRow)
-import Database.SQLite.Simple.Ok (Ok (..))
-import Database.SQLite.Simple.QQ (sql)
-import Database.SQLite.Simple.ToField (ToField (..))
-import Database.SQLite.Simple.ToRow (ToRow (..))
-import PasswordReset.Domain (Token (..), TokenCreate (..), TokenId (..), Hashed, unhash)
-import Text.Email.Validate (EmailAddress)
-import qualified Text.Email.Validate as Email
-import TextShow
-import Time.Time (timeDaysFromNow)
-import User.Domain
-  ( Role (..),
-    UserEmail (..),
-    UserId (..),
-    UserProfile (..),
-    UserProfileCreate (..),
-    parseRole,
-  )
+import PasswordReset.Domain (Hashed, Token (..), TokenCreate (..), TokenId (..), unhash)
+import User.Domain (UserId (..))
 import Prelude hiding (id)
 
 newtype DBToken = DBToken Token deriving (Show)

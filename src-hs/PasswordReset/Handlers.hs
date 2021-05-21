@@ -19,7 +19,7 @@ where
 
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
-import Control.Monad (when)
+import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
@@ -29,14 +29,13 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Debug.Trace
 import Katip
-import Layout (ActiveNavLink (..), layout)
+import Layout (layout)
 import Lucid
 import Network.URI.Encode (decode, encode)
 import qualified Network.Wai as Wai
-import PasswordReset.DB (deleteToken, getTokenByValue, getTokenForUser, insertToken, updatePassword)
-import PasswordReset.Domain (Token (..), TokenCreate (..), TokenId (..), hashPw)
+import PasswordReset.DB (deleteToken, getTokenByValue, insertToken, updatePassword)
+import PasswordReset.Domain (Token (..), TokenCreate (..), hashPw)
 import qualified PasswordReset.Form
 import Time.Time (timeDaysFromNow)
 import User.DB (getIdAndPwByEmail, getUser)
@@ -105,6 +104,51 @@ showResetForm ::
 showResetForm = do
   return $ layout "Passwort Zurücksetzen" Nothing (resetForm Nothing)
 
+data TryResetError
+  = InvalidPassword PasswordReset.Form.FormInput Text PasswordReset.Form.FormState
+  | NoTokenPassed
+  | TokenNotFound Text
+  | UserForTokenNotFound UserId
+  | TokenExpired Token
+  deriving (Show)
+
+tryReset ::
+  ( MonadIO m,
+    MonadThrow m,
+    MonadError TryResetError m
+  ) =>
+  SQLite.Connection ->
+  Map.Map Text Text ->
+  m ()
+tryReset dbConn params = do
+  token <- case Map.lookup "token" params of
+    Nothing -> throwError NoTokenPassed
+    Just tok -> return tok
+  let input =
+        PasswordReset.Form.FormInput
+          (Map.findWithDefault "" "inputPassword" params)
+          (Map.findWithDefault "" "inputPasswordMatch" params)
+  pw <- case PasswordReset.Form.makePassword input of
+    Left state -> throwError $ InvalidPassword input token state
+    Right pw -> return pw
+  tok@Token {..} <-
+    liftIO (getTokenByValue dbConn token) >>= \case
+      Nothing -> throwError $ TokenNotFound token
+      Just t -> return t
+  _ <-
+    liftIO (getUser dbConn tokenUserId) >>= \case
+      Nothing -> throwError $ UserForTokenNotFound tokenUserId
+      Just _ -> return ()
+  now <- liftIO Time.getCurrentTime
+  if now >= tokenExpires
+    then throwError $ TokenExpired tok
+    else return ()
+  hashed <- hashPw (encodeUtf8 pw)
+  liftIO . SQLite.withTransaction dbConn $ do
+    deleteToken dbConn tokenUserId
+    updatePassword dbConn hashed tokenUserId
+  return ()
+
 handleChangePw ::
   ( MonadIO m,
     MonadThrow m,
@@ -116,56 +160,35 @@ handleChangePw ::
 handleChangePw req = do
   conn <- ask @"dbConn"
   params <- liftIO $ parseParams req
-  case Map.lookup "token" params of
-    Nothing ->
-      return $ onError noTokenMsg
-    Just token ->
-      let input =
-            PasswordReset.Form.FormInput
-              (Map.findWithDefault "" "inputPassword" params)
-              (Map.findWithDefault "" "inputPasswordMatch" params)
-       in case PasswordReset.Form.makePassword input of
-            Left state -> do
-              return $
-                layout "Passwort Ändern" Nothing $
-                  div_ [class_ "container p-3 d-flex justify-content-center"] $
-                    PasswordReset.Form.render token input state
-            Right pw -> do
-              liftIO (getTokenByValue conn token) >>= \case
-                Nothing -> do
-                  logLocM ErrorS "password change request but token not found in DB"
-                  return $ onError "Der Verifizierungs-Code aus der Email wurde nicht gefunden, bitte an einen Administrator wenden"
-                Just Token {..} -> do
-                  katipAddContext (sl "userid" $ show tokenUserId) $ do
-                    katipAddContext (sl "tokenid" $ show tokenId) $ do
-                      liftIO (getUser conn tokenUserId) >>= \case
-                        Nothing -> do
-                          logLocM ErrorS "password change request but user not found in DB"
-                          return $ onError "Kein Nutzer zu diesem Verifizierungs-Code registriert. Bitte an einen Administrator wenden."
-                        Just _ -> do
-                          now <- liftIO Time.getCurrentTime
-                          if now >= tokenExpires
-                            then do
-                              logLocM ErrorS . showLS $ "password change request but token expired at: " <> show tokenExpires
-                              return $ onError expiredMsg
-                            else do
-                              hashed <- hashPw (encodeUtf8 pw)
-                              liftIO . SQLite.withTransaction conn $ do
-                                deleteToken conn tokenUserId
-                                updatePassword conn hashed tokenUserId
-                              return . layout "Passwort Zurücksetzen" Nothing $
-                                div_ [class_ "container p-3 d-flex justify-content-center"] $
-                                  div_ [class_ "row col-md-6"] $ do
-                                    p_ [class_ "alert alert-success", role_ "alert"] "Password erfolgreich geändert"
+  runExceptT (tryReset conn params) >>= \case
+    Left e -> do
+      logLocM InfoS $ showLS e
+      case e of
+        NoTokenPassed -> return $ onError noTokenMsg
+        (InvalidPassword input token state) ->
+          return $
+            layout "Passwort Ändern" Nothing $
+              div_ [class_ "container p-3 d-flex justify-content-center"] $
+                PasswordReset.Form.render token input state
+        (TokenNotFound token) ->
+          return $ onError $ "Der Verifizierungs-Code aus der Email wurde nicht gefunden, bitte an einen Administrator wenden: " <> token
+        (UserForTokenNotFound userid) ->
+          return . onError . Text.pack $ "Kein Nutzer zu diesem Verifizierungs-Code registriert. Bitte an einen Administrator wenden: " <> (show userid)
+        (TokenExpired tok) -> return . onError . Text.pack $ expiredMsg <> show tok
+    Right _ ->
+      return . layout "Passwort Zurücksetzen" Nothing $
+        div_ [class_ "container p-3 d-flex justify-content-center"] $
+          div_ [class_ "row col-md-6"] $ do
+            p_ [class_ "alert alert-success", role_ "alert"] "Password erfolgreich geändert"
   where
     onError :: Text -> Html ()
     onError msg =
-      layout "Fehler" Nothing $
+      layout "Passwort Ändern Fehler" Nothing $
         div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-md-6"] $ do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $ toHtml msg
 
-    expiredMsg = "Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen neuen Link anfordern per 'Password vergessen' Knopf. Falls das Problem weiterhin besteht bitte an einen Administrator wenden"
+    expiredMsg = "Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen neuen Link anfordern per 'Password vergessen' Knopf. Falls das Problem weiterhin besteht bitte an einen Administrator wenden: "
 
     noTokenMsg = "Zum Ändern des Passworts ist ein Verifizierungs-Code notwendig, der normalerweise automatisch aus dem Link in der Email herausgelesen wird. Dieser Code fehlt jedoch. Wurde die /passwort/aendern Adreses manuell aufgerufen? Das Password kann nur über den Link in der Email geändert werden. Falls der richtige Link verwendet wurde, bitte an einen Administrator wenden."
 
