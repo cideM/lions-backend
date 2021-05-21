@@ -3,25 +3,25 @@
     "bootstrap": {
       "flake": false,
       "locked": {
-        "narHash": "sha256-SdODrmnaIeoZ/KxIkrYqxBoaTrB1IvbOz3FXcL/r4Hk=",
+        "narHash": "sha256-HcOmcVvA/MAmd4ZffjGuP4ytboEWpUZVYv38SHKJEp0=",
         "type": "tarball",
-        "url": "https://github-releases.githubusercontent.com/2126244/4af4f500-6bcc-11eb-96ba-a5f8e215ee0b?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20210427%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20210427T100926Z&X-Amz-Expires=300&X-Amz-Signature=236df46273202c3559b0a60019674b7ea1b6fb814282b640a89889b18d937e61&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=2126244&response-content-disposition=attachment%3B%20filename%3Dbootstrap-5.0.0-beta2-dist.zip&response-content-type=application%2Foctet-stream"
+        "url": "https://github.com/twbs/bootstrap/releases/download/v5.0.1/bootstrap-5.0.1-dist.zip"
       },
       "original": {
         "type": "tarball",
-        "url": "https://github.com/twbs/bootstrap/releases/download/v5.0.0-beta2/bootstrap-5.0.0-beta2-dist.zip"
+        "url": "https://github.com/twbs/bootstrap/releases/download/v5.0.1/bootstrap-5.0.1-dist.zip"
       }
     },
     "bootstrap-icons": {
       "flake": false,
       "locked": {
-        "narHash": "sha256-qhZxovp8oibIVX1+4auVuhnj/O56VbbnoPZ/FNBip6Y=",
+        "narHash": "sha256-oK+5EAmZeQLqpJoZY4j/yuemD1PJxmFHCfLcOC/or7o=",
         "type": "tarball",
-        "url": "https://github-releases.githubusercontent.com/198878888/e6ccb880-90c7-11eb-875a-efb25ee22b2f?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20210427%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20210427T101105Z&X-Amz-Expires=300&X-Amz-Signature=0714a6f7e72e3f8c470d89c066e51a6434181404d411aeff8238b10bd2b8512c&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=198878888&response-content-disposition=attachment%3B%20filename%3Dbootstrap-icons-1.4.1.zip&response-content-type=application%2Foctet-stream"
+        "url": "https://github.com/twbs/icons/releases/download/v1.5.0/bootstrap-icons-1.5.0.zip"
       },
       "original": {
         "type": "tarball",
-        "url": "https://github.com/twbs/icons/releases/download/v1.4.1/bootstrap-icons-1.4.1.zip"
+        "url": "https://github.com/twbs/icons/releases/download/v1.5.0/bootstrap-icons-1.5.0.zip"
       }
     },
     "deploy-rs": {
@@ -32,11 +32,11 @@
         "utils": "utils"
       },
       "locked": {
-        "lastModified": 1616406726,
-        "narHash": "sha256-n9zmgxR03QNrvs9/fHewqE0j3SjL7Y+cglBCFu3U3rg=",
+        "lastModified": 1620708296,
+        "narHash": "sha256-8o6qy8kYYNX+gMgKWnNqGvmX0GCEmJ4ubDS3gdWH7sI=",
         "owner": "serokell",
         "repo": "deploy-rs",
-        "rev": "9e405fbc5ab5bacbd271fd78c6b6b6877c4d9f8d",
+        "rev": "896f9d3b5d7c0dc2566c7d2c6fe854ecef17daec",
         "type": "github"
       },
       "original": {

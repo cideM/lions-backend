@@ -160,6 +160,15 @@ resource "aws_cloudtrail" "cloudtrail" {
   depends_on                    = [aws_s3_bucket.log_bucket]
 }
 
+resource "aws_iam_user" "email" {
+  name = "EmailFirebase"
+}
+
+resource "aws_iam_user_policy_attachment" "email_attachment" {
+  user = aws_iam_user.email.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
+}
+
 resource "aws_iam_user" "admin" {
   name = "Admin"
 }

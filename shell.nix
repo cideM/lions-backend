@@ -1,4 +1,4 @@
-{ pkgs, spago2nix, projectEnv, deploy-rs, sops-nix, litestream }:
+{ pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream }:
 let
 
   lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
@@ -42,7 +42,7 @@ pkgs.mkShell {
   ];
   inputsFrom = [ projectEnv ];
   nativeBuildInputs = [
-    sops-nix.packages.x86_64-linux.sops-pgp-hook
+    sopsHook
     spago2nix'
   ];
   buildInputs = with pkgs.haskellPackages;
@@ -85,6 +85,6 @@ pkgs.mkShell {
       pkgs.cli53
       pkgs.packer
       pkgs.awscli2
-      deploy-rs.packages.x86_64-linux.deploy-rs
+      deploy-rs
     ];
 }

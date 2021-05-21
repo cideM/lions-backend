@@ -12,11 +12,11 @@
       flake = false;
     };
     bootstrap = {
-      url = "https://github.com/twbs/bootstrap/releases/download/v5.0.0-beta2/bootstrap-5.0.0-beta2-dist.zip";
+      url = "https://github.com/twbs/bootstrap/releases/download/v5.0.1/bootstrap-5.0.1-dist.zip";
       flake = false;
     };
     bootstrap-icons = {
-      url = "https://github.com/twbs/icons/releases/download/v1.4.1/bootstrap-icons-1.4.1.zip";
+      url = "https://github.com/twbs/icons/releases/download/v1.5.0/bootstrap-icons-1.5.0.zip";
       flake = false;
     };
     flake-utils.url = "github:numtide/flake-utils";
@@ -36,7 +36,7 @@
     , litestream-src
     }:
     let
-      allSystems = flake-utils.lib.eachSystem [ "x86_64-linux" ]
+      allSystems = flake-utils.lib.eachDefaultSystem
         (system:
           let
             pkgs = import nixpkgs {
@@ -60,19 +60,6 @@
           rec {
             packages = flake-utils.lib.flattenTree {
               litestream = litestream;
-              vm = (import "${nixpkgs}/nixos" {
-                inherit system;
-                configuration = { config, pkgs, ... }:
-                  {
-                    imports = [
-                      ./vm.nix
-                      ./systemd-server.nix
-                    ];
-
-                    config.serverWorkingDir = "${release.lions-server}/";
-                    config.serverExe = "${release.lions-server}/bin/migrate-and-serve";
-                  };
-              }).vm;
               server = release.lions-server;
               assets = release.assets;
             };
@@ -83,11 +70,15 @@
 
             defaultApp = apps.server;
 
-            devShell = import ./shell.nix { inherit pkgs spago2nix projectEnv deploy-rs sops-nix litestream; };
+            devShell = import ./shell.nix {
+              inherit pkgs spago2nix projectEnv litestream;
+              sopsHook = sops-nix.packages.${system}.sops-pgp-hook;
+              deploy-rs = deploy-rs.packages.${system}.deploy-rs;
+            };
           }
         );
 
-      serverSystem = nixpkgs.lib.nixosSystem {
+      serverSystem = system: nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
           sops-nix.nixosModules.sops
