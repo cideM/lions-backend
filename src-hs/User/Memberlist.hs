@@ -4,7 +4,7 @@
 
 module User.Memberlist (render, UserGroupToShow (..)) where
 
-import Control.Monad (unless, when)
+import Control.Monad (unless)
 import Data.List.NonEmpty (toList)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text

@@ -19,10 +19,8 @@ where
 
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
-import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (isNothing)
 import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
 import Katip
@@ -128,27 +126,15 @@ handleDeleteMessage ::
   m (Html ())
 handleDeleteMessage msgid _ = do
   conn <- ask @"dbConn"
-  msg <- liftIO $ getWelcomeMsgFromDb conn msgid
-  case msg of
-    Nothing -> throwString $ "edit message but no message found for id: " <> show msgid
-    Just (WelcomeMsg _ content _) -> do
-      deleteMessage conn msgid
-      return $
-        layout "Nachricht Editieren" (Just Welcome) $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] "Nachricht erfolgreich gelöscht"
+  liftIO $ deleteMessage conn msgid
+  return $
+    layout "Nachricht Editieren" (Just Welcome) $
+      div_ [class_ "container p-3 d-flex justify-content-center"] $
+        div_ [class_ "row col-6"] $ do
+          p_ [class_ "alert alert-success", role_ "alert"] "Nachricht erfolgreich gelöscht"
 
-showAddMessageForm ::
-  ( MonadIO m,
-    MonadThrow m,
-    KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
-  Auth.AdminUser ->
-  m (Html ())
+showAddMessageForm :: (MonadIO m) => Auth.AdminUser -> m (Html ())
 showAddMessageForm _ = do
-  conn <- ask @"dbConn"
   let formAction = "/neu"
    in return . layout "Neue Nachricht Erstellen" (Just Welcome) $
         div_ [class_ "container p-2"] $ do

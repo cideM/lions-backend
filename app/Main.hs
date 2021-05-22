@@ -100,7 +100,7 @@ app req send = do
           -- app already did that and now they just expect Authorized or Admin.
           -- data Authorized = AuthorizedUser FooData | AuthorizedAdmin FooData
           -- I think I like that
-          "GET" -> authenticatedOnly' (LandingPage.Handlers.showLandingPage req >=> send200)
+          "GET" -> authenticatedOnly' (LandingPage.Handlers.showLandingPage >=> send200)
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of

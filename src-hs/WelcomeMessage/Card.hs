@@ -3,7 +3,6 @@
 module WelcomeMessage.Card (render, DeleteHref (..), EditHref (..)) where
 
 import Control.Monad (when)
-import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Time as Time
 import Locale (german)

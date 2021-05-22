@@ -15,18 +15,13 @@ import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad (when)
-import qualified Data.Map.Strict as Map
-import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), layout)
 import Lucid
-import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
-import User.DB (getUsers)
-import User.Domain (Role (..), UserProfile (..))
-import Wai (parseParams)
+import Prelude hiding (id)
 import qualified WelcomeMessage.Card
 import WelcomeMessage.DB (getAllWelcomeMsgsFromDb)
 import WelcomeMessage.Domain (WelcomeMsg (..), WelcomeMsgId (..))
@@ -36,15 +31,13 @@ showLandingPage ::
     MonadCatch m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
-  Wai.Request ->
   Auth.Authenticated ->
   m (Html ())
-showLandingPage req auth = do
+showLandingPage auth = do
   let userIsAdmin = case auth of
         Auth.IsAdmin _ -> True
         _ -> False
   conn <- ask @"dbConn"
-  params <- liftIO $ parseParams req
   msgs <-
     handleAny (\e -> throwString $ "error getting welcome messages: " <> show e) $
       getAllWelcomeMsgsFromDb conn
