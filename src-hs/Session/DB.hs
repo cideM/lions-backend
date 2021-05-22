@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Session.DB
-  ( getSessionFromDbByUser,
+  ( getSessionsFromDbByUser,
     getSessionFromDb,
     saveSession,
     deleteSession,
@@ -41,14 +41,12 @@ getSessionFromDb conn (SessionId id) =
         [] -> return Nothing
         other -> throwString $ "unexpected DB result: " <> show other
 
-getSessionFromDbByUser :: (MonadIO m) => SQLite.Connection -> UserId -> m (Maybe Session)
-getSessionFromDbByUser conn (UserId id) =
+getSessionsFromDbByUser :: (MonadIO m) => SQLite.Connection -> UserId -> m [Session]
+getSessionsFromDbByUser conn (UserId id) =
   liftIO $
     SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE userid = ?" [id]
       >>= \case
-        [DBSession s] -> return $ Just s
-        [] -> return Nothing
-        other -> throwString $ "unexpected DB result: " <> show other
+        (sessions :: [DBSession]) -> return $ map (\(DBSession s) -> s) sessions
 
 saveSession :: (MonadIO m) => SQLite.Connection -> ValidSession -> m ()
 saveSession conn (ValidSession session) =

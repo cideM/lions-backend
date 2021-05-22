@@ -53,7 +53,7 @@ tryLogin dbConn sessionKey sessionDataVaultKey req = do
       let vault = Wai.vault req
           vault' = Vault.insert sessionDataVaultKey (roles, userId) vault
           req' = req {Wai.vault = vault'}
-      logLocM InfoS "successful session authentication in middleware"
+      logLocM DebugS "successful session authentication in middleware"
       pure req'
 
 type WaiApp m = Wai.Request -> (Wai.Response -> m Wai.ResponseReceived) -> m Wai.ResponseReceived
@@ -74,7 +74,7 @@ middleware nextApp req send = do
   sessionDataVaultKey <- ask @"sessionDataVaultKey"
   runExceptT (tryLogin dbConn sessionKey sessionDataVaultKey req) >>= \case
     Left e -> do
-      logLocM InfoS (ls e)
+      logLocM ErrorS (ls e)
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send

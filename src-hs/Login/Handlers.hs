@@ -18,7 +18,6 @@ import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
-import Time.Time (timeDaysFromNow)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
@@ -31,8 +30,9 @@ import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
-import Session.DB (deleteSession, getSessionFromDbByUser, saveSession)
+import Session.DB (deleteSession, getSessionsFromDbByUser, saveSession)
 import Session.Domain (Session (..), SessionDataVaultKey, SessionId (..), makeValidSession)
+import Time.Time (timeDaysFromNow)
 import User.DB (getIdAndPwByEmail)
 import Wai (parseParams)
 import qualified Web.ClientSession as ClientSession
@@ -56,7 +56,7 @@ tryLogin conn sessionKey env email formPw = do
     s <- makeValidSession $ Session (SessionId sessionIdRaw) expires userId
     saveSession conn s
     encryptedSessionId <- liftIO $ ClientSession.encryptIO sessionKey (encodeUtf8 sessionIdRaw)
-    logLocM InfoS "successful login"
+    logLocM DebugS "successful login"
     return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
       Cookie.defaultSetCookie
         { Cookie.setCookieName = "lions_session",
@@ -87,21 +87,24 @@ logout req send = do
     Just (_, userId) -> do
       katipAddContext (sl "user_id" $ show userId) $ do
         logLocM DebugS "trying to delete session"
-        -- TODO: Multiple are valid!
-        getSessionFromDbByUser conn userId >>= \case
-          Nothing -> throwString "logout request but no session for user"
-          Just session@(Session sessionId _ _) -> do
-            katipAddContext (sl "session_id" $ show sessionId) $ do
-              deleteSession conn session
-              logLocM DebugS "deleted session"
-              send
-                . Wai.responseLBS
-                  status302
-                  [ ("Content-Type", "text/html; charset=UTF-8"),
-                    ("Set-Cookie", logoutCookie env),
-                    ("Location", "/login")
-                  ]
-                $ renderBS ""
+        getSessionsFromDbByUser conn userId >>= \case
+          [] -> throwString "logout request but no session for user"
+          sessions -> do
+            mapM_
+              ( \session@(Session sessionId _ _) -> do
+                  katipAddContext (sl "session_id" $ show sessionId) $ do
+                    deleteSession conn session
+                    logLocM DebugS "deleted session"
+              )
+              sessions
+            send
+              . Wai.responseLBS
+                status302
+                [ ("Content-Type", "text/html; charset=UTF-8"),
+                  ("Set-Cookie", logoutCookie env),
+                  ("Location", "/login")
+                ]
+              $ renderBS ""
   where
     logoutCookie env =
       LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
@@ -146,8 +149,8 @@ login req send = do
             formPw
             (Just "Ungültige Kombination aus Email und Passwort")
       Right cookie -> do
-        send
-          $ Wai.responseLBS
+        send $
+          Wai.responseLBS
             status302
             [ ("Set-Cookie", cookie),
               ("Location", "/")

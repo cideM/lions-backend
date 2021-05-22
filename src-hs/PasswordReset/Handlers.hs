@@ -162,7 +162,7 @@ handleChangePw req = do
   params <- liftIO $ parseParams req
   runExceptT (tryReset conn params) >>= \case
     Left e -> do
-      logLocM InfoS $ showLS e
+      logLocM ErrorS $ showLS e
       case e of
         NoTokenPassed -> return $ onError noTokenMsg
         (InvalidPassword input token state) ->

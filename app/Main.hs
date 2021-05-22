@@ -277,7 +277,7 @@ main = do
 
             liftIO $ SQLite.execute_ conn "PRAGMA foreign_keys"
             K.katipAddContext (K.sl "port" (3000 :: Int)) $ do
-              K.logLocM K.InfoS "starting server"
+              K.logLocM K.DebugS "starting server"
               liftIO . (runSettings . setPort 3000 $ setHost "localhost" defaultSettings)
                 . logStdout
                 . staticPolicy (addBase "public")
