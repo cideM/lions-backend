@@ -62,6 +62,7 @@
               litestream = litestream;
               server = release.lions-server;
               assets = release.assets;
+              clientside = release.clientside;
             };
 
             defaultPackage = packages.server;

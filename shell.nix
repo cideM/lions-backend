@@ -30,8 +30,9 @@ let
   lions-dev = pkgs.writeShellScriptBin "lions-dev" ''
     [[ -d public ]] || mkdir public
     [[ -f "$LIONS_SQLITE_PATH" ]] || touch "$LIONS_SQLITE_PATH"
-    nix build .#assets
+    nix build .#assets .#clientside
     cp -r -n ./result/* ./public/
+    cp -r -n ./result-1/* ./public/
     cabal v2-run
   '';
 
