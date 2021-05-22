@@ -29,6 +29,7 @@ render :: ShowAdminTools -> Maybe Reply -> EventId -> Event -> Html ()
 render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
   let formatted = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
       coming = eventReplies & filter replyComing & length
+      notComing = eventReplies & filter (not . replyComing) & length
       guests = eventReplies & filter replyComing & map replyGuests & sum
    in do
         div_ [class_ "container"] $ do
@@ -121,20 +122,21 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
                     (eventReplies & filter replyComing)
             div_ [class_ "col"] $ do
               h2_ [class_ "h4"] "Absagen"
-              table_ [class_ "table"] $ do
-                thead_ $ do
-                  tr_ $ do
-                    th_ [scope_ "col"] "Email"
-                    th_ [scope_ "col"] ""
-                tbody_ $ do
-                  mapM_
-                    ( \Reply {replyEmail = UserEmail email, replyUserId = UserId userid} -> do
-                        tr_ $ do
-                          td_ [] $ toHtml $ showEmail email
-                          td_ [class_ "d-flex justify-content-end"] $
-                            a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
-                    )
-                    (eventReplies & filter (not . replyComing))
+              when (notComing > 0) $ do
+                table_ [class_ "table"] $ do
+                  thead_ $ do
+                    tr_ $ do
+                      th_ [scope_ "col"] "Email"
+                      th_ [scope_ "col"] ""
+                  tbody_ $ do
+                    mapM_
+                      ( \Reply {replyEmail = UserEmail email, replyUserId = UserId userid} -> do
+                          tr_ $ do
+                            td_ [] $ toHtml $ showEmail email
+                            td_ [class_ "d-flex justify-content-end"] $
+                              a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
+                      )
+                      (eventReplies & filter (not . replyComing))
   where
     replyGuests' = case replyComing' of
       Just True -> maybe mempty (Text.pack . show . replyGuests) ownReply

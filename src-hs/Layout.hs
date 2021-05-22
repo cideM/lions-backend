@@ -16,7 +16,7 @@ import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
 
-data ActiveNavLink = Welcome | Events | Login deriving (Eq)
+data ActiveNavLink = Welcome | Events | Members | Login deriving (Eq)
 
 expanded_, describedBy_, ariaLabel_, ariaLabelledBy_, ariaHidden_ :: Text -> Attribute
 expanded_ = makeAttribute "expanded"
@@ -64,6 +64,7 @@ layout pageTitle activeNavLink pageContent = doctypehtml_ $ do
                   f
                   [ ("/", "Startseite", Just Welcome),
                     ("/veranstaltungen", "Veranstaltungen", Just Events),
+                    ("/nutzer", "Mitglieder", Just Members),
                     ("/login", "Login", Just Login)
                   ]
       div_ [class_ "py-4 content"] pageContent

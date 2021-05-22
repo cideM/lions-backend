@@ -54,12 +54,18 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
           small_ [class_ "text-muted"] "Geburtstag des Partners"
           p_ [class_ "fs-5"] $ toHtml' formatted
     div_ [class_ "card-footer d-flex d-grid"] $ do
-      when canDelete $ do
-        form_ [action_ . Text.pack $ "/nutzer/" <> show userId <> "/loeschen", method_ "get"] $
-          button_ [class_ "btn btn-danger me-4", type_ "submit"] "Nutzer löschen"
-      when canEdit $ do
-        form_ [action_ $ "/nutzer/" <> showt userId <> "/editieren", method_ "get"] $
-          button_ [class_ "btn btn-secondary me-4", type_ "submit"] "Nutzer editieren"
+      when canDelete $
+        a_
+          [ href_ . Text.pack $ "/nutzer/" <> show userId <> "/loeschen",
+            class_ "link link-danger me-4"
+          ]
+          "Nutzer löschen"
+      when canEdit $
+        a_
+          [ href_ $ "/nutzer/" <> showt userId <> "/editieren",
+            class_ "link link-secondary me-4"
+          ]
+          "Nutzer editieren"
   where
     toHtml' = toHtml . fromMaybe ""
     displayBadges = Text.intercalate ", " . map showBadge . filter dropUser

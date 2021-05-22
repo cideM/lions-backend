@@ -20,8 +20,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import LandingPage.UsersList (UserGroupToShow (..))
-import qualified LandingPage.UsersList
 import Layout (ActiveNavLink (..), layout)
 import Lucid
 import qualified Network.Wai as Wai
@@ -32,14 +30,6 @@ import Wai (parseParams)
 import qualified WelcomeMessage.Card
 import WelcomeMessage.DB (getAllWelcomeMsgsFromDb)
 import WelcomeMessage.Domain (WelcomeMsg (..), WelcomeMsgId (..))
-
-parseSelection :: Text -> Either Text UserGroupToShow
-parseSelection "all" = Right All
-parseSelection "admin" = Right $ Some Admin
-parseSelection "board" = Right $ Some Board
-parseSelection "user" = Right $ Some User
-parseSelection "president" = Right $ Some President
-parseSelection v = Left $ "unknown user group: " <> v
 
 showLandingPage ::
   ( MonadIO m,
@@ -55,18 +45,10 @@ showLandingPage req auth = do
         _ -> False
   conn <- ask @"dbConn"
   params <- liftIO $ parseParams req
-  let selectionRaw = Map.findWithDefault "all" "userselect" params
-  selectionParsed <- case parseSelection selectionRaw of
-    Left e -> liftIO . throwString . Text.unpack $ "invalid group selection: " <> selectionRaw <> " " <> e
-    Right (v :: UserGroupToShow) -> pure v
   msgs <-
     handleAny (\e -> throwString $ "error getting welcome messages: " <> show e) $
       getAllWelcomeMsgsFromDb conn
   zone <- liftIO Time.getCurrentTimeZone
-  users <- liftIO $ getUsers conn
-  let usersToShow = case selectionParsed of
-        All -> users
-        Some role -> filterUsers role users
   return $
     layout "Willkommen" (Just Welcome) $
       div_ [class_ "container"] $ do
@@ -87,7 +69,3 @@ showLandingPage req auth = do
                       (WelcomeMessage.Card.render editHref deleteHref (content, zoned) userIsAdmin)
             )
             msgs
-  where
-    -- section_ [class_ "justify-content-center col"] (LandingPage.UsersList.render usersToShow userIsAdmin selectionParsed)
-
-    filterUsers keep = filter (elem keep . userRoles)

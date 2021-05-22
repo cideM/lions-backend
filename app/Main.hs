@@ -168,7 +168,7 @@ app req send = do
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' (LandingPage.Handlers.showLandingPage req >=> send200)
+          "GET" -> authenticatedOnly' (User.Handlers.showMemberList req >=> send200)
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of

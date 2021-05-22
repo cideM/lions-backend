@@ -32,7 +32,7 @@ executable lions-backend
     Layout
     Locale
     LandingPage.Handlers
-    LandingPage.UsersList
+    User.Memberlist
     User.Form
     User.Handlers
     User.Domain
