@@ -31,8 +31,18 @@ for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
 
 ## Development
 
-Rebuild and restart when source changes.
+Rebuild and restart when source changes. This may or may not work reliably on MacOS.
 
 ```shell
 $ fd . -e hs | entr -cr lions-dev
 ```
+
+## Litestream
+
+```shell
+LITESTREAM_ACCESS_KEY_ID= LITESTREAM_SECRET_ACCESS_KEY= litestream generations s3://lions-achern-litestream-replica-1/test/
+```
+
+## Notes
+
+- Editing the date of an event isn't implemented

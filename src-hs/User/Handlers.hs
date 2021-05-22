@@ -270,6 +270,7 @@ showProfile paramId auth = do
 
 deleteUser ::
   ( MonadIO m,
+    MonadThrow m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
   UserId ->
@@ -279,10 +280,7 @@ deleteUser userId _ = do
   conn <- ask @"dbConn"
   user <- liftIO $ getUser conn userId
   case user of
-    Nothing -> return . layout "Fehler" Nothing $
-      div_ [class_ "container p-3 d-flex justify-content-center"] $
-        div_ [class_ "row col-6"] $ do
-          p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
+    Nothing -> throwString $ "edit user but no user found for id: " <> show userId
     Just userProfile -> do
       deleteUserById conn userId
       return $

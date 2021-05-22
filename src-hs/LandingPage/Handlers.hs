@@ -14,6 +14,7 @@ module LandingPage.Handlers (showLandingPage) where
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad (when)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -29,8 +30,8 @@ import User.DB (getUsers)
 import User.Domain (Role (..), UserProfile (..))
 import Wai (parseParams)
 import qualified WelcomeMessage.Card
-import WelcomeMessage.DB (getWelcomeMsgFromDb)
-import WelcomeMessage.Domain (WelcomeMsg (..))
+import WelcomeMessage.DB (getAllWelcomeMsgsFromDb)
+import WelcomeMessage.Domain (WelcomeMsg (..), WelcomeMsgId (..))
 
 parseSelection :: Text -> Either Text UserGroupToShow
 parseSelection "all" = Right All
@@ -42,6 +43,7 @@ parseSelection v = Left $ "unknown user group: " <> v
 
 showLandingPage ::
   ( MonadIO m,
+    MonadCatch m,
     HasReader "dbConn" SQLite.Connection m
   ) =>
   Wai.Request ->
@@ -57,18 +59,35 @@ showLandingPage req auth = do
   selectionParsed <- case parseSelection selectionRaw of
     Left e -> liftIO . throwString . Text.unpack $ "invalid group selection: " <> selectionRaw <> " " <> e
     Right (v :: UserGroupToShow) -> pure v
-  msg <- getWelcomeMsgFromDb conn
+  msgs <-
+    handleAny (\e -> throwString $ "error getting welcome messages: " <> show e) $
+      getAllWelcomeMsgsFromDb conn
   zone <- liftIO Time.getCurrentTimeZone
   users <- liftIO $ getUsers conn
-  let msg' = (\(WelcomeMsg content datetime) -> (content, Time.utcToZonedTime zone datetime)) <$> msg
-      usersToShow = case selectionParsed of
+  let usersToShow = case selectionParsed of
         All -> users
         Some role -> filterUsers role users
   return $
     layout "Willkommen" (Just Welcome) $
-      div_ [class_ "container"] $
-        div_ [class_ "row row-cols-1 row-cols-lg-2 g-5"] $ do
-          section_ [class_ "justify-content-center col"] (WelcomeMessage.Card.render msg' userIsAdmin)
-          section_ [class_ "justify-content-center col"] (LandingPage.UsersList.render usersToShow userIsAdmin selectionParsed)
+      div_ [class_ "container"] $ do
+        p_ [class_ "alert alert-info"] $ do
+          "Alle Dateien (inklusive Bilderarchiv) des Lions Club Achern befinden sich auf "
+          a_ [href_ "https://1drv.ms/f/s!As3H-io1fRdFcZnEJ0BXdpeV9Lw"] "Microsoft OneDrive"
+        when userIsAdmin $
+          a_ [class_ "mb-3 btn btn-primary", href_ "/neu", role_ "button"] "Neue Nachricht"
+        h1_ [class_ "display-6 mb-3"] "Interne Neuigkeiten"
+        div_ [class_ "row row-cols-1 g-5"] $ do
+          mapM_
+            ( \(WelcomeMsg (WelcomeMsgId id) content datetime) ->
+                let editHref = WelcomeMessage.Card.EditHref $ Text.pack $ "/editieren/" <> show id
+                    deleteHref = WelcomeMessage.Card.DeleteHref $ Text.pack $ "/loeschen/" <> show id
+                    zoned = Time.utcToZonedTime zone datetime
+                 in section_
+                      [class_ "justify-content-center col"]
+                      (WelcomeMessage.Card.render editHref deleteHref (content, zoned) userIsAdmin)
+            )
+            msgs
   where
+    -- section_ [class_ "justify-content-center col"] (LandingPage.UsersList.render usersToShow userIsAdmin selectionParsed)
+
     filterUsers keep = filter (elem keep . userRoles)

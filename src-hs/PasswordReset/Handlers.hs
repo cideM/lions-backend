@@ -190,7 +190,7 @@ handleChangePw req = do
 
     expiredMsg = "Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen neuen Link anfordern per 'Password vergessen' Knopf. Falls das Problem weiterhin besteht bitte an einen Administrator wenden: "
 
-    noTokenMsg = "Zum Ändern des Passworts ist ein Verifizierungs-Code notwendig, der normalerweise automatisch aus dem Link in der Email herausgelesen wird. Dieser Code fehlt jedoch. Wurde die /passwort/aendern Adreses manuell aufgerufen? Das Password kann nur über den Link in der Email geändert werden. Falls der richtige Link verwendet wurde, bitte an einen Administrator wenden."
+    noTokenMsg = "Zum Ändern des Passworts ist ein Verifizierungs-Code notwendig, der normalerweise automatisch aus dem Link in der Email herausgelesen wird. Dieser Code fehlt jedoch. Das Password kann nur über den Link in der Email geändert werden. Falls der richtige Link verwendet wurde, bitte an einen Administrator wenden."
 
 showChangePwForm ::
   ( MonadIO m,

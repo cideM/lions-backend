@@ -112,7 +112,6 @@ output "litestream_user_access_key_secret" {
   sensitive = true
 }
 
-
 resource "aws_s3_bucket" "litestream-replica-1" {
     bucket = "lions-achern-litestream-replica-1"
 

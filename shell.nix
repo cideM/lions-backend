@@ -23,11 +23,14 @@ let
     scp -P 2221 $LIONS_SQLITE_PATH root@localhost:/var/lib/lions-server/db
   '';
 
+  lions-db-replicate = pkgs.writeShellScriptBin "lions-db-replicate" ''
+    litestream replicate $LIONS_SQLITE_PATH s3://lions-achern-litestream-replica-1/dev-db
+  '';
+
   lions-dev = pkgs.writeShellScriptBin "lions-dev" ''
+    [[ -d public ]] || mkdir public
+    [[ -f "$LIONS_SQLITE_PATH" ]] || touch "$LIONS_SQLITE_PATH"
     nix build .#assets
-    trap 'kill $LITESTREAM_ID; exit' INT
-    litestream replicate $LIONS_SQLITE_PATH s3://lions-achern-litestream-replica-1/dev-db &
-    LITESTREAM_ID=$!
     cp -r -n ./result/* ./public/
     cabal v2-run
   '';
@@ -78,6 +81,7 @@ pkgs.mkShell {
       lions-vm
       lions-ghcid
       lions-dummy
+      lions-db-replicate
       lions-vm-db
 
       # Infra

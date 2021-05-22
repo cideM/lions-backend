@@ -19,7 +19,6 @@ import Data.UUID (toText)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Events.Domain (EventId (..))
-import qualified PasswordReset.Handlers
 import qualified Events.Handlers
 import qualified Katip as K
 import qualified LandingPage.Handlers
@@ -28,9 +27,10 @@ import qualified Login.Handlers
 import Lucid
 import Network.HTTP.Types (status200, status403, status404, status500)
 import qualified Network.Wai as Wai
-import Network.Wai.Handler.Warp (run)
+import Network.Wai.Handler.Warp (runSettings, defaultSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
+import qualified PasswordReset.Handlers
 import RequestID.Middleware (RequestIdVaultKey)
 import qualified RequestID.Middleware
 import qualified Routes.Data as Auth
@@ -43,6 +43,7 @@ import User.Domain (UserId (..), isAdmin)
 import qualified User.Handlers
 import qualified Web.ClientSession as ClientSession
 import qualified WelcomeMessage.Handlers
+import WelcomeMessage.Domain (WelcomeMsgId (..))
 import Prelude hiding (id)
 
 app ::
@@ -142,12 +143,29 @@ app req send = do
               "GET" -> adminOnly' (Events.Handlers.showEditEventForm (EventId parsed) >=> send200)
               "POST" -> adminOnly' (Events.Handlers.handleUpdateEvent req (EventId parsed) >=> send200)
               _ -> send404
-      -- TODO: translate
-      ["edit"] ->
+      ["loeschen", i] ->
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
+          Right (parsed :: Int) ->
+            let msgId = (WelcomeMsgId parsed)
+             in case Wai.requestMethod req of
+                  "POST" -> adminOnly' (WelcomeMessage.Handlers.handleDeleteMessage msgId >=> send200)
+                  "GET" -> adminOnly' (WelcomeMessage.Handlers.showDeleteConfirmation msgId >=> send200)
+                  _ -> send404
+      ["neu"] ->
         case Wai.requestMethod req of
           "POST" -> adminOnly' (WelcomeMessage.Handlers.saveNewMessage req >=> send200)
-          "GET" -> adminOnly' (WelcomeMessage.Handlers.showMessageEditForm >=> send200)
+          "GET" -> adminOnly' (WelcomeMessage.Handlers.showAddMessageForm >=> send200)
           _ -> send404
+      ["editieren", i] ->
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
+          Right (parsed :: Int) ->
+            let msgId = (WelcomeMsgId parsed)
+             in case Wai.requestMethod req of
+                  "POST" -> adminOnly' (WelcomeMessage.Handlers.handleEditMessage req msgId >=> send200)
+                  "GET" -> adminOnly' (WelcomeMessage.Handlers.showMessageEditForm msgId >=> send200)
+                  _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
           "GET" -> authenticatedOnly' (LandingPage.Handlers.showLandingPage req >=> send200)
@@ -260,7 +278,7 @@ main = do
             liftIO $ SQLite.execute_ conn "PRAGMA foreign_keys"
             K.katipAddContext (K.sl "port" (3000 :: Int)) $ do
               K.logLocM K.InfoS "starting server"
-              liftIO . run 3000
+              liftIO . (runSettings . setPort 3000 $ setHost "localhost" defaultSettings)
                 . logStdout
                 . staticPolicy (addBase "public")
                 $ ( \r s ->
