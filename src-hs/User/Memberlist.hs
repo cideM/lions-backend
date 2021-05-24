@@ -22,7 +22,7 @@ instance Show UserGroupToShow where
 render :: [UserProfile] -> UserGroupToShow -> Html ()
 render users activeGroup = do
   div_ [class_ "d-flex justify-content-between align-items-center mb-3 flex-wrap"] $ do
-    h1_ [class_ "card-title fs-3"] "Mitgliederliste"
+    h1_ [class_ "h3"] "Mitgliederliste"
     form_ [method_ "get", action_ "/nutzer", class_ "d-flex"] $ do
       select_ [name_ "userselect", class_ "form-select form-select-sm me-1", ariaLabel_ "Nutzergruppe auswählen"] $ do
         mapM_

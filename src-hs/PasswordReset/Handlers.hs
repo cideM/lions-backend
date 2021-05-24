@@ -5,6 +5,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -17,13 +18,16 @@ module PasswordReset.Handlers
   )
 where
 
+import qualified App
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
+import Control.Lens
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.Map.Strict as Map
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -32,6 +36,8 @@ import qualified Database.SQLite.Simple as SQLite
 import Katip
 import Layout (layout)
 import Lucid
+import qualified Network.AWS as AWS
+import qualified Network.AWS.SES as SES
 import Network.URI.Encode (decode, encode)
 import qualified Network.Wai as Wai
 import PasswordReset.DB (deleteToken, getTokenByValue, insertToken, updatePassword)
@@ -54,16 +60,54 @@ newTokenCreate userid = do
         Just token'' -> return $ decodeUtf8 token''
   return $ TokenCreate token expires userid
 
+makeEmail :: Text -> Text -> (Text, Text)
+makeEmail host token =
+  let resetLink = host <> "/passwort/aendern?token=" <> token
+      textEmail =
+        [i|
+          Hallo liebes Lions Mitglied,
+
+          zum Ändern des Passworts einfach den folgenden Link anklicken:
+          #{resetLink}
+
+          Viele Grüße,
+          Dein Lions Club Achern
+        |]
+      htmlMail =
+        [i|
+          <h3>Hallo liebes Lions Mitglied,</h3>
+          <p>
+            zum Ändern des Passworts einfach den folgenden Link anklicken:<br>
+            <a href="#{resetLink}">Link</a>
+          </p>
+
+          <p>
+            Viele Grüße,<br>
+            Dein Lions Club Achern
+          </p>
+        |]
+   in (textEmail, htmlMail)
+
 handleReset ::
   ( MonadIO m,
     MonadThrow m,
     KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
+    HasReader "dbConn" SQLite.Connection m,
+    HasReader "port" Int m,
+    HasReader "appEnv" App.Environment m,
+    HasReader "awsEnv" AWS.Env m
   ) =>
   Wai.Request ->
   m (Html ())
 handleReset req = do
   conn <- ask @"dbConn"
+  awsEnv <- ask @"awsEnv"
+  appEnv <- ask @"appEnv"
+  port <- ask @"port"
+  let resetHost =
+        if appEnv == App.Production
+          then "https://www.lions-achern.de"
+          else Text.pack $ "http://localhost:" <> show port
   params <- liftIO $ parseParams req
   case Map.lookup "email" params of
     Nothing -> return $ layout "Passwort Zurücksetzen" Nothing (resetForm $ Just "Email darf nicht leer sein")
@@ -75,7 +119,18 @@ handleReset req = do
           liftIO . SQLite.withTransaction conn $ do
             deleteToken conn userid
             insertToken conn newToken
-          liftIO $ print (encode $ Text.unpack tokenCreateValue)
+          let token = Text.pack . encode $ Text.unpack tokenCreateValue
+              (textMail, htmlMail) = makeEmail resetHost token
+              message =
+                SES.message
+                  (SES.content "hi")
+                  (set SES.bHTML (Just $ SES.content htmlMail) (set SES.bText (Just $ SES.content textMail) SES.body))
+          _ <-
+            liftIO . AWS.runResourceT . AWS.runAWS awsEnv . AWS.within AWS.Frankfurt . AWS.send $
+              SES.sendEmail
+                "hello@lions-achern.de"
+                (set SES.dToAddresses ["fbeeres@gmail.com"] SES.destination)
+                message
           return . layout "Passwort Zurücksetzen" Nothing $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
               div_ [class_ "row col-md-6"] $ do

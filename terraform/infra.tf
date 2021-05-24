@@ -168,6 +168,20 @@ resource "aws_iam_user_policy_attachment" "email_attachment" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
 }
 
+resource "aws_iam_access_key" "email-user" {
+  user    = aws_iam_user.email.name
+}
+
+output "email_user_key" {
+  value = aws_iam_access_key.email-user.id
+  sensitive = true
+}
+
+output "email_user_secret" {
+  value = aws_iam_access_key.email-user.secret
+  sensitive = true
+}
+
 resource "aws_iam_user" "admin" {
   name = "Admin"
 }

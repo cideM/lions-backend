@@ -12,9 +12,11 @@ module Main where
 import App (App (..), Env (..), Environment, LogEnv (..), parseEnv)
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
+import Control.Lens
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Text as Text
+import Data.Text.Encoding (encodeUtf8)
 import Data.UUID (toText)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
@@ -25,9 +27,10 @@ import qualified LandingPage.Handlers
 import Layout (layout)
 import qualified Login.Handlers
 import Lucid
+import qualified Network.AWS as AWS
 import Network.HTTP.Types (status200, status403, status404, status500)
 import qualified Network.Wai as Wai
-import Network.Wai.Handler.Warp (runSettings, defaultSettings, setHost, setPort)
+import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.Handlers
@@ -42,8 +45,8 @@ import Text.Read (readEither)
 import User.Domain (UserId (..), isAdmin)
 import qualified User.Handlers
 import qualified Web.ClientSession as ClientSession
-import qualified WelcomeMessage.Handlers
 import WelcomeMessage.Domain (WelcomeMsgId (..))
+import qualified WelcomeMessage.Handlers
 import Prelude hiding (id)
 
 app ::
@@ -52,6 +55,8 @@ app ::
     HasReader "dbConn" SQLite.Connection m,
     HasReader "sessionKey" ClientSession.Key m,
     HasReader "requestIdVaultKey" RequestIdVaultKey m,
+    HasReader "awsEnv" AWS.Env m,
+    HasReader "port" Int m,
     HasReader "appEnv" Environment m,
     HasReader "logContexts" K.LogContexts m,
     K.KatipContext m,
@@ -248,9 +253,12 @@ main = do
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
   appEnv <- getEnv "LIONS_ENV" >>= parseEnv
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
+  mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
+  mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
   sessionKey <- ClientSession.getKey sessionKeyFile
   sessionDataVaultKey <- Vault.newKey
   requestIdVaultKey <- Vault.newKey
+
   SQLite.withConnection
     sqlitePath
     ( \conn -> do
@@ -273,12 +281,27 @@ main = do
         bracket makeLogEnv K.closeScribes $ \katipLogEnv -> do
           K.runKatipContextT katipLogEnv initialContext initialNamespace $ do
             ctx <- K.getKatipContext
-            let env = Env conn sessionKey sessionDataVaultKey appEnv requestIdVaultKey $ LogEnv ctx initialNamespace katipLogEnv
+
+            let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
+                sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
+            awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
+
+            let port = (3000 :: Int)
+                env =
+                  Env
+                    conn
+                    sessionKey
+                    sessionDataVaultKey
+                    appEnv
+                    port
+                    requestIdVaultKey
+                    (LogEnv ctx initialNamespace katipLogEnv)
+                    awsEnv
 
             liftIO $ SQLite.execute_ conn "PRAGMA foreign_keys"
-            K.katipAddContext (K.sl "port" (3000 :: Int)) $ do
+            K.katipAddContext (K.sl "port" port) $ do
               K.logLocM K.DebugS "starting server"
-              liftIO . (runSettings . setPort 3000 $ setHost "localhost" defaultSettings)
+              liftIO . (runSettings . setPort port $ setHost "localhost" defaultSettings)
                 . logStdout
                 . staticPolicy (addBase "public")
                 $ ( \r s ->

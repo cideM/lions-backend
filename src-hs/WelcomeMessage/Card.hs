@@ -16,13 +16,12 @@ newtype DeleteHref = DeleteHref Text
 
 render :: EditHref -> DeleteHref -> (Text, Time.ZonedTime) -> ShowEditBtn -> Html ()
 render (EditHref editHref) (DeleteHref deleteHref) (msg, date) canEdit =
-  div_ [class_ "card"] $ do
+  article_ [class_ ""] $ do
     let formatted = Time.formatTime german "%A, %d. %B %Y" date
      in do
-          div_ [class_ "card-header"] $ toHtml formatted
-          div_ [class_ "card-body"] $ do
-            p_ [class_ "card-text", style_ "white-space: pre"] $ toHtml msg
+          h2_ [class_ "h5"] $ toHtml formatted
+          p_ [class_ "", style_ "white-space: pre-wrap"] $ toHtml msg
           when canEdit $
-            div_ [class_ "card-footer"] $ do
+            div_ [class_ "d-flex"] $ do
               a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
               a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"

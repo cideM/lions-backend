@@ -15,6 +15,7 @@ import Control.Exception.Safe
 import RequestID.Middleware (RequestIdVaultKey)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..))
+import qualified Network.AWS as AWS
 import qualified Database.SQLite.Simple as SQLite
 import GHC.Generics
 import qualified Katip as K
@@ -40,8 +41,10 @@ data Env = Env
     envSessionKey :: ClientSession.Key,
     envSessionDataVaultKey :: SessionDataVaultKey,
     envAppEnv :: Environment,
+    envPort :: Int,
     envRequestIdVaultKey :: RequestIdVaultKey,
-    envLogEnv :: LogEnv
+    envLogEnv :: LogEnv,
+    envAwsEnv :: AWS.Env
   }
   deriving (Generic)
 
@@ -79,6 +82,12 @@ newtype App a = App {unApp :: Env -> IO a}
   deriving
     (HasReader "appEnv" Environment, HasSource "appEnv" Environment)
     via Rename "envAppEnv" (Field "envAppEnv" () (MonadReader (ReaderT Env IO)))
+  deriving
+    (HasReader "awsEnv" AWS.Env, HasSource "awsEnv" AWS.Env)
+    via Rename "envAwsEnv" (Field "envAwsEnv" () (MonadReader (ReaderT Env IO)))
+  deriving
+    (HasReader "port" Int, HasSource "port" Int)
+    via Rename "envPort" (Field "envPort" () (MonadReader (ReaderT Env IO)))
 
 instance K.Katip App where
   getLogEnv = ask @"logEnv"

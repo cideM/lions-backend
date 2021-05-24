@@ -18,8 +18,9 @@ import Lucid.Base (makeAttribute)
 
 data ActiveNavLink = Welcome | Events | Members | Login deriving (Eq)
 
-expanded_, describedBy_, ariaLabel_, ariaLabelledBy_, ariaHidden_ :: Text -> Attribute
-expanded_ = makeAttribute "expanded"
+expanded_, describedBy_, ariaLabel_, ariaLabelledBy_, ariaHidden_, ariaControls_ :: Text -> Attribute
+expanded_ = makeAttribute "aria-expanded"
+ariaControls_ = makeAttribute "aria-controls"
 describedBy_ = makeAttribute "aria-describedby"
 ariaLabel_ = makeAttribute "aria-label"
 ariaLabelledBy_ = makeAttribute "aria-labelledby"
@@ -53,7 +54,7 @@ layout pageTitle activeNavLink pageContent = doctypehtml_ $ do
                 type_ "button",
                 data_ "bs-toggle" "collapse",
                 data_ "bs-target" "#navbarSupportedContent",
-                controls_ "navbarSupportedContent",
+                ariaControls_ "navbarSupportedContent",
                 expanded_ "false",
                 label_ "Navigation öffnen oder schließen"
               ]
@@ -69,9 +70,9 @@ layout pageTitle activeNavLink pageContent = doctypehtml_ $ do
                   ]
       div_ [class_ "py-4 content"] pageContent
       script_ [src_ "/index.js"] ("" :: Text.Text)
-      -- script_ [src_ "/bootstrap.bundle.min.js"] ("" :: Text.Text)
+      script_ [src_ "/bootstrap.bundle.min.js"] ("" :: Text.Text)
   where
     f :: (Text, Text, Maybe ActiveNavLink) -> Html ()
     f (href, label, route) =
-      let classes = Text.unwords $ "nav-link" : (["active" | route == activeNavLink])
+      let classes = Text.unwords $ "nav-link" : (["active text-decoration-underline" | route == activeNavLink])
        in a_ [class_ classes, href_ href] $ toHtml label
