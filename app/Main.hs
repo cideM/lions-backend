@@ -12,7 +12,6 @@ module Main where
 import App (App (..), Env (..), Environment, LogEnv (..), parseEnv)
 import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
-import Control.Lens
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Text as Text
@@ -66,6 +65,7 @@ app ::
   (Wai.Response -> m Wai.ResponseReceived) ->
   m Wai.ResponseReceived
 app req send = do
+  dbConn <- ask @"dbConn"
   sessionDataVaultKey <- ask @"sessionDataVaultKey"
   requestIdVaultKey <- ask @"requestIdVaultKey"
   let vault = Wai.vault req
@@ -173,11 +173,11 @@ app req send = do
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' (User.Handlers.showMemberList req >=> send200)
+          "GET" -> authenticatedOnly' $ \auth -> liftIO (User.Handlers.showMemberList dbConn req auth) >>= send200
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' (User.Handlers.saveNewUser req >=> send200)
+          "POST" -> adminOnly' $ \auth -> liftIO (User.Handlers.saveNewUser dbConn req auth) >>= send200
           "GET" -> adminOnly' (User.Handlers.showAddUserForm >=> send200)
           _ -> send404
       ["nutzer", int, "editieren"] ->
@@ -186,16 +186,21 @@ app req send = do
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnlyOrOwn userId (uncurry User.Handlers.showEditUserForm >=> send200)
-                  "POST" -> adminOnlyOrOwn userId (uncurry (User.Handlers.updateExistingUser req) >=> send200)
+                  "GET" -> adminOnlyOrOwn userId $
+                    \(id, auth) ->
+                      liftIO (User.Handlers.showEditUserForm dbConn id auth)
+                        >>= send200
+                  "POST" -> adminOnlyOrOwn userId $
+                    \(id, auth) ->
+                      liftIO (User.Handlers.updateExistingUser dbConn req id auth)
+                        >>= send200
                   _ -> send404
       ["nutzer", int] ->
         case Wai.requestMethod req of
           "GET" ->
             case readEither (Text.unpack int) of
               Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-              Right (parsed :: Int) ->
-                authenticatedOnly' (User.Handlers.showProfile parsed >=> send200)
+              Right (parsed :: Int) -> authenticatedOnly' $ \auth -> liftIO (User.Handlers.showProfile dbConn parsed auth) >>= send200
           _ -> send404
       ["nutzer", int, "loeschen"] ->
         case readEither (Text.unpack int) of
@@ -203,8 +208,8 @@ app req send = do
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly' (User.Handlers.showDeleteConfirmation userId >=> send200)
-                  "POST" -> adminOnly' (User.Handlers.deleteUser userId >=> send200)
+                  "GET" -> adminOnly' $ \auth -> liftIO (User.Handlers.showDeleteConfirmation dbConn userId auth) >>= send200
+                  "POST" -> adminOnly' $ \auth -> liftIO (User.Handlers.deleteUser dbConn userId auth) >>= send200
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of

@@ -21,11 +21,9 @@ module User.Handlers
   )
 where
 
-import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import qualified Data.List.NonEmpty as NE
 import Control.Monad (when)
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
@@ -33,7 +31,6 @@ import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Debug.Trace
-import Katip
 import Layout (ActiveNavLink (..), layout)
 import Locale (german)
 import Lucid
@@ -77,18 +74,15 @@ renderDateForInput :: Time.Day -> Text
 renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y"
 
 showEditUserForm ::
-  ( MonadIO m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   UserId ->
   Auth.Authenticated ->
-  m (Html ())
-showEditUserForm userIdToEdit@(UserId i) auth = do
+  IO (Html ())
+showEditUserForm conn userIdToEdit@(UserId i) auth = do
   let Auth.UserSession _ sessionRoles = case auth of
         Auth.IsUser session -> session
         Auth.IsAdmin (Auth.AdminUser session) -> session
-  conn <- ask @"dbConn"
-  user <- liftIO $ getUser conn userIdToEdit
+  user <- getUser conn userIdToEdit
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -121,19 +115,14 @@ showEditUserForm userIdToEdit@(UserId i) auth = do
                 emptyForm
 
 updateExistingUser ::
-  ( MonadIO m,
-    MonadThrow m,
-    KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   Wai.Request ->
   UserId ->
   Auth.Authenticated ->
-  m (Html ())
-updateExistingUser req userId auth = do
-  conn <- ask @"dbConn"
-  rolesForUserToUpdate <- liftIO $ getRolesFromDb conn userId
-  params <- liftIO $ parseParams req
+  IO (Html ())
+updateExistingUser conn req userId auth = do
+  rolesForUserToUpdate <- getRolesFromDb conn userId
+  params <- parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
       loggedInAsAdmin = any isAdmin sessionRoles
@@ -170,30 +159,22 @@ updateExistingUser req userId auth = do
               input
               state
     Right profile@UserProfileCreate {..} -> do
-      liftIO $ updateUser conn userId profile
-      katipAddContext (sl "roles" userCreateRoles) $
-        katipAddContext (sl "profile" profile) $ do
-          logLocM DebugS "editing user"
-          return $
-            layout "Nutzer Editieren" Nothing $
-              div_ [class_ "container p-3 d-flex justify-content-center"] $
-                div_ [class_ "row col-6"] $ do
-                  p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                    "Nutzer " <> show userCreateEmail <> " erfolgreich editiert"
+      updateUser conn userId profile
+      return $
+        layout "Nutzer Editieren" Nothing $
+          div_ [class_ "container p-3 d-flex justify-content-center"] $
+            div_ [class_ "row col-6"] $ do
+              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
+                "Nutzer " <> show userCreateEmail <> " erfolgreich editiert"
 
 -- TODO: Duplication
 saveNewUser ::
-  ( MonadIO m,
-    MonadThrow m,
-    HasReader "dbConn" SQLite.Connection m,
-    KatipContext m
-  ) =>
+  SQLite.Connection ->
   Wai.Request ->
   Auth.AdminUser ->
-  m (Html ())
-saveNewUser req _ = do
-  conn <- ask @"dbConn"
-  params <- liftIO $ parseParams req
+  IO (Html ())
+saveNewUser conn req _ = do
+  params <- parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
       input =
@@ -223,32 +204,25 @@ saveNewUser req _ = do
               input
               state
     Right (profile@UserProfileCreate {..}) -> do
-      liftIO $
-        SQLite.withTransaction
-          conn
-          $ do
-            saveUser conn profile
-            (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
-            saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
-      katipAddContext (sl "roles" $ NE.toList userCreateRoles) $
-        katipAddContext (sl "profile" profile) $ do
-          logLocM DebugS "adding user"
-          return $
-            layout "Nutzer Hinzufügen" Nothing $
-              div_ [class_ "container p-3 d-flex justify-content-center"] $
-                div_ [class_ "row col-6"] $ do
-                  p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                    "Nutzer " <> show userCreateEmail <> " erfolgreich erstellt"
+      SQLite.withTransaction
+        conn
+        $ do
+          saveUser conn profile
+          (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
+          saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
+      return $
+        layout "Nutzer Hinzufügen" Nothing $
+          div_ [class_ "container p-3 d-flex justify-content-center"] $
+            div_ [class_ "row col-6"] $ do
+              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
+                "Nutzer " <> show userCreateEmail <> " erfolgreich erstellt"
 
 showProfile ::
-  ( MonadIO m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   Int ->
   Auth.Authenticated ->
-  m (Html ())
-showProfile paramId auth = do
-  conn <- ask @"dbConn"
+  IO (Html ())
+showProfile conn paramId auth = do
   let userIdToShow = UserId paramId
       userIsAdmin = case auth of
         Auth.IsAdmin _ -> True
@@ -257,7 +231,7 @@ showProfile paramId auth = do
         Auth.IsUser session -> session
         Auth.IsAdmin (Auth.AdminUser session) -> session
       isOwnProfile = loggedInUserId == userIdToShow
-  user <- liftIO $ getUser conn userIdToShow
+  user <- getUser conn userIdToShow
   -- TODO: This needs to return a 404
   return $ case user of
     Nothing -> layout "Fehler" Nothing $
@@ -275,16 +249,12 @@ showProfile paramId auth = do
           )
 
 deleteUser ::
-  ( MonadIO m,
-    MonadThrow m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   UserId ->
   Auth.AdminUser ->
-  m (Html ())
-deleteUser userId _ = do
-  conn <- ask @"dbConn"
-  user <- liftIO $ getUser conn userId
+  IO (Html ())
+deleteUser conn userId _ = do
+  user <- getUser conn userId
   case user of
     Nothing -> throwString $ "edit user but no user found for id: " <> show userId
     Just userProfile -> do
@@ -297,16 +267,12 @@ deleteUser userId _ = do
                 "Nutzer " <> show (userEmail userProfile) <> " erfolgreich gelöscht"
 
 showDeleteConfirmation ::
-  ( MonadIO m,
-    MonadThrow m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   UserId ->
   Auth.AdminUser ->
-  m (Html ())
-showDeleteConfirmation userId _ = do
-  conn <- ask @"dbConn"
-  user <- liftIO $ getUser conn userId
+  IO (Html ())
+showDeleteConfirmation conn userId _ = do
+  user <- getUser conn userId
   case user of
     Nothing -> throwString $ "delete user but no user for eid found: " <> show userId
     Just userProfile -> do
@@ -331,24 +297,20 @@ parseSelection "president" = Right $ Some President
 parseSelection v = Left $ "unknown user group: " <> v
 
 showMemberList ::
-  ( MonadIO m,
-    MonadCatch m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   Wai.Request ->
   Auth.Authenticated ->
-  m (Html ())
-showMemberList req auth = do
+  IO (Html ())
+showMemberList conn req auth = do
   let userIsAdmin = case auth of
         Auth.IsAdmin _ -> True
         _ -> False
-  conn <- ask @"dbConn"
   let selectionRaw = traceShowId $ Map.findWithDefault "all" "userselect" $ parseQueryParams req
   selectionParsed <-
     traceShowId <$> case parseSelection selectionRaw of
-      Left e -> liftIO . throwString . Text.unpack $ "invalid group selection: " <> selectionRaw <> " " <> e
+      Left e -> throwString . Text.unpack $ "invalid group selection: " <> selectionRaw <> " " <> e
       Right (v :: UserGroupToShow) -> pure v
-  users <- liftIO $ getUsers conn
+  users <- getUsers conn
   let usersToShow = case selectionParsed of
         All -> users
         Some role -> filterUsers role users
