@@ -1,20 +1,9 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module LandingPage.Handlers (showLandingPage) where
 
-import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
@@ -27,21 +16,17 @@ import WelcomeMessage.Domain (WelcomeMsg (..), WelcomeMsgId (..))
 import Prelude hiding (id)
 
 showLandingPage ::
-  ( MonadIO m,
-    MonadCatch m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   Auth.Authenticated ->
-  m (Html ())
-showLandingPage auth = do
+  IO (Html ())
+showLandingPage conn auth = do
   let userIsAdmin = case auth of
         Auth.IsAdmin _ -> True
         _ -> False
-  conn <- ask @"dbConn"
   msgs <-
     handleAny (\e -> throwString $ "error getting welcome messages: " <> show e) $
       getAllWelcomeMsgsFromDb conn
-  zone <- liftIO Time.getCurrentTimeZone
+  zone <- Time.getCurrentTimeZone
   return $
     layout "Willkommen" (Just Welcome) $
       div_ [class_ "container"] $ do

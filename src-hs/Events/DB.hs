@@ -18,7 +18,6 @@ module Events.DB
 where
 
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (foldr')
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -61,18 +60,11 @@ instance FromRow GetEventRow where
         <*> SQLite.field
         <*> SQLite.field
 
-createEvent ::
-  ( MonadIO m,
-    MonadThrow m
-  ) =>
-  SQLite.Connection ->
-  EventCreate ->
-  m ()
+createEvent :: SQLite.Connection -> EventCreate -> IO ()
 createEvent conn EventCreate {..} = do
-  liftIO $
-    SQLite.execute
-      conn
-      [sql|
+  SQLite.execute
+    conn
+    [sql|
         insert into events (
           title,
           date,
@@ -81,7 +73,7 @@ createEvent conn EventCreate {..} = do
           location
         ) values (?,?,?,?,?)
       |]
-      (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation)
+    (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation)
 
 makeEvents :: GetEventRow -> Map EventId Event -> Map EventId Event
 makeEvents GetEventRow {..} xs =
@@ -111,19 +103,12 @@ makeEvents GetEventRow {..} xs =
           let reply = Reply replyComing (UserEmail replyEmail) (UserId replyUserId) replyNumGuests
            in Map.alter (alterFn $ Just reply) (EventId _eventId) xs
 
-getEvent ::
-  ( MonadIO m,
-    MonadThrow m
-  ) =>
-  SQLite.Connection ->
-  EventId ->
-  m (Maybe Event)
+getEvent :: SQLite.Connection -> EventId -> IO (Maybe Event)
 getEvent conn (EventId eventid) = do
   rows <-
-    liftIO $
-      SQLite.query
-        conn
-        [sql|
+    SQLite.query
+      conn
+      [sql|
         select events.id as eventid,
                title,
                date,
@@ -139,23 +124,19 @@ getEvent conn (EventId eventid) = do
         left join users on userid = users.id
         where events.id = ?
       |]
-        [eventid]
+      [eventid]
   let events = foldr' makeEvents Map.empty rows
   case Map.toList (traceShowId events) of
     [] -> return Nothing
     [x] -> return . Just $ snd x
-    v -> throwString $ "got more than one result from getEvent" <> show v
+    v -> throwString $ "got more than one result from getEvent: " <> show v
 
-getAll ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
-  m (Map EventId Event)
+getAll :: SQLite.Connection -> IO (Map EventId Event)
 getAll conn = do
   (rows :: [GetEventRow]) <-
-    liftIO $
-      SQLite.query_
-        conn
-        [sql|
+    SQLite.query_
+      conn
+      [sql|
         select events.id as eventid,
                title,
                date,
@@ -173,35 +154,20 @@ getAll conn = do
   return $
     foldr' makeEvents Map.empty rows
 
-deleteReply ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
-  EventId ->
-  UserId ->
-  m ()
+deleteReply :: SQLite.Connection -> EventId -> UserId -> IO ()
 deleteReply conn (EventId eventid) (UserId userid) =
-  liftIO $ SQLite.execute conn "delete from event_replies where userid = ? and eventid = ?" [userid, eventid]
+  SQLite.execute conn "delete from event_replies where userid = ? and eventid = ?" [userid, eventid]
 
-deleteEvent ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
-  EventId ->
-  m ()
+deleteEvent :: SQLite.Connection -> EventId -> IO ()
 deleteEvent conn (EventId eventid) = do
-  liftIO $ SQLite.execute conn "delete from event_replies where eventid = ?" [eventid]
-  liftIO $ SQLite.execute conn "delete from events where id = ?" [eventid]
+  SQLite.execute conn "delete from event_replies where eventid = ?" [eventid]
+  SQLite.execute conn "delete from events where id = ?" [eventid]
 
-updateEvent ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
-  EventId ->
-  EventCreate ->
-  m ()
+updateEvent :: SQLite.Connection -> EventId -> EventCreate -> IO ()
 updateEvent conn (EventId eventid) EventCreate {..} =
-  liftIO $
-    SQLite.execute
-      conn
-      [sql|
+  SQLite.execute
+    conn
+    [sql|
         update events
         set
           title = ?,
@@ -211,19 +177,13 @@ updateEvent conn (EventId eventid) EventCreate {..} =
           location = ?
         where id = ?
       |]
-      (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation, eventid)
+    (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation, eventid)
 
-upsertReply ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
-  EventId ->
-  Reply ->
-  m ()
+upsertReply :: SQLite.Connection -> EventId -> Reply -> IO ()
 upsertReply conn (EventId eventid) (Reply coming _ (UserId userid) guests) =
-  liftIO $
-    SQLite.execute
-      conn
-      [sql|
+  SQLite.execute
+    conn
+    [sql|
     insert into event_replies (userid, eventid, coming, guests)
     values (?,?,?,?)
     on conflict (userid,eventid) do update set
@@ -231,4 +191,4 @@ upsertReply conn (EventId eventid) (Reply coming _ (UserId userid) guests) =
       guests=excluded.guests
     where userid = ? and eventid = ?
   |]
-      [userid, eventid, if coming then 1 else 0, guests, userid, eventid]
+    [userid, eventid, if coming then 1 else 0, guests, userid, eventid]

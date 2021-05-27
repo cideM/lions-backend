@@ -15,7 +15,6 @@ module PasswordReset.Domain
 where
 
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Data.Aeson (ToJSON, defaultOptions, genericToEncoding, toEncoding)
 import Data.ByteString (ByteString)
@@ -52,12 +51,11 @@ instance ToJSON Token where
 
 newtype Hashed = Hashed Text deriving (Show)
 
-hashPw :: (MonadIO m, MonadThrow m) => ByteString -> m Hashed
+hashPw :: ByteString -> IO Hashed
 hashPw unhashed =
-  liftIO $
-    BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy unhashed >>= \case
-      Nothing -> throwString "hashing password failed"
-      Just pw' -> return . Hashed $ decodeUtf8 pw'
+  BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy unhashed >>= \case
+    Nothing -> throwString "hashing password failed"
+    Just pw' -> return . Hashed $ decodeUtf8 pw'
 
 unhash :: Hashed -> Text
 unhash (Hashed s) = s

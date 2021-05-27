@@ -13,7 +13,6 @@ module WelcomeMessage.DB
 where
 
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
@@ -30,18 +29,18 @@ instance FromRow DBWelcomeMsg where
     DBWelcomeMsg . WelcomeMsg (WelcomeMsgId id) content <$> SQLite.field
 
 -- | Returns the MOST RECENT welcome message, if there is one
-getWelcomeMsgFromDb :: (MonadIO m) => SQLite.Connection -> WelcomeMsgId -> m (Maybe WelcomeMsg)
+getWelcomeMsgFromDb :: SQLite.Connection -> WelcomeMsgId -> IO (Maybe WelcomeMsg)
 getWelcomeMsgFromDb conn (WelcomeMsgId id) =
-  liftIO (SQLite.query conn "SELECT id, content, date FROM welcome_text WHERE id = ?" [id])
+  (SQLite.query conn "SELECT id, content, date FROM welcome_text WHERE id = ?" [id])
     >>= \case
       [DBWelcomeMsg welcomeMsg] -> return $ Just welcomeMsg
       [] -> return Nothing
-      other -> return . throwString $ "unexpected result from DB for password" <> show other
+      other -> return . throwString $ "unexpected result from DB for welcome message" <> show other
 
 -- | Returns all welcome messages in chronological order
-getAllWelcomeMsgsFromDb :: (MonadIO m) => SQLite.Connection -> m [WelcomeMsg]
+getAllWelcomeMsgsFromDb :: SQLite.Connection -> IO [WelcomeMsg]
 getAllWelcomeMsgsFromDb conn =
-  liftIO (SQLite.query_ conn "SELECT id, content, date FROM welcome_text ORDER BY date DESC")
+  (SQLite.query_ conn "SELECT id, content, date FROM welcome_text ORDER BY date DESC")
     >>= \case
       (msgs :: [DBWelcomeMsg]) -> return $ map (\(DBWelcomeMsg welcomeMsg) -> welcomeMsg) msgs
 
@@ -53,6 +52,5 @@ saveNewWelcomeMsg :: SQLite.Connection -> Text -> IO ()
 saveNewWelcomeMsg conn =
   SQLite.execute conn "INSERT INTO welcome_text (content, date) VALUES (?, datetime('now'))" . SQLite.Only
 
-deleteMessage :: (MonadIO m) => SQLite.Connection -> WelcomeMsgId -> m ()
-deleteMessage conn (WelcomeMsgId id) = do
-  liftIO $ SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]
+deleteMessage :: SQLite.Connection -> WelcomeMsgId -> IO ()
+deleteMessage conn (WelcomeMsgId id) = SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]

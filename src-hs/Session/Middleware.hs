@@ -1,25 +1,15 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Session.Middleware (middleware) where
 
-import Capability.Reader (HasReader (..), ask)
-import Control.Error (note)
-import Control.Exception.Safe
-import Control.Monad.Except (MonadError, liftEither, runExceptT)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vault.Lazy as Vault
+import qualified Logging.Logging as Logging
 import qualified Database.SQLite.Simple as SQLite
-import Katip
 import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
-import RequestID.Middleware (RequestIdVaultKey)
 import Session.DB (getSessionFromDb)
 import Session.Domain (Session (..), SessionDataVaultKey, SessionId (..), makeValidSession)
 import User.DB
@@ -29,52 +19,50 @@ import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
-getSessionIdFromReq :: (MonadError Text m) => ClientSession.Key -> Wai.Request -> m SessionId
+getSessionIdFromReq :: ClientSession.Key -> Wai.Request -> Either Text SessionId
 getSessionIdFromReq sessionKey req =
-  liftEither $
-    (note "no cookie header" . lookup "cookie" $ Wai.requestHeaders req)
-      >>= note "no session cookie" . lookup "lions_session" . Cookie.parseCookies
-      >>= fmap (SessionId . decodeUtf8) . note "empty session cookie" . ClientSession.decrypt sessionKey
+  case lookup "cookie" $ Wai.requestHeaders req of
+    Nothing -> Left "no cookie header"
+    Just cookie -> case lookup "lions_session" $ Cookie.parseCookies cookie of
+      Nothing -> Left "no session cookie"
+      Just session ->
+        case ClientSession.decrypt sessionKey session of
+          Nothing -> Left "empty session cookie"
+          Just decrypted -> Right . SessionId $ decodeUtf8 decrypted
 
 tryLogin ::
-  (MonadError Text m, KatipContext m, MonadThrow m) =>
   SQLite.Connection ->
   ClientSession.Key ->
   SessionDataVaultKey ->
   Wai.Request ->
-  m Wai.Request
+  IO (Either Text Wai.Request)
 tryLogin dbConn sessionKey sessionDataVaultKey req = do
-  sessionId <- getSessionIdFromReq sessionKey req
-  katipAddContext (sl "session_id" (show sessionId)) $ do
-    session@(Session _ _ userId) <- getSessionFromDb dbConn sessionId >>= liftEither . note "no session found"
-    katipAddContext (sl "user_id" (show userId)) $ do
-      _ <- makeValidSession session
-      roles <- getRolesFromDb dbConn userId >>= liftEither . note "no roles found"
-      let vault = Wai.vault req
-          vault' = Vault.insert sessionDataVaultKey (roles, userId) vault
-          req' = req {Wai.vault = vault'}
-      logLocM DebugS "successful session authentication in middleware"
-      pure req'
-
-type WaiApp m = Wai.Request -> (Wai.Response -> m Wai.ResponseReceived) -> m Wai.ResponseReceived
+  case getSessionIdFromReq sessionKey req of
+    Left err -> return $ Left err
+    Right sessionId -> do
+      getSessionFromDb dbConn sessionId >>= \case
+        Nothing -> return $ Left "no session found"
+        Just session@(Session _ _ userId) -> do
+          _ <- makeValidSession session
+          getRolesFromDb dbConn userId >>= \case
+            Nothing -> return $ Left "no roles found"
+            Just roles -> do
+              let vault = Wai.vault req
+                  vault' = Vault.insert sessionDataVaultKey (roles, userId) vault
+                  req' = req {Wai.vault = vault'}
+              return $ Right req'
 
 middleware ::
-  ( MonadCatch m,
-    HasReader "sessionDataVaultKey" SessionDataVaultKey m,
-    HasReader "requestIdVaultKey" RequestIdVaultKey m,
-    HasReader "dbConn" SQLite.Connection m,
-    HasReader "sessionKey" ClientSession.Key m,
-    KatipContext m
-  ) =>
-  WaiApp m ->
-  WaiApp m
-middleware nextApp req send = do
-  sessionKey <- ask @"sessionKey"
-  dbConn <- ask @"dbConn"
-  sessionDataVaultKey <- ask @"sessionDataVaultKey"
-  runExceptT (tryLogin dbConn sessionKey sessionDataVaultKey req) >>= \case
+  Logging.TimedFastLogger ->
+  SessionDataVaultKey ->
+  SQLite.Connection ->
+  ClientSession.Key ->
+  Wai.Application ->
+  Wai.Application
+middleware logger sessionDataVaultKey dbConn sessionKey nextApp req send = do
+  tryLogin dbConn sessionKey sessionDataVaultKey req >>= \case
     Left e -> do
-      logLocM ErrorS (ls e)
+      Logging.log logger $ show e
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send

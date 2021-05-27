@@ -1,14 +1,7 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Events.EventCard (render) where
 
@@ -20,7 +13,6 @@ import qualified Data.Time as Time
 import Events.Domain (Event (..), EventId (..), Reply (..))
 import Locale (german)
 import Lucid
-import TextShow
 
 -- TODO: Why the tuples?
 render :: (EventId, Event, Maybe Reply) -> Html ()
@@ -36,7 +28,7 @@ render (EventId eventid, Event {..}, ownReply) = do
       when ((replyComing <$> ownReply) == Just True) $ do span_ [class_ "ms-2 badge bg-success text-white"] "Zugesagt"
       when ((replyComing <$> ownReply) == Just False) $ do span_ [class_ "ms-2 badge bg-danger text-white"] "Abgesagt"
     div_ [class_ "card-body"] $ do
-      a_ [href_ $ "/veranstaltungen/" <> showt eventid] $ h1_ [class_ "card-title fs-4"] $ toHtml eventTitle
+      a_ [href_ $ "/veranstaltungen/" <> (Text.pack $ show eventid)] $ h1_ [class_ "card-title fs-4"] $ toHtml eventTitle
       p_ [class_ "card-text"] $ toHtml eventDescription
     div_ [class_ "row g-0 border-top"] $ do
       replyThing "Zusagen" (Text.pack $ show coming)

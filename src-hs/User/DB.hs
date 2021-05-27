@@ -20,7 +20,6 @@ where
 
 import Control.Exception.Safe
 import Control.Monad (forM_)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.List.NonEmpty as NE
@@ -37,7 +36,6 @@ import Database.SQLite.Simple.ToField (ToField (..))
 import Database.SQLite.Simple.ToRow (ToRow (..))
 import Text.Email.Validate (EmailAddress)
 import qualified Text.Email.Validate as Email
-import TextShow
 import User.Domain
   ( Role (..),
     UserEmail (..),
@@ -65,7 +63,6 @@ instance FromField DBRole where
 
 newtype DBUserId = DBUserId UserId
   deriving (Show)
-  deriving (TextShow) via Int
   deriving (FromField) via Int
   deriving (ToField) via Int
   deriving (ToRow) via (SQLite.Only Int)
@@ -187,10 +184,9 @@ instance FromRow GetUserRow where
 -- TODO: Merge roles and ID into profile and then have separate version of profile for form create without ID
 -- I've spent about 2h debugging this GROUP BY NULL shit, fml
 -- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present
-getUser :: (MonadIO m, MonadThrow m) => SQLite.Connection -> UserId -> m (Maybe UserProfile)
+getUser ::  SQLite.Connection -> UserId -> IO (Maybe UserProfile)
 getUser conn userid = do
   rows <-
-    liftIO $
       SQLite.query
         conn
         [sql|
@@ -243,17 +239,16 @@ makeProfile GetUserRow {_getUserRowEmail = (DBEmail email), ..} = do
           (UserId _getUserRowUserid)
           roles
 
-deleteUserById :: (MonadIO m) => SQLite.Connection -> UserId -> m ()
+deleteUserById ::  SQLite.Connection -> UserId -> IO ()
 deleteUserById conn userid = do
-  liftIO $ SQLite.execute conn "DELETE FROM users WHERE id = ?" . SQLite.Only $ DBUserId userid
-  liftIO $ SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" . SQLite.Only $ DBUserId userid
-  liftIO $ SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" . SQLite.Only $ DBUserId userid
+  SQLite.execute conn "DELETE FROM users WHERE id = ?" . SQLite.Only $ DBUserId userid
+  SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" . SQLite.Only $ DBUserId userid
+  SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" . SQLite.Only $ DBUserId userid
 
-getUsers :: (MonadIO m, MonadCatch m, MonadThrow m) => SQLite.Connection -> m [UserProfile]
+getUsers ::  SQLite.Connection -> IO [UserProfile]
 getUsers conn =
   handleAny
     (\e -> throwString $ "error getting users: " <> show e)
-    ( liftIO
         ( SQLite.query_
             conn
             [sql|
@@ -269,16 +264,15 @@ getUsers conn =
           case traverse makeProfile values of
             Left e -> throwString $ "error making profile: " <> Text.unpack e
             Right v -> pure v
-    )
 
 -- TODO: Email type
-getIdAndPwByEmail :: (MonadIO m) => SQLite.Connection -> Text -> m (Maybe (UserId, Text))
+getIdAndPwByEmail ::  SQLite.Connection -> Text -> IO (Maybe (UserId, Text))
 getIdAndPwByEmail conn email = do
-  r <- liftIO $ SQLite.query conn "SELECT id, password_digest FROM users WHERE email = ?" [email]
+  r <- SQLite.query conn "SELECT id, password_digest FROM users WHERE email = ?" [email]
   return $ case r of
     [(DBUserId userid, pw)] -> Just (userid, pw)
     [] -> Nothing
-    other -> throwString $ "unexpected result from DB for password" <> show other
+    _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getIdAndPwByEmail"
 
 updateUser :: SQLite.Connection -> UserId -> UserProfileCreate -> IO ()
 updateUser conn userid profile@UserProfileCreate {..} = do
@@ -331,7 +325,7 @@ saveUser conn profile = do
     |]
     $ UserProfileCreateWithPw (hashed, profile)
 
-getRolesFromDb :: (MonadIO m, MonadThrow m) => SQLite.Connection -> UserId -> m (Maybe [Role])
+getRolesFromDb ::  SQLite.Connection -> UserId -> IO (Maybe [Role])
 getRolesFromDb conn (UserId userId) =
   let q =
         [sql|
@@ -339,7 +333,7 @@ getRolesFromDb conn (UserId userId) =
            SELECT label FROM roles_for_id JOIN roles ON id = roleid
         |]
    in do
-        r <- liftIO $ SQLite.query conn q [userId]
+        r <- SQLite.query conn q [userId]
         case r of
           [] -> return Nothing
           (roles :: [[DBRole]]) -> return . Just . map (\(DBRole role) -> role) $ concat roles
@@ -347,7 +341,7 @@ getRolesFromDb conn (UserId userId) =
 saveUserRoles :: SQLite.Connection -> UserId -> [Role] -> IO ()
 saveUserRoles conn (UserId userid) roles =
   traverse getRoleId roles >>= \case
-    [] -> throwString "no roles for given labels, shouldn't happen"
+    [] -> throwString $ "no role IDs for roles: '" <> show roles <> "', shouldn't happen"
     (ids :: [Int]) ->
       forM_
         ids
@@ -358,6 +352,6 @@ saveUserRoles conn (UserId userid) roles =
     getRoleId label =
       SQLite.query conn "SELECT id FROM roles WHERE label = ?" [DBRole label]
         >>= \case
-          [] -> throwString "no roles for given labels, shouldn't happen"
+          [] -> throwString $ "no role for label: " <> show label
           [SQLite.Only roleid] -> return roleid
           other -> throwString $ "unexpected DB result: " <> show other

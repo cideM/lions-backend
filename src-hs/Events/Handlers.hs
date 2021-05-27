@@ -1,14 +1,6 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Events.Handlers
   ( showAllEvents,
@@ -23,10 +15,8 @@ module Events.Handlers
   )
 where
 
-import Capability.Reader (HasReader (..), ask)
 import Control.Exception.Safe
 import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (find)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
@@ -49,7 +39,6 @@ import qualified Events.EventCard
 import qualified Events.EventForm as EventForm
 import qualified Events.SingleEvent
 import GHC.Exts (sortWith)
-import Katip
 import Layout (ActiveNavLink (..), layout)
 import Locale (german)
 import Lucid
@@ -62,18 +51,14 @@ import User.Domain (UserProfile (..))
 import Wai (parseParams)
 
 showAllEvents ::
-  ( MonadIO m,
-    HasReader "dbConn" SQLite.Connection m,
-    KatipContext m
-  ) =>
+  SQLite.Connection ->
   Auth.Authenticated ->
-  m (Html ())
-showAllEvents auth = do
+  IO (Html ())
+showAllEvents conn auth = do
   let (userIsAdmin, Auth.UserSession {..}) = case auth of
         Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
         Auth.IsUser session -> (False, session)
-  conn <- ask @"dbConn"
-  events <- map (addOwnReply userSessionUserId) . sortByDateDesc . Map.toList <$> liftIO (getAll conn)
+  events <- map (addOwnReply userSessionUserId) . sortByDateDesc . Map.toList <$> getAll conn
   return . layout "Veranstaltungen" (Just Events) $
     div_ [class_ "container p-2"] $ do
       when userIsAdmin $
@@ -85,26 +70,21 @@ showAllEvents auth = do
     sortByDateDesc = sortWith (Down . (\(_, Event {..}) -> eventDate))
 
 replyToEvent ::
-  ( MonadIO m,
-    MonadThrow m,
-    HasReader "dbConn" SQLite.Connection m,
-    KatipContext m
-  ) =>
+  SQLite.Connection ->
   Wai.Request ->
-  (Wai.Response -> m a) ->
+  (Wai.Response -> IO a) ->
   EventId ->
   Auth.Authenticated ->
-  m a
-replyToEvent req send eventid@(EventId i) auth = do
+  IO a
+replyToEvent conn req send eventid@(EventId i) auth = do
   let (_, Auth.UserSession {..}) = case auth of
         Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
         Auth.IsUser session -> (False, session)
-  conn <- ask @"dbConn"
   UserProfile {..} <-
     getUser conn userSessionUserId >>= \case
-      Nothing -> throwString "no user for userid from session"
+      Nothing -> throwString $ "no user for userid from session, here's the user id: " <> show userSessionUserId
       Just v -> return v
-  params <- liftIO $ parseParams req
+  params <- parseParams req
   coming <-
     maybe (throwString "no 'reply' param") parseComing $
       Map.lookup "reply" params
@@ -128,49 +108,37 @@ replyToEvent req send eventid@(EventId i) auth = do
         Right i' -> return i'
 
 showEvent ::
-  ( MonadIO m,
-    HasReader "dbConn" SQLite.Connection m,
-    KatipContext m
-  ) =>
+  SQLite.Connection ->
   EventId ->
-  (Wai.Response -> m a) ->
+  (Wai.Response -> IO a) ->
   Auth.Authenticated ->
-  m a
-showEvent eventid@(EventId i) send auth = do
+  IO a
+showEvent conn eventid send auth = do
   let (userIsAdmin, Auth.UserSession {..}) = case auth of
         Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
         Auth.IsUser session -> (False, session)
-  conn <- ask @"dbConn"
-  katipAddContext (sl "eventid" i) $ do
-    maybeevent <- liftIO (getEvent conn eventid)
-    case maybeevent of
-      Nothing -> do
-        logLocM WarningS "no event found"
-        -- TODO: This is duplicated from Main
-        send
-          . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
+  maybeevent <- (getEvent conn eventid)
+  case maybeevent of
+    Nothing -> do
+      -- TODO: This is duplicated from Main
+      send
+        . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
+        . renderBS
+        . layout "Nicht gefunden" Nothing
+        $ div_ [class_ "container p-3 d-flex justify-content-center"] $
+          div_ [class_ "row col-6"] $ do
+            p_ [class_ "alert alert-secondary", role_ "alert"] "Nicht gefunden"
+    Just e@Event {..} -> do
+      let ownReply = find ((==) userSessionUserId . replyUserId) eventReplies
+      send $
+        Wai.responseLBS status404 [("Location", "/veranstaltungen")]
           . renderBS
-          . layout "Nicht gefunden" Nothing
-          $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-secondary", role_ "alert"] "Nicht gefunden"
-      Just e@Event {..} -> do
-        let ownReply = find ((==) userSessionUserId . replyUserId) eventReplies
-        send $
-          Wai.responseLBS status404 [("Location", "/veranstaltungen")]
-            . renderBS
-            . layout
-              eventTitle
-              (Just Events)
-            $ Events.SingleEvent.render (Events.SingleEvent.ShowAdminTools userIsAdmin) ownReply eventid e
+          . layout
+            eventTitle
+            (Just Events)
+          $ Events.SingleEvent.render (Events.SingleEvent.ShowAdminTools userIsAdmin) ownReply eventid e
 
-showCreateEvent ::
-  ( MonadIO m,
-    HasReader "dbConn" SQLite.Connection m,
-    KatipContext m
-  ) =>
-  Auth.AdminUser ->
-  m (Html ())
+showCreateEvent :: Auth.AdminUser -> IO (Html ())
 showCreateEvent _ = do
   return . layout "Neue Veranstaltung" (Just Events) $
     div_ [class_ "container p-2"] $ do
@@ -178,17 +146,12 @@ showCreateEvent _ = do
       EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
 
 handleDeleteEvent ::
-  ( MonadIO m,
-    MonadThrow m,
-    KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   EventId ->
   Auth.AdminUser ->
-  m (Html ())
-handleDeleteEvent eventid _ = do
-  conn <- ask @"dbConn"
-  maybeEvent <- liftIO $ getEvent conn eventid
+  IO (Html ())
+handleDeleteEvent conn eventid _ = do
+  maybeEvent <- getEvent conn eventid
   case maybeEvent of
     Nothing -> return . layout "Fehler" (Just Events) $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -204,18 +167,13 @@ handleDeleteEvent eventid _ = do
                 "Veranstaltung " <> show (eventTitle event) <> " erfolgreich gelöscht"
 
 showDeleteEventConfirmation ::
-  ( MonadIO m,
-    MonadThrow m,
-    KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   EventId ->
   Auth.AdminUser ->
-  m (Html ())
-showDeleteEventConfirmation eid@(EventId eventid) _ = do
+  IO (Html ())
+showDeleteEventConfirmation conn eid@(EventId eventid) _ = do
   -- TODO: Duplicated
-  conn <- ask @"dbConn"
-  liftIO (getEvent conn eid) >>= \case
+  getEvent conn eid >>= \case
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
       return . layout "Veranstaltung Löschen" (Just Events) $
@@ -231,17 +189,12 @@ showDeleteEventConfirmation eid@(EventId eventid) _ = do
               $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Veranstaltung löschen!"
 
 handleCreateEvent ::
-  ( MonadIO m,
-    MonadThrow m,
-    KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   Wai.Request ->
   Auth.AdminUser ->
-  m (Html ())
-handleCreateEvent req _ = do
-  conn <- ask @"dbConn"
-  params <- liftIO $ parseParams req
+  IO (Html ())
+handleCreateEvent conn req _ = do
+  params <- parseParams req
   let input =
         EventForm.FormInput
           (Map.findWithDefault "" "eventTitleInput" params)
@@ -256,7 +209,7 @@ handleCreateEvent req _ = do
           h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
           EventForm.render "Speichern" "/veranstaltungen/neu" input state
     Right newEvent@EventCreate {..} -> do
-      liftIO $ createEvent conn newEvent
+      createEvent conn newEvent
       return . layout "Neue Veranstaltung" (Just Events) $
         div_ [class_ "container p-2"] $ do
           h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
@@ -264,17 +217,12 @@ handleCreateEvent req _ = do
             "Neue Veranstaltung" <> show eventCreateTitle <> " erfolgreich erstellt!"
 
 showEditEventForm ::
-  ( MonadIO m,
-    MonadThrow m,
-    KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   EventId ->
   Auth.AdminUser ->
-  m (Html ())
-showEditEventForm eid@(EventId eventid) _ = do
-  conn <- ask @"dbConn"
-  liftIO (getEvent conn eid) >>= \case
+  IO (Html ())
+showEditEventForm conn eid@(EventId eventid) _ = do
+  getEvent conn eid >>= \case
     Nothing -> throwString $ "edit event but no event for id: " <> show eventid
     Just Event {..} ->
       let input =
@@ -292,18 +240,13 @@ showEditEventForm eid@(EventId eventid) _ = do
     renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
 
 handleUpdateEvent ::
-  ( MonadIO m,
-    MonadThrow m,
-    KatipContext m,
-    HasReader "dbConn" SQLite.Connection m
-  ) =>
+  SQLite.Connection ->
   Wai.Request ->
   EventId ->
   Auth.AdminUser ->
-  m (Html ())
-handleUpdateEvent req eid@(EventId eventid) _ = do
-  conn <- ask @"dbConn"
-  params <- liftIO $ parseParams req
+  IO (Html ())
+handleUpdateEvent conn req eid@(EventId eventid) _ = do
+  params <- parseParams req
   let input =
         EventForm.FormInput
           (Map.findWithDefault "" "eventTitleInput" params)
@@ -322,12 +265,10 @@ handleUpdateEvent req eid@(EventId eventid) _ = do
               input
               state
     Right event@EventCreate {..} -> do
-      liftIO $ updateEvent conn eid event
-      katipAddContext (sl "event" event) $ do
-        logLocM DebugS "editing event"
-        return $
-          layout "Veranstaltung Editieren" (Just Events) $
-            div_ [class_ "container p-3 d-flex justify-content-center"] $
-              div_ [class_ "row col-6"] $ do
-                p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                  "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"
+      updateEvent conn eid event
+      return $
+        layout "Veranstaltung Editieren" (Just Events) $
+          div_ [class_ "container p-3 d-flex justify-content-center"] $
+            div_ [class_ "row col-6"] $ do
+              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
+                "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"

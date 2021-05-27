@@ -64,6 +64,7 @@ executable lions-backend
     PasswordReset.Domain
     PasswordReset.Form
     Time.Time
+    Logging.Logging
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -76,26 +77,20 @@ executable lions-backend
     , lucid
     , wai-session
     , wai-middleware-static
+    , fast-logger
     , cookie
     , sqlite-simple
     , text
-    , text-show
     , clientsession
     , bytestring
     , bcrypt
     , time
-    , errors
-    , mtl
-    , transformers
     , vault
     , wai-session
     , safe-exceptions
-    , unliftio
     , containers
     , email-validate
     , crypto-api
-    , capability
-    , katip
     , uuid
     , aeson
     , uri-encode

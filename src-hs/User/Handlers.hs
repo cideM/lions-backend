@@ -1,8 +1,3 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -55,10 +50,7 @@ import User.Profile (CanDelete (..), CanEdit (..))
 import qualified User.Profile
 import Wai (parseParams, parseQueryParams)
 
-showAddUserForm ::
-  Monad m =>
-  Auth.AdminUser ->
-  m (Html ())
+showAddUserForm :: Auth.AdminUser -> IO (Html ())
 showAddUserForm _ =
   return $
     layout "Nutzer Hinzufügen" Nothing $
@@ -73,11 +65,7 @@ showAddUserForm _ =
 renderDateForInput :: Time.Day -> Text
 renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y"
 
-showEditUserForm ::
-  SQLite.Connection ->
-  UserId ->
-  Auth.Authenticated ->
-  IO (Html ())
+showEditUserForm :: SQLite.Connection -> UserId -> Auth.Authenticated -> IO (Html ())
 showEditUserForm conn userIdToEdit@(UserId i) auth = do
   let Auth.UserSession _ sessionRoles = case auth of
         Auth.IsUser session -> session
@@ -114,12 +102,7 @@ showEditUserForm conn userIdToEdit@(UserId i) auth = do
                 )
                 emptyForm
 
-updateExistingUser ::
-  SQLite.Connection ->
-  Wai.Request ->
-  UserId ->
-  Auth.Authenticated ->
-  IO (Html ())
+updateExistingUser :: SQLite.Connection -> Wai.Request -> UserId -> Auth.Authenticated -> IO (Html ())
 updateExistingUser conn req userId auth = do
   rolesForUserToUpdate <- getRolesFromDb conn userId
   params <- parseParams req
@@ -168,11 +151,7 @@ updateExistingUser conn req userId auth = do
                 "Nutzer " <> show userCreateEmail <> " erfolgreich editiert"
 
 -- TODO: Duplication
-saveNewUser ::
-  SQLite.Connection ->
-  Wai.Request ->
-  Auth.AdminUser ->
-  IO (Html ())
+saveNewUser :: SQLite.Connection -> Wai.Request -> Auth.AdminUser -> IO (Html ())
 saveNewUser conn req _ = do
   params <- parseParams req
   let paramt name = Map.findWithDefault "" name params
@@ -217,11 +196,7 @@ saveNewUser conn req _ = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> show userCreateEmail <> " erfolgreich erstellt"
 
-showProfile ::
-  SQLite.Connection ->
-  Int ->
-  Auth.Authenticated ->
-  IO (Html ())
+showProfile :: SQLite.Connection -> Int -> Auth.Authenticated -> IO (Html ())
 showProfile conn paramId auth = do
   let userIdToShow = UserId paramId
       userIsAdmin = case auth of
@@ -248,11 +223,7 @@ showProfile conn paramId auth = do
               (CanEdit (isOwnProfile || userIsAdmin))
           )
 
-deleteUser ::
-  SQLite.Connection ->
-  UserId ->
-  Auth.AdminUser ->
-  IO (Html ())
+deleteUser :: SQLite.Connection -> UserId -> Auth.AdminUser -> IO (Html ())
 deleteUser conn userId _ = do
   user <- getUser conn userId
   case user of
@@ -266,11 +237,7 @@ deleteUser conn userId _ = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> show (userEmail userProfile) <> " erfolgreich gelöscht"
 
-showDeleteConfirmation ::
-  SQLite.Connection ->
-  UserId ->
-  Auth.AdminUser ->
-  IO (Html ())
+showDeleteConfirmation :: SQLite.Connection -> UserId -> Auth.AdminUser -> IO (Html ())
 showDeleteConfirmation conn userId _ = do
   user <- getUser conn userId
   case user of
@@ -296,11 +263,7 @@ parseSelection "user" = Right $ Some User
 parseSelection "president" = Right $ Some President
 parseSelection v = Left $ "unknown user group: " <> v
 
-showMemberList ::
-  SQLite.Connection ->
-  Wai.Request ->
-  Auth.Authenticated ->
-  IO (Html ())
+showMemberList :: SQLite.Connection -> Wai.Request -> Auth.Authenticated -> IO (Html ())
 showMemberList conn req auth = do
   let userIsAdmin = case auth of
         Auth.IsAdmin _ -> True

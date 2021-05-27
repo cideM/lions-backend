@@ -10,8 +10,7 @@ import qualified Data.Text as Text
 import qualified Data.Time as Time
 import Locale (german)
 import Lucid
-import TextShow
-import User.Domain (Role (..), UserEmail (..), UserProfile (..), showEmail)
+import User.Domain (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
 
 newtype CanDelete = CanDelete Bool
 
@@ -19,6 +18,7 @@ newtype CanEdit = CanEdit Bool
 
 render :: UserProfile -> CanDelete -> CanEdit -> Html ()
 render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
+  let (UserId uid) = userId
   div_ [class_ "card"] $ do
     div_ [class_ "card-header"] "Nutzerprofil"
     div_ [class_ "card-body"] $ do
@@ -56,13 +56,13 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
     div_ [class_ "card-footer d-flex d-grid"] $ do
       when canDelete $
         a_
-          [ href_ . Text.pack $ "/nutzer/" <> show userId <> "/loeschen",
+          [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/loeschen",
             class_ "link link-danger me-4"
           ]
           "Nutzer löschen"
       when canEdit $
         a_
-          [ href_ $ "/nutzer/" <> showt userId <> "/editieren",
+          [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/editieren",
             class_ "link link-secondary me-4"
           ]
           "Nutzer editieren"

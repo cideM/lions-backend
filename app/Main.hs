@@ -1,29 +1,22 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 module Main where
 
-import App (App (..), Env (..), Environment, LogEnv (..), parseEnv)
-import Capability.Reader (HasReader (..), ask)
+import App (Environment, parseEnv)
 import Control.Exception.Safe
 import Control.Monad ((>=>))
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
-import Data.UUID (toText)
+-- import Data.UUID (toText)
+
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Events.Domain (EventId (..))
 import qualified Events.Handlers
-import qualified Katip as K
 import qualified LandingPage.Handlers
 import Layout (layout)
+import qualified Logging.Logging as Logging
 import qualified Login.Handlers
 import Lucid
 import qualified Network.AWS as AWS
@@ -39,7 +32,7 @@ import qualified Routes.Data as Auth
 import Session.Domain (SessionDataVaultKey)
 import qualified Session.Middleware
 import System.Environment (getEnv)
-import System.IO (stdout)
+import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpleTimeFormat, withTimedFastLogger)
 import Text.Read (readEither)
 import User.Domain (UserId (..), isAdmin)
 import qualified User.Handlers
@@ -49,73 +42,62 @@ import qualified WelcomeMessage.Handlers
 import Prelude hiding (id)
 
 app ::
-  ( MonadIO m,
-    MonadCatch m,
-    HasReader "dbConn" SQLite.Connection m,
-    HasReader "sessionKey" ClientSession.Key m,
-    HasReader "requestIdVaultKey" RequestIdVaultKey m,
-    HasReader "awsEnv" AWS.Env m,
-    HasReader "port" Int m,
-    HasReader "appEnv" Environment m,
-    HasReader "logContexts" K.LogContexts m,
-    K.KatipContext m,
-    HasReader "sessionDataVaultKey" SessionDataVaultKey m
-  ) =>
+  Logging.TimedFastLogger ->
+  SQLite.Connection ->
+  ClientSession.Key ->
+  RequestIdVaultKey ->
+  AWS.Env ->
+  Int ->
+  Environment ->
+  SessionDataVaultKey ->
   Wai.Request ->
-  (Wai.Response -> m Wai.ResponseReceived) ->
-  m Wai.ResponseReceived
-app req send = do
-  dbConn <- ask @"dbConn"
-  sessionDataVaultKey <- ask @"sessionDataVaultKey"
-  requestIdVaultKey <- ask @"requestIdVaultKey"
-  let vault = Wai.vault req
-      requestId = maybe "" toText $ Vault.lookup requestIdVaultKey vault
-      adminOnlyOrOwn id next = case routeData of
-        Auth.IsAuthenticated auth@(Auth.IsAdmin _) -> next (id, auth)
-        Auth.IsAuthenticated auth@(Auth.IsUser Auth.UserSession {Auth.userSessionUserId = userId}) ->
-          if userId == id then next (id, auth) else send403
-        _ -> send403
-      adminOnly' next = case routeData of
-        Auth.IsAuthenticated (Auth.IsAdmin auth) -> next auth
-        _ -> send403
-      authenticatedOnly' next = case routeData of
-        Auth.IsAuthenticated auth -> next auth
-        _ -> send403
-      -- TODO: Add sessionid to session data
-      routeData = case Vault.lookup sessionDataVaultKey vault of
-        Nothing -> Auth.IsNotAuthenticated
-        Just (roles, userid) ->
-          Auth.IsAuthenticated $
-            if any isAdmin roles
-              then Auth.IsAdmin . Auth.AdminUser $ Auth.UserSession userid roles
-              else Auth.IsUser $ Auth.UserSession userid roles
-  K.katipAddContext (K.sl "request_id" requestId) $ do
+  (Wai.Response -> IO Wai.ResponseReceived) ->
+  IO Wai.ResponseReceived
+app
+  logger
+  dbConn
+  sessionKey
+  _
+  awsEnv
+  port
+  appEnv
+  sessionDataVaultKey
+  req
+  send = do
+    let vault = Wai.vault req
+        -- requestId = maybe "" toText $ Vault.lookup requestIdVaultKey vault
+        adminOnlyOrOwn id next = case routeData of
+          Auth.IsAuthenticated auth@(Auth.IsAdmin _) -> next (id, auth)
+          Auth.IsAuthenticated auth@(Auth.IsUser Auth.UserSession {Auth.userSessionUserId = userId}) ->
+            if userId == id then next (id, auth) else send403
+          _ -> send403
+        adminOnly' next = case routeData of
+          Auth.IsAuthenticated (Auth.IsAdmin auth) -> next auth
+          _ -> send403
+        authenticatedOnly' next = case routeData of
+          Auth.IsAuthenticated auth -> next auth
+          _ -> send403
+        routeData = case Vault.lookup sessionDataVaultKey vault of
+          Nothing -> Auth.IsNotAuthenticated
+          Just (roles, userid) ->
+            Auth.IsAuthenticated $
+              if any isAdmin roles
+                then Auth.IsAdmin . Auth.AdminUser $ Auth.UserSession userid roles
+                else Auth.IsUser $ Auth.UserSession userid roles
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
-          -- TODO: I think every handler can just access stuff through vault,
-          -- no need for authorizedOnly to call the callback with anything.
-          -- It's validation rather than parsing which sucks. What would be an
-          -- appropriate type?
-          -- data RouteData = NotLoggedIn | Authorized
-          -- data FooData = FooData { userid, roles, sessionid }
-          -- Interesting question is arguments vs. App vs. Vault, what goes where?
-          -- No handler should talk to Vault, they all just need to pattern
-          -- match on route data and handle all cases, OR they don't because
-          -- app already did that and now they just expect Authorized or Admin.
-          -- data Authorized = AuthorizedUser FooData | AuthorizedAdmin FooData
-          -- I think I like that
-          "GET" -> authenticatedOnly' (LandingPage.Handlers.showLandingPage >=> send200)
+          "GET" -> authenticatedOnly' $ \auth -> (LandingPage.Handlers.showLandingPage dbConn auth) >>= send200
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' (Events.Handlers.showAllEvents >=> send200)
+          "GET" -> authenticatedOnly' $ \auth -> (Events.Handlers.showAllEvents dbConn auth) >>= send200
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", "neu"] ->
         case Wai.requestMethod req of
-          "GET" -> adminOnly' (Events.Handlers.showCreateEvent >=> send200)
-          "POST" -> adminOnly' (Events.Handlers.handleCreateEvent req >=> send200)
+          "GET" -> adminOnly' $ \admin -> (Events.Handlers.showCreateEvent admin) >>= send200
+          "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleCreateEvent dbConn req admin) >>= send200
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", i] ->
@@ -123,30 +105,30 @@ app req send = do
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> authenticatedOnly' (Events.Handlers.showEvent (EventId parsed) send)
+              "GET" -> authenticatedOnly' $ \auth -> Events.Handlers.showEvent dbConn (EventId parsed) send auth
               _ -> send404
       ["veranstaltungen", i, "antwort"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "POST" -> authenticatedOnly' (Events.Handlers.replyToEvent req send (EventId parsed))
+              "POST" -> authenticatedOnly' $ \auth -> Events.Handlers.replyToEvent dbConn req send (EventId parsed) auth
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' (Events.Handlers.showDeleteEventConfirmation (EventId parsed) >=> send200)
-              "POST" -> adminOnly' (Events.Handlers.handleDeleteEvent (EventId parsed) >=> send200)
+              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showDeleteEventConfirmation dbConn (EventId parsed) admin) >>= send200
+              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleDeleteEvent dbConn (EventId parsed) admin) >>= send200
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' (Events.Handlers.showEditEventForm (EventId parsed) >=> send200)
-              "POST" -> adminOnly' (Events.Handlers.handleUpdateEvent req (EventId parsed) >=> send200)
+              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showEditEventForm dbConn (EventId parsed) admin) >>= send200
+              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleUpdateEvent dbConn req (EventId parsed) admin) >>= send200
               _ -> send404
       ["loeschen", i] ->
         case readEither (Text.unpack i) of
@@ -154,13 +136,13 @@ app req send = do
           Right (parsed :: Int) ->
             let msgId = (WelcomeMsgId parsed)
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' (WelcomeMessage.Handlers.handleDeleteMessage msgId >=> send200)
-                  "GET" -> adminOnly' (WelcomeMessage.Handlers.showDeleteConfirmation msgId >=> send200)
+                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.handleDeleteMessage dbConn msgId admin) >>= send200
+                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.showDeleteConfirmation dbConn msgId admin) >>= send200
                   _ -> send404
       ["neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' (WelcomeMessage.Handlers.saveNewMessage req >=> send200)
-          "GET" -> adminOnly' (WelcomeMessage.Handlers.showAddMessageForm >=> send200)
+          "POST" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.saveNewMessage dbConn req admin) >>= send200
+          "GET" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.showAddMessageForm admin) >>= send200
           _ -> send404
       ["editieren", i] ->
         case readEither (Text.unpack i) of
@@ -168,16 +150,16 @@ app req send = do
           Right (parsed :: Int) ->
             let msgId = (WelcomeMsgId parsed)
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' (WelcomeMessage.Handlers.handleEditMessage req msgId >=> send200)
-                  "GET" -> adminOnly' (WelcomeMessage.Handlers.showMessageEditForm msgId >=> send200)
+                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.handleEditMessage dbConn req msgId admin) >>= send200
+                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.showMessageEditForm dbConn msgId admin) >>= send200
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> liftIO (User.Handlers.showMemberList dbConn req auth) >>= send200
+          "GET" -> authenticatedOnly' $ \auth -> (User.Handlers.showMemberList dbConn req auth) >>= send200
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ \auth -> liftIO (User.Handlers.saveNewUser dbConn req auth) >>= send200
+          "POST" -> adminOnly' $ \auth -> (User.Handlers.saveNewUser dbConn req auth) >>= send200
           "GET" -> adminOnly' (User.Handlers.showAddUserForm >=> send200)
           _ -> send404
       ["nutzer", int, "editieren"] ->
@@ -188,11 +170,11 @@ app req send = do
              in case Wai.requestMethod req of
                   "GET" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      liftIO (User.Handlers.showEditUserForm dbConn id auth)
+                      (User.Handlers.showEditUserForm dbConn id auth)
                         >>= send200
                   "POST" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      liftIO (User.Handlers.updateExistingUser dbConn req id auth)
+                      (User.Handlers.updateExistingUser dbConn req id auth)
                         >>= send200
                   _ -> send404
       ["nutzer", int] ->
@@ -200,7 +182,7 @@ app req send = do
           "GET" ->
             case readEither (Text.unpack int) of
               Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-              Right (parsed :: Int) -> authenticatedOnly' $ \auth -> liftIO (User.Handlers.showProfile dbConn parsed auth) >>= send200
+              Right (parsed :: Int) -> authenticatedOnly' $ \auth -> (User.Handlers.showProfile dbConn parsed auth) >>= send200
           _ -> send404
       ["nutzer", int, "loeschen"] ->
         case readEither (Text.unpack int) of
@@ -208,50 +190,50 @@ app req send = do
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly' $ \auth -> liftIO (User.Handlers.showDeleteConfirmation dbConn userId auth) >>= send200
-                  "POST" -> adminOnly' $ \auth -> liftIO (User.Handlers.deleteUser dbConn userId auth) >>= send200
+                  "GET" -> adminOnly' $ \auth -> (User.Handlers.showDeleteConfirmation dbConn userId auth) >>= send200
+                  "POST" -> adminOnly' $ \auth -> (User.Handlers.deleteUser dbConn userId auth) >>= send200
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.Handlers.login req send
-          "GET" -> Login.Handlers.showLoginForm req >>= send200
+          "POST" -> Login.Handlers.login dbConn sessionKey appEnv req send
+          "GET" -> (Login.Handlers.showLoginForm sessionDataVaultKey req) >>= send200
           _ -> send404
       ["logout"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.Handlers.logout req send
+          "POST" -> Login.Handlers.logout dbConn appEnv sessionDataVaultKey req send
           _ -> send404
       ["passwort", "aendern"] ->
         case Wai.requestMethod req of
-          "GET" -> PasswordReset.Handlers.showChangePwForm req >>= send200
-          "POST" -> PasswordReset.Handlers.handleChangePw req >>= send200
+          "GET" -> (PasswordReset.Handlers.showChangePwForm req) >>= send200
+          "POST" -> (PasswordReset.Handlers.handleChangePw logger dbConn req) >>= send200
           _ -> send404
       ["passwort", "link"] ->
         case Wai.requestMethod req of
-          "GET" -> PasswordReset.Handlers.showResetForm >>= send200
-          "POST" -> PasswordReset.Handlers.handleReset req >>= send200
+          "GET" -> (PasswordReset.Handlers.showResetForm) >>= send200
+          "POST" -> (PasswordReset.Handlers.handleReset dbConn port appEnv awsEnv req) >>= send200
           _ -> send404
       _ -> send404
-  where
-    send200 =
-      send
-        . Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")]
-        . renderBS
-    send403 =
-      send
-        . Wai.responseLBS status403 [("Content-Type", "text/html; charset=UTF-8")]
-        . renderBS
-        . layout "Fehler" Nothing
-        $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-          div_ [class_ "row col-6"] $ do
-            p_ [class_ "alert alert-secondary", role_ "alert"] "Du hast keinen Zugriff auf diese Seite"
-    send404 =
-      send
-        . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
-        . renderBS
-        . layout "Nicht gefunden" Nothing
-        $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-          div_ [class_ "row col-6"] $ do
-            p_ [class_ "alert alert-secondary", role_ "alert"] "Nicht gefunden"
+    where
+      send200 =
+        send
+          . Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")]
+          . renderBS
+      send403 =
+        send
+          . Wai.responseLBS status403 [("Content-Type", "text/html; charset=UTF-8")]
+          . renderBS
+          . layout "Fehler" Nothing
+          $ div_ [class_ "container p-3 d-flex justify-content-center"] $
+            div_ [class_ "row col-6"] $ do
+              p_ [class_ "alert alert-secondary", role_ "alert"] "Du hast keinen Zugriff auf diese Seite"
+      send404 =
+        send
+          . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
+          . renderBS
+          . layout "Nicht gefunden" Nothing
+          $ div_ [class_ "container p-3 d-flex justify-content-center"] $
+            div_ [class_ "row col-6"] $ do
+              p_ [class_ "alert alert-secondary", role_ "alert"] "Nicht gefunden"
 
 main :: IO ()
 main = do
@@ -267,58 +249,50 @@ main = do
   SQLite.withConnection
     sqlitePath
     ( \conn -> do
-        handleScribe <-
-          K.mkHandleScribe
-            K.ColorIfTerminal
-            stdout
-            (K.permitItem K.InfoS)
-            K.V2
+        let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
+            sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
+        awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
 
-        let initialContext = ()
-            initialNamespace = "main"
-            makeLogEnv =
-              K.registerScribe
-                "stdout"
-                handleScribe
-                K.defaultScribeSettings
-                =<< K.initLogEnv "Lions Server" (K.Environment . Text.pack $ show appEnv)
+        formattedTime <- newTimeCache simpleTimeFormat
+        withTimedFastLogger formattedTime (LogStdout defaultBufSize) $ \logger -> do
+          let port = (3000 :: Int)
+              app' =
+                app
+                  logger
+                  conn
+                  sessionKey
+                  requestIdVaultKey
+                  awsEnv
+                  port
+                  appEnv
+                  sessionDataVaultKey
 
-        bracket makeLogEnv K.closeScribes $ \katipLogEnv -> do
-          K.runKatipContextT katipLogEnv initialContext initialNamespace $ do
-            ctx <- K.getKatipContext
-
-            let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
-                sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
-            awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
-
-            let port = (3000 :: Int)
-                env =
-                  Env
-                    conn
-                    sessionKey
-                    sessionDataVaultKey
-                    appEnv
-                    port
-                    requestIdVaultKey
-                    (LogEnv ctx initialNamespace katipLogEnv)
-                    awsEnv
-
-            liftIO $ SQLite.execute_ conn "PRAGMA foreign_keys"
-            K.katipAddContext (K.sl "port" port) $ do
-              K.logLocM K.DebugS "starting server"
-              liftIO . (runSettings . setPort port $ setHost "localhost" defaultSettings)
-                . logStdout
-                . staticPolicy (addBase "public")
-                $ ( \r s ->
-                      let send = liftIO . s
-                       in flip unApp env
-                            . handleAny (send500 send)
-                            $ (RequestID.Middleware.middleware . Session.Middleware.middleware) app r send
-                  )
+          SQLite.execute_ conn "PRAGMA foreign_keys"
+          (runSettings . setPort port $ setHost "localhost" defaultSettings)
+            . logStdout
+            . staticPolicy (addBase "public")
+            $ ( \r s ->
+                  let send = s
+                   in handleAny
+                        ( \e -> do
+                            Logging.log logger $ show e
+                            send500 send
+                        )
+                        $ ( RequestID.Middleware.middleware requestIdVaultKey
+                              . ( Session.Middleware.middleware
+                                    logger
+                                    sessionDataVaultKey
+                                    conn
+                                    sessionKey
+                                )
+                          )
+                          app'
+                          r
+                          send
+              )
     )
   where
-    send500 send e = do
-      K.logLocM K.ErrorS $ K.showLS e
+    send500 send = do
       send
         . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS

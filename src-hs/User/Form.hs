@@ -175,7 +175,7 @@ data FormInput = FormInput
   }
   deriving (Show)
 
-makeProfile :: MonadThrow m => FormInput -> m (Either EditFormState UserProfileCreate)
+makeProfile :: FormInput -> IO (Either EditFormState UserProfileCreate)
 makeProfile FormInput {..} =
   case EditFormState (validateEmail inputEmail) (validateDate inputBirthday) (validateDate inputBirthdayPartner) of
     (EditFormState (Valid email) (Valid bday) (Valid bdayp)) ->

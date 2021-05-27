@@ -1,12 +1,10 @@
 module Time.Time (timeDaysFromNow) where
 
-import qualified Data.Time as Time
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.List (foldl')
+import qualified Data.Time as Time
 
-timeDaysFromNow :: (MonadIO m) => Int -> m Time.UTCTime
+timeDaysFromNow :: Int -> IO Time.UTCTime
 timeDaysFromNow days = do
-  now <- liftIO Time.getCurrentTime
+  now <- Time.getCurrentTime
   let thirtyDays = replicate days Time.nominalDay
   return $ foldl' (flip Time.addUTCTime) now thirtyDays
-

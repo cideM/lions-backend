@@ -12,7 +12,6 @@ module Session.DB
 where
 
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.ToField (ToField (..))
@@ -32,26 +31,24 @@ instance FromRow DBSession where
 instance ToRow DBSession where
   toRow (DBSession (Session (SessionId id) expires (UserId userId))) = [toField id, toField expires, toField userId]
 
-getSessionFromDb :: (MonadIO m) => SQLite.Connection -> SessionId -> m (Maybe Session)
+getSessionFromDb :: SQLite.Connection -> SessionId -> IO (Maybe Session)
 getSessionFromDb conn (SessionId id) =
-  liftIO $
-    SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE key = ?" [id]
-      >>= \case
-        [DBSession s] -> return $ Just s
-        [] -> return Nothing
-        other -> throwString $ "unexpected DB result: " <> show other
+  SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE key = ?" [id]
+    >>= \case
+      [DBSession s] -> return $ Just s
+      [] -> return Nothing
+      other -> throwString $ "unexpected DB result for session: " <> show other
 
-getSessionsFromDbByUser :: (MonadIO m) => SQLite.Connection -> UserId -> m [Session]
+getSessionsFromDbByUser :: SQLite.Connection -> UserId -> IO [Session]
 getSessionsFromDbByUser conn (UserId id) =
-  liftIO $
-    SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE userid = ?" [id]
-      >>= \case
-        (sessions :: [DBSession]) -> return $ map (\(DBSession s) -> s) sessions
+  SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE userid = ?" [id]
+    >>= \case
+      (sessions :: [DBSession]) -> return $ map (\(DBSession s) -> s) sessions
 
-saveSession :: (MonadIO m) => SQLite.Connection -> ValidSession -> m ()
+saveSession :: SQLite.Connection -> ValidSession -> IO ()
 saveSession conn (ValidSession session) =
-  liftIO $ SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (DBSession session)
+  SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (DBSession session)
 
-deleteSession :: (MonadIO m) => SQLite.Connection -> Session -> m ()
+deleteSession :: SQLite.Connection -> Session -> IO ()
 deleteSession conn (Session (SessionId id) _ _) =
-  liftIO $ SQLite.execute conn "DELETE FROM sessions WHERE key = ?" $ SQLite.Only id
+  SQLite.execute conn "DELETE FROM sessions WHERE key = ?" $ SQLite.Only id

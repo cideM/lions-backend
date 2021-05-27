@@ -24,7 +24,6 @@ import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import GHC.Generics
 import Text.Email.Validate (EmailAddress, toByteString)
-import TextShow
 
 newtype UserEmail = UserEmail EmailAddress deriving (Show)
 
@@ -102,7 +101,6 @@ newtype UserId = UserId Int
   deriving (Show)
   deriving (Generic)
   deriving (Eq)
-  deriving (TextShow) via Int
 
 instance ToJSON UserId where
   toEncoding = genericToEncoding defaultOptions
