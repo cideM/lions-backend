@@ -25,7 +25,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Debug.Trace
 import Layout (ActiveNavLink (..), layout)
 import Locale (german)
 import Lucid
@@ -141,14 +140,30 @@ updateExistingUser conn req userId auth = do
               "/nutzer/neu"
               input
               state
-    Right profile@UserProfileCreate {..} -> do
+    Right UserProfileCreate {..} -> do
+      let profile =
+            UserProfile
+              { userEmail = userCreateEmail,
+                userFirstName = userCreateFirstName,
+                userLastName = userCreateLastName,
+                userAddress = userCreateAddress,
+                userMobilePhoneNr = userCreateMobilePhoneNr,
+                userLandlineNr = userCreateLandlineNr,
+                userBirthday = userCreateBirthday,
+                userFirstNamePartner = userCreateFirstNamePartner,
+                userLastNamePartner = userCreateLastNamePartner,
+                userBirthdayPartner = userCreateBirthdayPartner,
+                userId = userId,
+                userRoles = userCreateRoles
+              }
       updateUser conn userId profile
+      let (UserEmail email) = userCreateEmail
       return $
         layout "Nutzer Editieren" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> show userCreateEmail <> " erfolgreich editiert"
+                "Nutzer " <> showEmail email <> " erfolgreich editiert"
 
 -- TODO: Duplication
 saveNewUser :: SQLite.Connection -> Wai.Request -> Auth.AdminUser -> IO (Html ())
@@ -189,12 +204,13 @@ saveNewUser conn req _ = do
           saveUser conn profile
           (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
           saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
+      let (UserEmail email) = userCreateEmail
       return $
         layout "Nutzer Hinzufügen" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> show userCreateEmail <> " erfolgreich erstellt"
+                "Nutzer " <> showEmail email <> " erfolgreich erstellt"
 
 showProfile :: SQLite.Connection -> Int -> Auth.Authenticated -> IO (Html ())
 showProfile conn paramId auth = do
@@ -268,9 +284,9 @@ showMemberList conn req auth = do
   let userIsAdmin = case auth of
         Auth.IsAdmin _ -> True
         _ -> False
-  let selectionRaw = traceShowId $ Map.findWithDefault "all" "userselect" $ parseQueryParams req
+  let selectionRaw = Map.findWithDefault "all" "userselect" $ parseQueryParams req
   selectionParsed <-
-    traceShowId <$> case parseSelection selectionRaw of
+    case parseSelection selectionRaw of
       Left e -> throwString . Text.unpack $ "invalid group selection: " <> selectionRaw <> " " <> e
       Right (v :: UserGroupToShow) -> pure v
   users <- getUsers conn

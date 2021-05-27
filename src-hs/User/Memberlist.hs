@@ -10,7 +10,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Layout (ariaLabel_)
 import Lucid
-import User.Domain (Role (..), UserEmail (..), UserProfile (..), showEmail)
+import User.Domain (Role (..), UserId (..), UserEmail (..), UserProfile (..), showEmail)
 
 data UserGroupToShow = All | Some Role deriving (Eq)
 
@@ -38,8 +38,9 @@ render users activeGroup = do
       ( \UserProfile {..} -> do
           let name = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
               (UserEmail email) = userEmail
+              (UserId uid) = userId
           li_ [class_ "p-0 list-group-item d-flex align-items-center", data_ "email" (showEmail email)] $ do
-            a_ [class_ "flex-grow-1 py-2 px-3 list-group-item-action text-decoration-none text-body", href_ ("/nutzer/" <> (Text.pack $ show userId))] $ do
+            a_ [class_ "flex-grow-1 py-2 px-3 list-group-item-action text-decoration-none text-body", href_ ("/nutzer/" <> (Text.pack $ show uid))] $ do
               div_ [class_ "me-auto d-grid gap-2"] $ do
                 unless (Text.null name) $
                   p_ [class_ "fw-bold m-0"] $ toHtml name

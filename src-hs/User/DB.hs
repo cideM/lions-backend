@@ -184,12 +184,12 @@ instance FromRow GetUserRow where
 -- TODO: Merge roles and ID into profile and then have separate version of profile for form create without ID
 -- I've spent about 2h debugging this GROUP BY NULL shit, fml
 -- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present
-getUser ::  SQLite.Connection -> UserId -> IO (Maybe UserProfile)
+getUser :: SQLite.Connection -> UserId -> IO (Maybe UserProfile)
 getUser conn userid = do
   rows <-
-      SQLite.query
-        conn
-        [sql|
+    SQLite.query
+      conn
+      [sql|
            SELECT
               GROUP_CONCAT(label,","),
               users.id,
@@ -209,7 +209,7 @@ getUser conn userid = do
            WHERE users.id = ?
            GROUP BY NULL
           |]
-        (SQLite.Only (DBUserId userid))
+      (SQLite.Only (DBUserId userid))
   case rows of
     [] -> return Nothing
     [getUserRows :: GetUserRow] -> do
@@ -239,19 +239,19 @@ makeProfile GetUserRow {_getUserRowEmail = (DBEmail email), ..} = do
           (UserId _getUserRowUserid)
           roles
 
-deleteUserById ::  SQLite.Connection -> UserId -> IO ()
+deleteUserById :: SQLite.Connection -> UserId -> IO ()
 deleteUserById conn userid = do
   SQLite.execute conn "DELETE FROM users WHERE id = ?" . SQLite.Only $ DBUserId userid
   SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" . SQLite.Only $ DBUserId userid
   SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" . SQLite.Only $ DBUserId userid
 
-getUsers ::  SQLite.Connection -> IO [UserProfile]
+getUsers :: SQLite.Connection -> IO [UserProfile]
 getUsers conn =
   handleAny
     (\e -> throwString $ "error getting users: " <> show e)
-        ( SQLite.query_
-            conn
-            [sql|
+    ( SQLite.query_
+        conn
+        [sql|
            SELECT GROUP_CONCAT(label,","), users.id, email, first_name, last_name, address, mobile_phone_nr, landline_nr,
                   birthday, first_name_partner, last_name_partner, birthday_partner
            FROM users
@@ -259,14 +259,14 @@ getUsers conn =
            JOIN roles ON roles.id = roleid
            GROUP BY users.id
           |]
-        )
-        >>= \values ->
-          case traverse makeProfile values of
-            Left e -> throwString $ "error making profile: " <> Text.unpack e
-            Right v -> pure v
+    )
+    >>= \values ->
+      case traverse makeProfile values of
+        Left e -> throwString $ "error making profile: " <> Text.unpack e
+        Right v -> pure v
 
 -- TODO: Email type
-getIdAndPwByEmail ::  SQLite.Connection -> Text -> IO (Maybe (UserId, Text))
+getIdAndPwByEmail :: SQLite.Connection -> Text -> IO (Maybe (UserId, Text))
 getIdAndPwByEmail conn email = do
   r <- SQLite.query conn "SELECT id, password_digest FROM users WHERE email = ?" [email]
   return $ case r of
@@ -274,10 +274,10 @@ getIdAndPwByEmail conn email = do
     [] -> Nothing
     _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getIdAndPwByEmail"
 
-updateUser :: SQLite.Connection -> UserId -> UserProfileCreate -> IO ()
-updateUser conn userid profile@UserProfileCreate {..} = do
+updateUser :: SQLite.Connection -> UserId -> UserProfile -> IO ()
+updateUser conn userid profile@UserProfile {..} = do
   SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" (SQLite.Only (DBUserId userid))
-  saveUserRoles conn userid (NE.toList userCreateRoles)
+  saveUserRoles conn userid (NE.toList userRoles)
   SQLite.execute
     conn
     [sql|
@@ -293,8 +293,7 @@ updateUser conn userid profile@UserProfileCreate {..} = do
     ,   last_name_partner  = ?
     ,   birthday_partner = ?
     WHERE id = ?
-    |]
-    $ DBUserProfileCreate profile
+    |] $ DBUserProfile profile
 
 saveUser :: SQLite.Connection -> UserProfileCreate -> IO ()
 saveUser conn profile = do
@@ -325,7 +324,7 @@ saveUser conn profile = do
     |]
     $ UserProfileCreateWithPw (hashed, profile)
 
-getRolesFromDb ::  SQLite.Connection -> UserId -> IO (Maybe [Role])
+getRolesFromDb :: SQLite.Connection -> UserId -> IO (Maybe [Role])
 getRolesFromDb conn (UserId userId) =
   let q =
         [sql|

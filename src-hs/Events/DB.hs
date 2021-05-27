@@ -26,7 +26,6 @@ import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
-import Debug.Trace
 import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
 import User.DB (DBEmail (..))
 import User.Domain (UserEmail (..), UserId (..))
@@ -126,7 +125,7 @@ getEvent conn (EventId eventid) = do
       |]
       [eventid]
   let events = foldr' makeEvents Map.empty rows
-  case Map.toList (traceShowId events) of
+  case Map.toList events of
     [] -> return Nothing
     [x] -> return . Just $ snd x
     v -> throwString $ "got more than one result from getEvent: " <> show v
