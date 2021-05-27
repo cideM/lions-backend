@@ -59,10 +59,9 @@ middleware ::
   ClientSession.Key ->
   Wai.Application ->
   Wai.Application
-middleware logger sessionDataVaultKey dbConn sessionKey nextApp req send = do
+middleware _ sessionDataVaultKey dbConn sessionKey nextApp req send = do
   tryLogin dbConn sessionKey sessionDataVaultKey req >>= \case
-    Left e -> do
-      Logging.log logger $ show e
+    Left _ -> do
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send

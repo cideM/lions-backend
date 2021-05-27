@@ -40,9 +40,11 @@ $ fd . -e hs | entr -cr lions-dev
 ## Litestream
 
 ```shell
-LITESTREAM_ACCESS_KEY_ID= LITESTREAM_SECRET_ACCESS_KEY= litestream generations s3://lions-achern-litestream-replica-1/test/
+litestream generations s3://lions-achern-litestream-replica-1/test/
 ```
 
-## Notes
+Restore the DB **from** S3 **to** a local file called `prod.db`:
 
-- Editing the date of an event isn't implemented
+```shell
+litestream restore -o prod.db s3://lions-achern-litestream-replica-1/prod
+```
