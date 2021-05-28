@@ -21,83 +21,114 @@ maintainer:         yuuki@protonmail.com
 -- category:
 extra-source-files: CHANGELOG.md
 
-executable lions-backend
-  ghc-options:
-    -Wall
+common shared-props
+  ghc-options:      -Wall
+  default-language: Haskell2010
 
-  main-is:          Main.hs
-
-  -- Modules included in this executable, other than Main.
-  other-modules:
-    Layout
-    Locale
-    LandingPage.Handlers
-    User.Memberlist
-    User.Form
-    User.Handlers
-    User.Domain
-    User.Profile
-    User.DB
-    Session.Domain
-    Session.Middleware
-    Session.DB
-    WelcomeMessage.DB
-    WelcomeMessage.Handlers
-    WelcomeMessage.Domain
-    WelcomeMessage.Form
-    Wai
-    WelcomeMessage.Card
-    Login.Handlers
-    Login.Form
-    App
-    RequestID.Middleware
-    Events.Handlers
-    Events.EventForm
-    Events.EventCard
-    Events.SingleEvent
-    Events.Domain
-    Events.DB
-    Routes.Data
-    Form.Form
-    PasswordReset.DB
-    PasswordReset.Handlers
-    PasswordReset.Domain
-    PasswordReset.Form
-    Time.Time
-    Logging.Logging
-
-  -- LANGUAGE extensions used by modules in this package.
-  -- other-extensions:
+test-suite tests
+  import:         shared-props
+  main-is:        Main.hs
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: tests-hs
   build-depends:
-    , base       ^>=4.14.1.0
-    , wai
-    , wai-extra
-    , warp
-    , http-types
-    , lucid
-    , wai-session
-    , wai-middleware-static
-    , fast-logger
-    , cookie
+    , base
+    , filepattern
+    , lions-backend
     , sqlite-simple
-    , text
-    , clientsession
     , bytestring
-    , bcrypt
-    , time
-    , vault
-    , wai-session
-    , safe-exceptions
-    , containers
-    , email-validate
-    , crypto-api
-    , uuid
-    , aeson
-    , uri-encode
-    , amazonka
+    , wai-extra
+    , wai
     , amazonka-ses
     , lens
-    , string-interpolate
+    , lucid
+    , tasty
+    , http-types
+    , tasty-hunit
+    , text
 
-  hs-source-dirs:   app, src-hs
-  default-language: Haskell2010
+library
+  import:          shared-props
+  hs-source-dirs:  src-hs
+  build-depends:
+    , aeson
+    , amazonka
+    , amazonka-ses
+    , base                   ^>=4.14.1.0
+    , base64
+    , bcrypt
+    , bytestring
+    , cipher-aes
+    , clientsession
+    , containers
+    , cookie
+    , crypto-api
+    , crypto-cipher-types
+    , email-validate
+    , fast-logger
+    , http-types
+    , lens
+    , lucid
+    , safe-exceptions
+    , scrypt
+    , sqlite-simple
+    , string-interpolate
+    , text
+    , time
+    , uri-encode
+    , uuid
+    , vault
+    , wai
+    , wai-extra
+    , wai-middleware-static
+    , wai-session
+    , warp
+
+  exposed-modules:
+    App
+    Env
+    Events.DB
+    Events.Domain
+    Events.EventCard
+    Events.EventForm
+    Events.Handlers
+    Events.SingleEvent
+    Form.Form
+    LandingPage.Handlers
+    Layout
+    Locale
+    Logging.Logging
+    Login.Form
+    Login.Handlers
+    PasswordReset.DB
+    PasswordReset.Domain
+    PasswordReset.Email
+    PasswordReset.Form
+    PasswordReset.Handlers
+    RequestID.Middleware
+    Routes.Data
+    Scrypt
+    Session.DB
+    Session.Domain
+    Session.Middleware
+    Time.Time
+    User.DB
+    User.Domain
+    User.Form
+    User.Handlers
+    User.Memberlist
+    User.Profile
+    Wai
+    WelcomeMessage.Card
+    WelcomeMessage.DB
+    WelcomeMessage.Domain
+    WelcomeMessage.Form
+    WelcomeMessage.Handlers
+
+executable run-lions-backend
+  import:         shared-props
+  main-is:        Main.hs
+  build-depends:
+    , base
+    , lions-backend
+
+  hs-source-dirs: app

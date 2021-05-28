@@ -5,7 +5,7 @@
 
 module Login.Handlers (logout, login, showLoginForm) where
 
-import App (Environment (..))
+import Env (Environment (..))
 import Control.Exception.Safe
 import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
