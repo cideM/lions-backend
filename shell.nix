@@ -86,6 +86,7 @@ pkgs.mkShell {
       lions-vm-db
 
       # Infra
+      pkgs.nodePackages.firebase-tools
       pkgs.terraform_0_15
       pkgs.cli53
       pkgs.packer
