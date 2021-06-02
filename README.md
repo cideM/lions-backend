@@ -1,4 +1,6 @@
-## Migrations
+# Hi!
+
+## SQLite
 
 ### Running Migrations
 
@@ -21,12 +23,24 @@ $ migrate create -ext sql -dir migrations/ -seq events
 /home/tifa/lions-backend/migrations/000007_events.down.sql
 ```
 
-## SQLite Dummy Data
+### Dummy Data
 
 *There's now a command called `lions-dummy` that loads all*
 
 ```shell
 for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
+```
+
+### Litestream
+
+```shell
+litestream generations s3://lions-achern-litestream-replica-1/test/
+```
+
+Restore the DB **from** S3 **to** a local file called `prod.db`:
+
+```shell
+litestream restore -o prod.db s3://lions-achern-litestream-replica-1/prod
 ```
 
 ## Development
@@ -37,14 +51,17 @@ Rebuild and restart when source changes. This may or may not work reliably on Ma
 $ fd . -e hs | entr -cr lions-dev
 ```
 
-## Litestream
+### Tests
+
+This will recompile and run the test binary, it's not using Cabal's test running facilities.
 
 ```shell
-litestream generations s3://lions-achern-litestream-replica-1/test/
+$ fd -e hs | entr -c cabal v2-run test:tests
 ```
 
-Restore the DB **from** S3 **to** a local file called `prod.db`:
+This will run the tests through cabal but it seems to generate less output. But
+that output is useful, so prefer the above snippet.
 
 ```shell
-litestream restore -o prod.db s3://lions-achern-litestream-replica-1/prod
+$ fd -e hs | entr -c cabal v2-test
 ```
