@@ -30,15 +30,22 @@ test-suite tests
   main-is:        Main.hs
   type:           exitcode-stdio-1.0
   hs-source-dirs: tests-hs
+  other-modules:
+    Helpers
+    ScryptTest
+    LoginTests
+    PasswordResetTests
   build-depends:
     , base
     , filepattern
     , lions-backend
     , sqlite-simple
+    , clientsession
     , bytestring
     , wai-extra
     , wai
     , amazonka-ses
+    , uri-encode
     , lens
     , lucid
     , tasty
@@ -97,13 +104,8 @@ library
     Layout
     Locale
     Logging.Logging
-    Login.Form
-    Login.Handlers
-    PasswordReset.DB
-    PasswordReset.Domain
-    PasswordReset.Email
-    PasswordReset.Form
-    PasswordReset.Handlers
+    Login
+    PasswordReset
     RequestID.Middleware
     Routes.Data
     Scrypt

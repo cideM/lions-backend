@@ -2,7 +2,6 @@ module Wai (parseQueryParams, parseParams) where
 
 import Data.Bifunctor (bimap)
 import Data.ByteString (ByteString)
-import Data.Functor ((<&>))
 import Data.List (foldl')
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -21,7 +20,9 @@ queryStringToMap = Map.fromList . map (bimap decodeUtf8 decodeUtf8) . foldl' f [
     f xs _ = xs
 
 parseParams :: Wai.Request -> IO (Map Text Text)
-parseParams req = parseRequestBodyEx defaultParseRequestBodyOptions lbsBackEnd req <&> paramsToMap . fst
+parseParams req = do
+  body <- parseRequestBodyEx defaultParseRequestBodyOptions lbsBackEnd req
+  return . paramsToMap $ fst body
 
 parseQueryParams :: Wai.Request -> Map Text Text
 parseQueryParams = queryStringToMap . Wai.queryString

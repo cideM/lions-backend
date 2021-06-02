@@ -5,6 +5,8 @@ module Layout
     layout,
     expanded_,
     describedBy_,
+    warning,
+    success,
     ariaLabel_,
     ariaLabelledBy_,
     ariaHidden_,
@@ -76,3 +78,15 @@ layout pageTitle activeNavLink pageContent = doctypehtml_ $ do
     f (href, label, route) =
       let classes = Text.unwords $ "nav-link" : (["active text-decoration-underline" | route == activeNavLink])
        in a_ [class_ classes, href_ href] $ toHtml label
+
+success :: Text -> Html ()
+success msg =
+  div_ [class_ "container p-3 d-flex justify-content-center"] $
+    div_ [class_ "row col-md-6"] $ do
+      p_ [class_ "alert alert-success", role_ "alert"] $ toHtml (msg :: Text)
+
+warning :: Text -> Html ()
+warning msg =
+  div_ [class_ "container p-3 d-flex justify-content-center"] $
+    div_ [class_ "row col-md-6"] $ do
+      p_ [class_ "alert alert-danger mb-4", role_ "alert"] $ toHtml (msg :: Text)

@@ -15,7 +15,7 @@ import qualified Events.Handlers
 import qualified LandingPage.Handlers
 import Layout (layout)
 import qualified Logging.Logging as Logging
-import qualified Login.Handlers
+import qualified Login
 import Lucid
 import qualified Network.AWS as AWS
 import Network.HTTP.Types (status200, status403, status404, status500)
@@ -23,8 +23,7 @@ import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
-import PasswordReset.Email (sendMail)
-import qualified PasswordReset.Handlers
+import qualified PasswordReset
 import RequestID.Middleware (RequestIdVaultKey)
 import qualified RequestID.Middleware
 import qualified Routes.Data as Auth
@@ -86,7 +85,7 @@ server
           if appEnv == Production
             then "https://www.lions-achern.de"
             else Text.pack $ "http://localhost:" <> show port
-        sendMail' = sendMail awsEnv resetHost
+        sendMail' = PasswordReset.sendMail awsEnv resetHost
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
@@ -198,22 +197,22 @@ server
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.Handlers.login dbConn sessionKey appEnv req send
-          "GET" -> (Login.Handlers.showLoginForm sessionDataVaultKey req) >>= send200
+          "POST" -> Login.login dbConn sessionKey appEnv req send
+          "GET" -> (Login.showLoginForm sessionDataVaultKey req) >>= send200
           _ -> send404
       ["logout"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.Handlers.logout dbConn appEnv sessionDataVaultKey req send
+          "POST" -> Login.logout dbConn appEnv sessionDataVaultKey req send
           _ -> send404
       ["passwort", "aendern"] ->
         case Wai.requestMethod req of
-          "GET" -> (PasswordReset.Handlers.showChangePwForm req) >>= send200
-          "POST" -> (PasswordReset.Handlers.handleChangePw logger dbConn req) >>= send200
+          "GET" -> (PasswordReset.showChangePwForm req) >>= send200
+          "POST" -> (PasswordReset.handleChangePw logger dbConn req) >>= send200
           _ -> send404
       ["passwort", "link"] ->
         case Wai.requestMethod req of
-          "GET" -> (PasswordReset.Handlers.showResetForm) >>= send200
-          "POST" -> (PasswordReset.Handlers.handleReset dbConn req sendMail') >>= send200
+          "GET" -> (PasswordReset.showResetForm) >>= send200
+          "POST" -> (PasswordReset.handleReset dbConn req sendMail') >>= send200
           _ -> send404
       _ -> send404
     where
