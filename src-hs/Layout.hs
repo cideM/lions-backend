@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Layout
   ( ActiveNavLink (..),
     layout,

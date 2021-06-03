@@ -1,6 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-
 module User.Profile (render, CanDelete (..), CanEdit (..)) where
 
 import Control.Monad (when)

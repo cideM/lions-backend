@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Locale (german) where
 
 import qualified Data.Time as Time

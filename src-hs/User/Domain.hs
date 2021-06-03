@@ -1,7 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module User.Domain
   ( UserProfile (..),
     UserProfileCreate (..),
@@ -25,7 +21,7 @@ import qualified Data.Time as Time
 import GHC.Generics
 import Text.Email.Validate (EmailAddress, toByteString)
 
-newtype UserEmail = UserEmail EmailAddress deriving (Show)
+newtype UserEmail = UserEmail EmailAddress deriving (Show, Eq)
 
 instance ToJSON UserEmail where
   toJSON (UserEmail email) = String $ showEmail email

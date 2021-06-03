@@ -1,7 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module User.Memberlist (render, UserGroupToShow (..)) where
 
 import Control.Monad (unless)

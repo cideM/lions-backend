@@ -1,8 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-
 module Events.SingleEvent (render, ShowAdminTools (..)) where
 
 import Control.Monad (when)

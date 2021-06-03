@@ -1,7 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-
 module WelcomeMessage.Handlers
   ( saveNewMessage,
     showMessageEditForm,

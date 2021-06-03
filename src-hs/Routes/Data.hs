@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Routes.Data
   ( UserSession (..),
     Authentication (..),

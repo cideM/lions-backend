@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Logging.Logging (log, TimedFastLogger) where
 
 import System.Log.FastLogger

@@ -1,20 +1,13 @@
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module User.DB
   ( deleteUserById,
     getUser,
     getUsers,
     getIdAndPwByEmail,
     saveUser,
+    hasUser,
     getRolesFromDb,
     saveUserRoles,
     updateUser,
-    DBEmail (..),
   )
 where
 
@@ -28,13 +21,11 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Database.SQLite.Simple.FromField (FromField (..), ResultError (..), fieldData, returnError)
 import Database.SQLite.Simple.FromRow (FromRow)
-import Database.SQLite.Simple.Ok (Ok (..))
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (..))
 import Database.SQLite.Simple.ToRow (ToRow (..))
-import Text.Email.Validate (EmailAddress)
+import Text.Email.Validate (emailAddress)
 import qualified Text.Email.Validate as Email
 import User.Domain
   ( Role (..),
@@ -46,44 +37,10 @@ import User.Domain
   )
 import Prelude hiding (id)
 
-newtype DBRole = DBRole Role
-  deriving (Show) via Role
-
-instance ToField DBRole where
-  toField = toField . show
-
-instance FromField DBRole where
-  fromField f =
-    case fieldData f of
-      (SQLite.SQLText "admin") -> Ok $ DBRole Admin
-      (SQLite.SQLText "board") -> Ok $ DBRole Board
-      (SQLite.SQLText "president") -> Ok $ DBRole Board
-      (SQLite.SQLText "user") -> Ok $ DBRole Board
-      _ -> returnError ConversionFailed f "unknown user role"
-
-newtype DBUserId = DBUserId UserId
-  deriving (Show)
-  deriving (FromField) via Int
-  deriving (ToField) via Int
-  deriving (ToRow) via (SQLite.Only Int)
-
 newtype UserProfileCreateWithPw = UserProfileCreateWithPw (Text, UserProfileCreate)
 
 instance ToRow UserProfileCreateWithPw where
   toRow (UserProfileCreateWithPw (pw, profile)) = toField pw : toRow (DBUserProfileCreate profile)
-
-newtype DBEmail = DBEmail EmailAddress deriving (Show)
-
-instance FromField DBEmail where
-  fromField f =
-    ( case fieldData f of
-        (SQLite.SQLBlob v) -> Ok v
-        (SQLite.SQLText v) -> Ok $ encodeUtf8 v
-        _ -> returnError ConversionFailed f "unexpected field type for email"
-    )
-      >>= \email -> case Email.emailAddress email of
-        Nothing -> returnError ConversionFailed f ("couldn't parse email from DB: " <> show email)
-        Just parsed -> Ok $ DBEmail parsed
 
 newtype DBUserProfileCreate = DBUserProfileCreate UserProfileCreate deriving (Show)
 
@@ -152,7 +109,7 @@ instance ToRow DBUserProfile where
 data GetUserRow = GetUserRow
   { _getUserRowRoles :: Text,
     _getUserRowUserid :: Int,
-    _getUserRowEmail :: DBEmail,
+    _getUserRowEmail :: Text,
     _getUserRowFirstName :: Maybe Text,
     _getUserRowLastName :: Maybe Text,
     _getUserRowAddress :: Maybe Text,
@@ -181,11 +138,20 @@ instance FromRow GetUserRow where
         <*> SQLite.field
         <*> SQLite.field
 
+hasUser :: SQLite.Connection -> UserId -> IO Bool
+hasUser conn (UserId id) = do
+  rows <-
+    SQLite.query conn [sql| SELECT id FROM users WHERE users.id = ?|] [id]
+  case rows of
+    [] -> return False
+    [[_ :: Integer]] -> return True
+    result -> throwString $ "got unexpected hasUser result" <> show result
+
 -- TODO: Merge roles and ID into profile and then have separate version of profile for form create without ID
 -- I've spent about 2h debugging this GROUP BY NULL shit, fml
 -- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present
 getUser :: SQLite.Connection -> UserId -> IO (Maybe UserProfile)
-getUser conn userid = do
+getUser conn (UserId userid) = do
   rows <-
     SQLite.query
       conn
@@ -209,7 +175,7 @@ getUser conn userid = do
            WHERE users.id = ?
            GROUP BY NULL
           |]
-      (SQLite.Only (DBUserId userid))
+      [userid]
   case rows of
     [] -> return Nothing
     [getUserRows :: GetUserRow] -> do
@@ -219,31 +185,34 @@ getUser conn userid = do
     result -> throwString $ "got unexpected getUser result" <> show result
 
 makeProfile :: GetUserRow -> Either Text UserProfile
-makeProfile GetUserRow {_getUserRowEmail = (DBEmail email), ..} = do
+makeProfile GetUserRow {..} = do
   parsed <- NE.nonEmpty <$> traverse parseRole (Text.splitOn "," _getUserRowRoles)
   case parsed of
-    Nothing -> Left $ "user without roles: " <> Text.pack (show _getUserRowUserid) <> " " <> Text.pack (show email)
+    Nothing -> Left $ "user without roles: " <> Text.pack (show _getUserRowUserid) <> " " <> Text.pack (show _getUserRowEmail)
     Just roles ->
-      Right $
-        UserProfile
-          (UserEmail email)
-          _getUserRowFirstName
-          _getUserRowLastName
-          _getUserRowAddress
-          _getUserRowMobilePhoneNr
-          _getUserRowLandlineNr
-          _getUserRowBirthday
-          _getUserRowFirstNamePartner
-          _getUserRowLastNamePartner
-          _getUserRowBirthdayPartner
-          (UserId _getUserRowUserid)
-          roles
+      case emailAddress (encodeUtf8 _getUserRowEmail) of
+        Nothing -> Left $ "couldn't parse email " <> _getUserRowEmail
+        Just parsedEmail ->
+          Right $
+            UserProfile
+              (UserEmail parsedEmail)
+              _getUserRowFirstName
+              _getUserRowLastName
+              _getUserRowAddress
+              _getUserRowMobilePhoneNr
+              _getUserRowLandlineNr
+              _getUserRowBirthday
+              _getUserRowFirstNamePartner
+              _getUserRowLastNamePartner
+              _getUserRowBirthdayPartner
+              (UserId _getUserRowUserid)
+              roles
 
 deleteUserById :: SQLite.Connection -> UserId -> IO ()
-deleteUserById conn userid = do
-  SQLite.execute conn "DELETE FROM users WHERE id = ?" . SQLite.Only $ DBUserId userid
-  SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" . SQLite.Only $ DBUserId userid
-  SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" . SQLite.Only $ DBUserId userid
+deleteUserById conn (UserId userid) = do
+  SQLite.execute conn "DELETE FROM users WHERE id = ?" [userid]
+  SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" [userid]
+  SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" [userid]
 
 getUsers :: SQLite.Connection -> IO [UserProfile]
 getUsers conn =
@@ -270,14 +239,14 @@ getIdAndPwByEmail :: SQLite.Connection -> Text -> IO (Maybe (UserId, Text))
 getIdAndPwByEmail conn email = do
   r <- SQLite.query conn "SELECT id, password_digest FROM users WHERE email = ?" [email]
   return $ case r of
-    [(DBUserId userid, pw)] -> Just (userid, pw)
+    [(userid, pw)] -> Just ((UserId userid), pw)
     [] -> Nothing
     _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getIdAndPwByEmail"
 
 updateUser :: SQLite.Connection -> UserId -> UserProfile -> IO ()
-updateUser conn userid profile@UserProfile {..} = do
-  SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" (SQLite.Only (DBUserId userid))
-  saveUserRoles conn userid (NE.toList userRoles)
+updateUser conn uid@(UserId userid) profile@UserProfile {..} = do
+  SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" [userid]
+  saveUserRoles conn uid (NE.toList userRoles)
   SQLite.execute
     conn
     [sql|
@@ -293,7 +262,8 @@ updateUser conn userid profile@UserProfile {..} = do
     ,   last_name_partner  = ?
     ,   birthday_partner = ?
     WHERE id = ?
-    |] $ DBUserProfile profile
+    |]
+    $ DBUserProfile profile
 
 saveUser :: SQLite.Connection -> UserProfileCreate -> IO ()
 saveUser conn profile = do
@@ -335,7 +305,11 @@ getRolesFromDb conn (UserId userId) =
         r <- SQLite.query conn q [userId]
         case r of
           [] -> return Nothing
-          (roles :: [[DBRole]]) -> return . Just . map (\(DBRole role) -> role) $ concat roles
+          ([roles :: [Text]]) -> do
+            case traverse parseRole roles of
+              Left e -> throwString $ "couldn't parse roles: " <> show e
+              Right parsedRoles -> return $ Just parsedRoles
+          other -> throwString $ "unexpected DB result: " <> show other
 
 saveUserRoles :: SQLite.Connection -> UserId -> [Role] -> IO ()
 saveUserRoles conn (UserId userid) roles =
@@ -347,9 +321,8 @@ saveUserRoles conn (UserId userid) roles =
         $ \roleid ->
           SQLite.execute conn "INSERT INTO user_roles (roleid, userid) VALUES (?,?)" (roleid, userid)
   where
-    getRoleId :: Role -> IO Int
     getRoleId label =
-      SQLite.query conn "SELECT id FROM roles WHERE label = ?" [DBRole label]
+      SQLite.query conn "SELECT id FROM roles WHERE label = ?" [show label]
         >>= \case
           [] -> throwString $ "no role for label: " <> show label
           [SQLite.Only roleid] -> return roleid

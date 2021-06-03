@@ -1,6 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module Session.Middleware (middleware) where
 
 import Data.Text (Text)

@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module ScryptTest where
 
 import qualified Data.ByteString as B

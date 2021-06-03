@@ -1,7 +1,3 @@
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module Session.Domain
   ( Session (..),
     SessionId (..),

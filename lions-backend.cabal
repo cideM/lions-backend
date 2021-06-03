@@ -24,6 +24,16 @@ extra-source-files: CHANGELOG.md
 common shared-props
   ghc-options:      -Wall
   default-language: Haskell2010
+  default-extensions:
+    DerivingVia
+    RecordWildCards
+    QuasiQuotes
+    DeriveGeneric
+    NamedFieldPuns
+    LambdaCase
+    OverloadedStrings
+    ScopedTypeVariables
+
 
 test-suite tests
   import:         shared-props
@@ -34,24 +44,30 @@ test-suite tests
     Helpers
     ScryptTest
     LoginTests
-    PasswordResetTests
+    PasswordReset.Test
+    Events.DBTests
   build-depends:
     , base
     , filepattern
     , lions-backend
+    , containers
     , sqlite-simple
     , clientsession
     , bytestring
     , wai-extra
     , wai
     , amazonka-ses
+    , fast-logger
     , uri-encode
+    , email-validate
     , lens
     , lucid
+    , time
     , tasty
     , http-types
     , tasty-hunit
     , text
+    , string-interpolate
 
 library
   import:          shared-props

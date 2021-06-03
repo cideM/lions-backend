@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module LandingPage.Handlers (showLandingPage) where
 
 import Control.Exception.Safe

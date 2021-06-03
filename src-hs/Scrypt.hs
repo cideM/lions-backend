@@ -1,6 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Scrypt where
 
 -- https://github.com/firebase/scrypt/issues/2

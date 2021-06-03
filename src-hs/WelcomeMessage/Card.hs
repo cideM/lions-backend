@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module WelcomeMessage.Card (render, DeleteHref (..), EditHref (..)) where
 
 import Control.Monad (when)

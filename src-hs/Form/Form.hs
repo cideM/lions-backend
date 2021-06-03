@@ -1,7 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Form.Form (processField, FormFieldState (..)) where
 
 import Data.Maybe (isJust)

@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module WelcomeMessage.Form (render, WelcomeMsgFormState (..)) where
 
 import Data.Maybe (fromMaybe)

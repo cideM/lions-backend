@@ -1,16 +1,10 @@
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Events.DB
   ( getEvent,
     getAll,
     deleteReply,
     createEvent,
+    GetEventRow(..),
+    createAndAggregateEventsFromDb,
     updateEvent,
     upsertReply,
     deleteEvent,
@@ -18,16 +12,17 @@ module Events.DB
 where
 
 import Control.Exception.Safe
-import Data.Foldable (foldr')
 import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
+import qualified Data.Map.Strict as M
+import Data.String.Interpolate (i)
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
 import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
-import User.DB (DBEmail (..))
+import Text.Email.Validate (emailAddress)
 import User.Domain (UserEmail (..), UserId (..))
 import Prelude hiding (id)
 
@@ -41,7 +36,7 @@ data GetEventRow = GetEventRow
     _eventReplyUserId :: Maybe Int,
     _eventReplyComing :: Maybe Bool,
     _eventReplyNumGuests :: Maybe Int,
-    _eventReplyEmail :: Maybe DBEmail
+    _eventReplyEmail :: Maybe Text
   }
   deriving (Show)
 
@@ -74,37 +69,39 @@ createEvent conn EventCreate {..} = do
       |]
     (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation)
 
-makeEvents :: GetEventRow -> Map EventId Event -> Map EventId Event
-makeEvents GetEventRow {..} xs =
-  let eventWithoutReplies =
-        Event
-          _eventTitle
-          _eventDate
-          _eventFamilyAllowed
-          _eventDescription
-          _eventLocation
-      replyRaw =
-        (,,,)
-          <$> _eventReplyUserId
-          <*> _eventReplyComing
-          <*> _eventReplyEmail
-          <*> _eventReplyNumGuests
-      alterFn Nothing Nothing = Just $ eventWithoutReplies []
-      alterFn (Just reply) Nothing = Just $ eventWithoutReplies [reply]
-      alterFn Nothing (Just e) = Just e
-      alterFn (Just reply) (Just e@Event {..}) = Just e {eventReplies = reply : eventReplies}
-   in case replyRaw of
-        -- If one of the reply fields is Nothing assume they're all Nothing.
-        -- Not sure how to best handle this but if I do a left join and only
-        -- get the left part of the select then all other fields will be null
-        Nothing -> Map.alter (alterFn Nothing) (EventId _eventId) xs
-        Just (replyUserId, replyComing, DBEmail replyEmail, replyNumGuests) ->
-          let reply = Reply replyComing (UserEmail replyEmail) (UserId replyUserId) replyNumGuests
-           in Map.alter (alterFn $ Just reply) (EventId _eventId) xs
+-- | Converts a single row to an event. The idea is that you can just map over
+-- rows and then merge them all into one event
+createEventFromDb :: GetEventRow -> Either Text (EventId, Event)
+createEventFromDb GetEventRow {..} =
+  -- These properties we just pass through, only thing that needs special
+  -- handling is the reply
+  let event = Event _eventTitle _eventDate _eventFamilyAllowed _eventDescription _eventLocation
+   in case getReplyFromRow of
+        Nothing -> Right $ (EventId _eventId, event [])
+        Just (uid, coming, email, numguests) ->
+          case emailAddress (encodeUtf8 email) of
+            Nothing -> Left $ "couldn't parse email " <> email
+            Just parsedEmail ->
+              Right $ (EventId _eventId, event [Reply coming (UserEmail parsedEmail) (UserId uid) numguests])
+  where
+    -- Unfortunately I currently get four separate maybe fields from the SQL
+    -- query when in fact they're all related. So it's all or nothing, they're
+    -- all Just or all Nothing. Not sure if it's worth refactoring.
+    getReplyFromRow = do
+      (,,,)
+        <$> _eventReplyUserId
+        <*> _eventReplyComing
+        <*> _eventReplyEmail
+        <*> _eventReplyNumGuests
+
+-- Just a little wrapper around the above createEventFromDb function so I can
+-- unit test this because it does have quite a lot of logic now.
+createAndAggregateEventsFromDb :: [GetEventRow] -> Either Text (Map EventId Event)
+createAndAggregateEventsFromDb rows = M.fromListWith (<>) <$> traverse createEventFromDb rows
 
 getEvent :: SQLite.Connection -> EventId -> IO (Maybe Event)
 getEvent conn (EventId eventid) = do
-  rows <-
+  (rows :: [GetEventRow]) <-
     SQLite.query
       conn
       [sql|
@@ -124,12 +121,18 @@ getEvent conn (EventId eventid) = do
         where events.id = ?
       |]
       [eventid]
-  let events = foldr' makeEvents Map.empty rows
-  case Map.toList events of
+  case rows of
     [] -> return Nothing
-    [x] -> return . Just $ snd x
-    v -> throwString $ "got more than one result from getEvent: " <> show v
+    [x] ->
+      case createEventFromDb x of
+        Left e -> throwString $ [i|"couldn't parse event with id #{eventid} from DB: #{e}"|]
+        Right ok -> return . Just $ snd ok
+    result -> throwString $ "got unexpected getEvent result" <> show result
 
+-- Gets all events from the DB and aggregates them by event ID by merging all
+-- user replies for a given event and making them unique on the odd chance that
+-- some SQL query error results in multiple rows with the same result. I don't
+-- have the patience to test that case right now through property testing.
 getAll :: SQLite.Connection -> IO (Map EventId Event)
 getAll conn = do
   (rows :: [GetEventRow]) <-
@@ -150,8 +153,9 @@ getAll conn = do
         left join event_replies on events.id = eventid
         left join users on userid = users.id
       |]
-  return $
-    foldr' makeEvents Map.empty rows
+  case createAndAggregateEventsFromDb rows of
+    Left e -> throwString $ "couldn't parse events from DB: " <> show e
+    Right parsed -> return parsed
 
 deleteReply :: SQLite.Connection -> EventId -> UserId -> IO ()
 deleteReply conn (EventId eventid) (UserId userid) =
@@ -178,6 +182,7 @@ updateEvent conn (EventId eventid) EventCreate {..} =
       |]
     (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation, eventid)
 
+-- Inserts a new reply or updates the existing one.
 upsertReply :: SQLite.Connection -> EventId -> Reply -> IO ()
 upsertReply conn (EventId eventid) (Reply coming _ (UserId userid) guests) =
   SQLite.execute

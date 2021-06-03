@@ -1,7 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+import qualified Events.DBTests
 import qualified LoginTests
-import qualified PasswordResetTests
+import qualified PasswordReset.Test
 import qualified ScryptTest
 import Test.Tasty
 
@@ -13,6 +12,7 @@ tests =
   testGroup
     "Tests"
     [ ScryptTest.tests,
-      PasswordResetTests.tests,
-      LoginTests.tests
+      PasswordReset.Test.tests,
+      LoginTests.tests,
+      Events.DBTests.tests
     ]

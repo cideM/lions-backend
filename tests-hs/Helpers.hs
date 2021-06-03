@@ -1,18 +1,35 @@
-{-# LANGUAGE OverloadedStrings #-}
+-- This file has helpers with writing integration tests. The threshold for
+-- adding something new should be fairly low so the tests themselves look
+-- relatively clean. I can then periodically go through the code in this file
+-- here and see if things can be consolidated.
 
-module Helpers (withDB, withFormRequest, as200) where
+module Helpers
+  ( withDB,
+    withFormRequest,
+    withQueryString,
+    withoutLogging,
+    as200,
+  )
+where
 
 import Control.Monad (forM_)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as LB
 import qualified Data.Text as T
-import Data.Text.Encoding as T
 import qualified Database.SQLite.Simple as SQLite
 import Lucid
 import Network.HTTP.Types (hContentType, status200)
 import qualified Network.Wai as Wai
 import Network.Wai.Test
 import System.FilePattern.Directory
+import System.Log.FastLogger
+  ( LogType' (..),
+    TimedFastLogger,
+    defaultBufSize,
+    newTimeCache,
+    simpleTimeFormat,
+    withTimedFastLogger,
+  )
 
 -- Run a computation with an SQLite memory DB that has all migrations applied
 -- to it
@@ -26,7 +43,17 @@ withDB f = do
         f conn
     )
 
+as200 :: Html a -> Wai.Response
 as200 = Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")] . renderBS
+
+withQueryString ::
+  B.ByteString ->
+  (Wai.Request -> (Wai.Response -> IO Wai.ResponseReceived) -> IO Wai.ResponseReceived) ->
+  IO SResponse
+withQueryString qs handler =
+  let req = setPath defaultRequest qs
+      session = srequest $ SRequest req ""
+   in (runSession session $ \r send -> handler r send)
 
 withFormRequest ::
   LB.ByteString ->
@@ -37,6 +64,7 @@ withFormRequest body handler =
       session = srequest $ SRequest req body
    in (runSession session $ \r send -> handler r send)
 
--- lazy BS to strict T
-lb2st :: LB.ByteString -> T.Text
-lb2st = T.decodeUtf8 . B.concat . LB.toChunks
+withoutLogging :: (TimedFastLogger -> IO a) -> IO a
+withoutLogging action = do
+  formattedTime <- newTimeCache simpleTimeFormat
+  withTimedFastLogger formattedTime LogNone action
