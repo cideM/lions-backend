@@ -1,14 +1,12 @@
-module PasswordReset
+module PasswordReset.PasswordReset
   ( showResetForm,
     showChangePwForm,
-    sendMail,
     handleChangePw,
     handleReset,
   )
 where
 
 import Control.Exception.Safe
-import Control.Lens
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.Map.Strict as Map
@@ -18,14 +16,15 @@ import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Form.Form (FormFieldState (..), processField)
-import Layout (describedBy_, layout, success, warning)
+import Form.Form (FormFieldState (..))
+import Layout (layout, success, warning)
 import qualified Logging.Logging as Logging
 import Lucid
-import qualified Network.AWS as AWS
 import qualified Network.AWS.SES as SES
 import Network.URI.Encode (decode, encode)
 import qualified Network.Wai as Wai
+import qualified PasswordReset.ChangePasswordForm as ChangePasswordForm
+import qualified PasswordReset.ResetEmailForm as ResetEmailForm
 import Time.Time (timeDaysFromNow)
 import User.DB (getIdAndPwByEmail, hasUser)
 import User.Domain (UserId (..))
@@ -89,67 +88,6 @@ insertToken conn TokenCreate {tokenCreateUserId = (UserId userid), ..} =
     "insert into reset_tokens (token, expires, userid) values (?,?,?)"
     (tokenCreateValue, tokenCreateExpires, userid)
 
--- Create a password reset email, both as a plain text and an HTML mail
-makeEmail :: Text -> Text -> (Text, Text)
-makeEmail host token =
-  let resetLink = host <> "/passwort/aendern?token=" <> token
-      textEmail =
-        [i|
-          Hallo liebes Lions Mitglied,
-
-          zum Ändern des Passworts einfach den folgenden Link anklicken:
-          #{resetLink}
-
-          Viele Grüße,
-          Dein Lions Club Achern
-        |]
-      htmlMail =
-        [i|
-          <h3>Hallo liebes Lions Mitglied,</h3>
-          <p>
-            zum Ändern des Passworts einfach den folgenden Link anklicken:<br>
-            <a href="#{resetLink}">Link</a>
-          </p>
-
-          <p>
-            Viele Grüße,<br>
-            Dein Lions Club Achern
-          </p>
-        |]
-   in (textEmail, htmlMail)
-
--- Function for sending email through AWS. This is exported because it's
--- partially applied in Main and then passed to the handler, so the handler can
--- be tested without sending emails.
-sendMail :: AWS.Env -> Text -> Text -> Text -> IO SES.SendEmailResponse
-sendMail awsEnv resetHost email token =
-  let (textMail, htmlMail) = makeEmail resetHost token
-      message =
-        SES.message
-          (SES.content "Passwort Zurücksetzen")
-          (set SES.bHTML (Just $ SES.content htmlMail) (set SES.bText (Just $ SES.content textMail) SES.body))
-   in AWS.runResourceT . AWS.runAWS awsEnv . AWS.within AWS.Frankfurt . AWS.send $
-        SES.sendEmail
-          "hello@lions-achern.de"
-          (set SES.dToAddresses [email] SES.destination)
-          message
-
--- Form that is shown when users want to reset their passwords
-emailInput :: Maybe Text -> Html ()
-emailInput errMsg = do
-  div_ [class_ "container p-2"] $ do
-    div_ [class_ "row d-flex justify-content-center"] $ do
-      div_ [class_ "col-md-6"] $ do
-        h1_ [class_ "h4 mb-3"] "Passwort Zurücksetzen"
-        case errMsg of
-          Nothing -> mempty
-          Just msg -> p_ [class_ "my-3 alert alert-danger"] $ toHtml msg
-        p_ [class_ "my-3 alert alert-secondary"] "Bitte die Email-Adresse eintragen, mit der du beim Lions Club Achern angemeldet bist. Es wird dann ein Link an diese Email-Adresse verschickt, über welchen du dein Passwort ändern kannst."
-        form_ [action_ "/passwort/link", method_ "post"] $ do
-          label_ [for_ "emailInput", class_ "form-label"] "Email Adresse"
-          input_ [required_ "required", class_ "form-control", name_ "email", id_ "emailInput", placeholder_ "platzhalter@email.de"]
-          button_ [class_ "mt-3 btn btn-primary", type_ "submit"] "Absenden"
-
 -- Generate a new password reset token and its expiration date
 createNewToken :: IO (Text, Time.UTCTime)
 createNewToken = do
@@ -195,21 +133,21 @@ handleReset conn req sendEmail' = do
           return . passwordResetLayout $ success pwResetSuccess
   where
     encode' = T.pack . encode . T.unpack
-    formInvalid = passwordResetLayout . emailInput . Just
+    formInvalid = passwordResetLayout . ResetEmailForm.form . Just
 
 -- GET handler that just shows a simple email input field
 showResetForm :: IO (Html ())
-showResetForm = return $ passwordResetLayout (emailInput Nothing)
+showResetForm = return $ passwordResetLayout (ResetEmailForm.form Nothing)
 
 -- I'm omitting the password length check and all that stuff. The browser will
 -- enforce a certain pattern and if someone wants to absolutely change their
 -- password with a direct POST request and they submit a one length password
 -- then so be it.
-makePassword :: FormInput -> Either FormState Text
-makePassword FormInput {passwordInput = pw, passwordInputMatch = pw2}
-  | pw /= pw2 = Left $ FormState (Invalid changePwNoMatch) (Invalid changePwNoMatch)
-  | otherwise = case FormState (notEmpty pw) (notEmpty pw2) of
-    FormState (Valid _) (Valid _) -> Right pw
+makePassword :: ChangePasswordForm.FormInput -> Either ChangePasswordForm.FormState Text
+makePassword ChangePasswordForm.FormInput {passwordInput = pw, passwordInputMatch = pw2}
+  | pw /= pw2 = Left $ ChangePasswordForm.FormState (Invalid changePwNoMatch) (Invalid changePwNoMatch)
+  | otherwise = case ChangePasswordForm.FormState (notEmpty pw) (notEmpty pw2) of
+    ChangePasswordForm.FormState (Valid _) (Valid _) -> Right pw
     state -> Left state
   where
     notEmpty "" = Invalid "Feld darf nicht leer sein"
@@ -218,7 +156,7 @@ makePassword FormInput {passwordInput = pw, passwordInputMatch = pw2}
 -- The various things that I expect to happen when trying to change a user's
 -- password. Each has a different error message that is shown to the user.
 data TryResetError
-  = InvalidPassword FormInput Text FormState
+  = InvalidPassword ChangePasswordForm.FormInput Text ChangePasswordForm.FormState
   | TokenNotFound Text
   | UserForTokenNotFound UserId
   | TokenExpired Token
@@ -228,16 +166,22 @@ data TryResetError
 -- send to the user directly. The goal of functions like this one is to have less noise in the handler.
 renderTryResetError :: TryResetError -> Html ()
 renderTryResetError (InvalidPassword input token state) =
-  passwordChangeLayout $ div_ [class_ "container p-3 d-flex justify-content-center"] $ submitNewPasswordForm token input state
-renderTryResetError (TokenNotFound token) = passwordChangeLayout . warning . changePwTokenNotFound . T.pack $ show token
-renderTryResetError (UserForTokenNotFound userid) = passwordChangeLayout . warning . changePwUserNotFound . T.pack $ show userid
-renderTryResetError (TokenExpired expired) = passwordChangeLayout . warning . changePwTokenExpired . T.pack $ show expired
+  passwordChangeLayout $
+    div_
+      [class_ "container p-3 d-flex justify-content-center"]
+      $ ChangePasswordForm.form token input state
+renderTryResetError (TokenNotFound token) =
+  passwordChangeLayout . warning . changePwTokenNotFound . T.pack $ show token
+renderTryResetError (UserForTokenNotFound userid) =
+  passwordChangeLayout . warning . changePwUserNotFound . T.pack $ show userid
+renderTryResetError (TokenExpired expired) =
+  passwordChangeLayout . warning . changePwTokenExpired . T.pack $ show expired
 
 -- Changes the password of a user in the database. Checks if provided passwords
 -- are valid and that the token is valid.
 changePasswordForToken :: SQLite.Connection -> Text -> Text -> Text -> IO (Either TryResetError ())
 changePasswordForToken dbConn token pw pwMatch = do
-  let input = FormInput pw pwMatch
+  let input = ChangePasswordForm.FormInput pw pwMatch
   case makePassword input of
     Left state -> return $ Left $ InvalidPassword input token state
     Right validPw -> do
@@ -262,66 +206,6 @@ changePasswordForToken dbConn token pw pwMatch = do
       BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy unhashed >>= \case
         Nothing -> throwString "hashing password failed"
         Just pw' -> return . Hashed $ decodeUtf8 pw'
-
--- Form state boilerplate for submitNewPasswordForm
-data FormInput = FormInput
-  { passwordInput :: Text,
-    passwordInputMatch :: Text
-  }
-  deriving (Show)
-
-emptyForm :: FormInput
-emptyForm = FormInput "" ""
-
-data FormState = FormState
-  { passwordState :: FormFieldState Text,
-    passwordStateMatch :: FormFieldState Text
-  }
-  deriving (Show)
-
-emptyState :: FormState
-emptyState = FormState NotValidated NotValidated
-
--- The form where a user can enter a new password and also confirm it
-submitNewPasswordForm :: Text -> FormInput -> FormState -> Html ()
-submitNewPasswordForm token FormInput {..} FormState {..} = do
-  form_ [method_ "post", action_ "/passwort/aendern"] $ do
-    div_ [class_ "row row-cols-1 g-2"] $ do
-      div_ $ do
-        let (className, errMsg) = processField passwordState
-        label_ [class_ "form-label", for_ "inputPassword"] "Passwort"
-        input_
-          [ class_ className,
-            type_ "password",
-            id_ "inputPassword",
-            required_ "required",
-            describedBy_ "validationPwFeedback inputPasswordHelp",
-            value_ passwordInput,
-            name_ "inputPassword",
-            title_ "Passwort muss zwischen 6 und 30 Zeichen lang sein",
-            pattern_ ".{6,30}"
-          ]
-        div_ [id_ "inputPasswordHelp", class_ "form-text"] "Passwort muss zwischen 6 und 30 Zeichen lang sein"
-        maybe mempty (div_ [id_ "validationPwFeedback", class_ "invalid-feedback"] . toHtml) errMsg
-      div_ $ do
-        let (className, errMsg) = processField passwordStateMatch
-        label_ [class_ "form-label", for_ "inputPasswordMatch"] "Passwort wiederholen"
-        input_
-          [ class_ className,
-            type_ "password",
-            id_ "inputPasswordMatch",
-            required_ "required",
-            describedBy_ "validationPwMatchFeedback inputPasswordMatchHelp",
-            value_ passwordInputMatch,
-            name_ "inputPasswordMatch",
-            title_ "Passwort muss zwischen 6 und 30 Zeichen lang sein",
-            pattern_ ".{6,30}"
-          ]
-        div_ [id_ "inputPasswordMatchHelp", class_ "form-text"] "Passwort muss zwischen 6 und 30 Zeichen lang sein"
-        maybe mempty (div_ [id_ "validationPwMatchFeedback", class_ "invalid-feedback"] . toHtml) errMsg
-        input_ [type_ "hidden", value_ token, name_ "token", id_ "token"]
-      div_ $ do
-        button_ [type_ "submit", class_ "btn btn-primary"] "Speichern"
 
 -- POST handler that actually changes the user's password in the database.
 handleChangePw :: Logging.TimedFastLogger -> SQLite.Connection -> Wai.Request -> IO (Html ())
@@ -349,7 +233,7 @@ showChangePwForm req = do
       return $
         layout "Passwort Ändern" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
-            submitNewPasswordForm token emptyForm emptyState
+            ChangePasswordForm.form token ChangePasswordForm.emptyForm ChangePasswordForm.emptyState
   where
     decode' = T.pack . decode . T.unpack
 

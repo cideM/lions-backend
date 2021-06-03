@@ -12,7 +12,7 @@ import qualified Events.Handlers
 import qualified LandingPage.Handlers
 import Layout (layout)
 import qualified Logging.Logging as Logging
-import qualified Login
+import qualified Login.Login as Login
 import Lucid
 import qualified Network.AWS as AWS
 import Network.HTTP.Types (status200, status403, status404, status500)
@@ -20,7 +20,8 @@ import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
-import qualified PasswordReset
+import qualified PasswordReset.PasswordReset as PasswordReset
+import qualified PasswordReset.SendEmail as SendEmail
 import RequestID.Middleware (RequestIdVaultKey)
 import qualified RequestID.Middleware
 import qualified Routes.Data as Auth
@@ -33,7 +34,7 @@ import User.Domain (UserId (..), isAdmin)
 import qualified User.Handlers
 import qualified Web.ClientSession as ClientSession
 import WelcomeMessage.Domain (WelcomeMsgId (..))
-import qualified WelcomeMessage.Handlers
+import qualified WelcomeMessage.WelcomeMessage as WelcomeMessage
 import Prelude hiding (id)
 
 server ::
@@ -82,7 +83,7 @@ server
           if appEnv == Production
             then "https://www.lions-achern.de"
             else Text.pack $ "http://localhost:" <> show port
-        sendMail' = PasswordReset.sendMail awsEnv resetHost
+        sendMail' = SendEmail.sendMail awsEnv resetHost
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
@@ -135,13 +136,13 @@ server
           Right (parsed :: Int) ->
             let msgId = (WelcomeMsgId parsed)
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.handleDeleteMessage dbConn msgId admin) >>= send200
-                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.showDeleteConfirmation dbConn msgId admin) >>= send200
+                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleDeleteMessage dbConn msgId admin) >>= send200
+                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showDeleteConfirmation dbConn msgId admin) >>= send200
                   _ -> send404
       ["neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.saveNewMessage dbConn req admin) >>= send200
-          "GET" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.showAddMessageForm admin) >>= send200
+          "POST" -> adminOnly' $ \admin -> (WelcomeMessage.saveNewMessage dbConn req admin) >>= send200
+          "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showAddMessageForm admin) >>= send200
           _ -> send404
       ["editieren", i] ->
         case readEither (Text.unpack i) of
@@ -149,8 +150,8 @@ server
           Right (parsed :: Int) ->
             let msgId = (WelcomeMsgId parsed)
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.handleEditMessage dbConn req msgId admin) >>= send200
-                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.Handlers.showMessageEditForm dbConn msgId admin) >>= send200
+                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleEditMessage dbConn req msgId admin) >>= send200
+                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showMessageEditForm dbConn msgId admin) >>= send200
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of

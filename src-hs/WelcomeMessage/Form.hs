@@ -1,4 +1,6 @@
-module WelcomeMessage.Form (render, WelcomeMsgFormState (..)) where
+-- | This form is used for both editing existing messages and adding new
+-- messages.
+module WelcomeMessage.Form (form, WelcomeMsgFormState (..)) where
 
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -7,8 +9,8 @@ import Lucid
 
 data WelcomeMsgFormState = Valid | NotValidated | Invalid Text
 
-render :: WelcomeMsgFormState -> Text -> Text -> Html ()
-render state formAction currentMsg =
+form :: WelcomeMsgFormState -> Text -> Text -> Html ()
+form state formAction currentMsg =
   let messageFieldClass =
         "form-control"
           <> ( case state of

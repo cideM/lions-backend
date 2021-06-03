@@ -1,14 +1,13 @@
-module LoginTests where
+module Login.Test where
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as LB
-import Data.IORef
 import qualified Data.Text as T
 import Data.Text.Encoding as T
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..))
 import Helpers (withDB, withFormRequest)
-import Login (login)
+import Login.Login (login)
 import Network.Wai.Test
 import Test.Tasty
 import Test.Tasty.HUnit

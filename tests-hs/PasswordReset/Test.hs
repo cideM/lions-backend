@@ -11,7 +11,7 @@ import Helpers (as200, withDB, withFormRequest, withQueryString, withoutLogging)
 import Network.AWS.SES.SendEmail
 import Network.URI.Encode (decode)
 import Network.Wai.Test
-import PasswordReset (handleChangePw, handleReset)
+import PasswordReset.PasswordReset (handleChangePw, handleReset)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Time.Time (timeDaysFromNow)

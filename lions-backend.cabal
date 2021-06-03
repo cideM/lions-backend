@@ -43,7 +43,7 @@ test-suite tests
   other-modules:
     Helpers
     ScryptTest
-    LoginTests
+    Login.Test
     PasswordReset.Test
     Events.DBTests
   build-depends:
@@ -120,8 +120,12 @@ library
     Layout
     Locale
     Logging.Logging
-    Login
-    PasswordReset
+    Login.Login
+    Login.LoginForm
+    PasswordReset.PasswordReset
+    PasswordReset.ResetEmailForm
+    PasswordReset.ChangePasswordForm
+    PasswordReset.SendEmail
     RequestID.Middleware
     Routes.Data
     Scrypt
@@ -140,7 +144,7 @@ library
     WelcomeMessage.DB
     WelcomeMessage.Domain
     WelcomeMessage.Form
-    WelcomeMessage.Handlers
+    WelcomeMessage.WelcomeMessage
 
 executable run-lions-backend
   import:         shared-props

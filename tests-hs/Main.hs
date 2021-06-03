@@ -1,5 +1,5 @@
 import qualified Events.DBTests
-import qualified LoginTests
+import qualified Login.Test
 import qualified PasswordReset.Test
 import qualified ScryptTest
 import Test.Tasty
@@ -13,6 +13,6 @@ tests =
     "Tests"
     [ ScryptTest.tests,
       PasswordReset.Test.tests,
-      LoginTests.tests,
+      Login.Test.tests,
       Events.DBTests.tests
     ]

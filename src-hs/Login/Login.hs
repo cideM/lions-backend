@@ -1,4 +1,4 @@
-module Login (logout, login, showLoginForm) where
+module Login.Login (logout, login, showLoginForm) where
 
 import Control.Exception.Safe
 import qualified Crypto.BCrypt as BCrypt
@@ -13,8 +13,8 @@ import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..))
-import Layout (ActiveNavLink (..), describedBy_, layout)
 import Lucid
+import qualified Login.LoginForm  as LoginForm
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Session.DB (deleteSession, getSessionsFromDbByUser, saveSession)
@@ -24,87 +24,6 @@ import Wai (parseParams)
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
-
-type Email = Text
-
-type EmailError = Text
-
-type Pw = Text
-
-type PwError = Text
-
--- TODO: Would be nice to make this use my Form utils stuff
-data LoginFormState = NotLoggedInNotValidated | NotLoggedInValidated Email (Maybe EmailError) Pw (Maybe PwError) | LoggedIn
-
--- The actual login form. You didn't think it'd be this much code, did you?
-loginForm :: LoginFormState -> Html ()
-loginForm LoggedIn =
-  layout "Login" (Just Login) $ do
-    div_ [class_ "container p-3 d-flex justify-content-center"] $
-      div_ [class_ "row col-6"] $ do
-        p_ [class_ "alert alert-secondary", role_ "alert"] "Du bist bereits eingelogged!"
-        form_ [class_ "p-0", method_ "post", action_ "/logout"] $ do
-          button_ [class_ "btn btn-primary", type_ "submit", autofocus_] "Ausloggen"
-loginForm formState =
-  let (email, emailClass, emailErr, pw, pwClass, pwErr) =
-        case formState of
-          NotLoggedInValidated email' emailErr' pw' pwErr' ->
-            ( email',
-              makeFormClass emailErr',
-              makeErrMsg "invalidEmailFeedback" emailErr',
-              pw',
-              makeFormClass pwErr',
-              makeErrMsg "invalidPasswordFeedback" pwErr'
-            )
-          _ ->
-            ( "",
-              makeFormClass Nothing,
-              makeErrMsg "invalidEmailFeedback" Nothing,
-              "",
-              makeFormClass Nothing,
-              makeErrMsg "invalidPasswordFeedback" Nothing
-            )
-   in layout "Login" (Just Login) $
-        div_ [class_ "container-md d-flex justify-content-center p-3"] $ do
-          form_ [class_ "col-8", method_ "post", action_ "/login"] $ do
-            div_ [class_ "row row-cols-8 g-2"] $ do
-              div_ [class_ "mb-3 form-floating"] $ do
-                input_
-                  [ class_ emailClass,
-                    type_ "email",
-                    name_ "email",
-                    id_ "email",
-                    required_ "required",
-                    value_ email,
-                    autofocus_,
-                    describedBy_ "invalidEmailFeedback",
-                    placeholder_ "hallo@gmail.com"
-                  ]
-                label_ [class_ "form-label", for_ "email"] "Email Adresse"
-                emailErr
-            div_ [class_ "row row-cols-8 g-2"] $ do
-              div_ [class_ "mb-3 form-floating"] $ do
-                input_
-                  [ class_ pwClass,
-                    type_ "password",
-                    name_ "password",
-                    id_ "password",
-                    required_ "required",
-                    value_ pw,
-                    describedBy_ "invalidPasswordFeedback",
-                    placeholder_ "foobar"
-                  ]
-                label_ [class_ "form-label", for_ "password"] "Passwort"
-                pwErr
-            div_ [class_ "row g-2"] $ do
-              div_ [class_ "col-md-6"] $ do
-                button_ [class_ "w-100 btn btn-primary", type_ "submit"] "Einloggen"
-              div_ [class_ "col-md-6"] $ do
-                a_ [class_ "w-100 btn btn-secondary", href_ "/passwort/link", role_ "button"] "Passwort vergessen"
-  where
-    makeFormClass e = "form-control" <> if isJust e then " is-invalid" else ""
-    makeErrMsg :: Text -> Maybe Text -> Html ()
-    makeErrMsg id text = maybe mempty (div_ [class_ "invalid-feedback", id_ id] . toHtml) text
 
 -- Creates a new session ID and returns that ID and its expiration date
 createSessionId ::
@@ -136,7 +55,7 @@ logout conn env sessionDataVaultKey req send = do
   case Vault.lookup sessionDataVaultKey $ Wai.vault req of
     Nothing -> throwString "logout request but no session in vault"
     Just (_, userId) -> do
-      -- TODO: Extract logic
+      -- TODO: deleteAllUserSessions
       getSessionsFromDbByUser conn userId >>= \case
         [] -> throwString $ "logout request but no session for user with ID: " <> show userId
         sessions -> do
@@ -196,8 +115,8 @@ login conn sessionKey env req send = do
       send
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-        . loginForm
-        $ NotLoggedInValidated
+        . LoginForm.form
+        $ LoginForm.NotLoggedInValidated
           email
           (Just "Ungültige Kombination aus Email und Passwort")
           formPw
@@ -207,4 +126,4 @@ login conn sessionKey env req send = do
 showLoginForm :: SessionDataVaultKey -> Wai.Request -> IO (Html ())
 showLoginForm sessionDataVaultKey req = do
   let isLoggedIn = isJust . Vault.lookup sessionDataVaultKey $ Wai.vault req
-  return . loginForm $ if isLoggedIn then LoggedIn else NotLoggedInNotValidated
+  return . LoginForm.form $ if isLoggedIn then LoginForm.LoggedIn else LoginForm.NotLoggedInNotValidated
