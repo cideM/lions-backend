@@ -34,24 +34,24 @@ tests = do
         [ testCase "render form with message if email is missing" $ do
             withDB $ \conn -> do
               (_, sessionKey) <- ClientSession.randomKey
-              out <- T.decodeUtf8 . B.concat . LB.toChunks . simpleBody <$> withFormRequest "" (\r s -> do login conn userSalt signerKey saltSep sessionKey Production r s)
+              out <- T.decodeUtf8 . B.concat . LB.toChunks . simpleBody <$> withFormRequest "" (\r s -> do login conn signerKey saltSep sessionKey Production r s)
               T.isInfixOf "Ungültige Kombination aus Email und Passwort" out @?= True,
           testCase "render form with message if password is missing" $ do
             withDB $ \conn -> do
               (_, sessionKey) <- ClientSession.randomKey
-              out <- T.decodeUtf8 . B.concat . LB.toChunks . simpleBody <$> withFormRequest "email=foo@bar.com" (\r s -> do login conn userSalt signerKey saltSep sessionKey Production r s)
+              out <- T.decodeUtf8 . B.concat . LB.toChunks . simpleBody <$> withFormRequest "email=foo@bar.com" (\r s -> do login conn signerKey saltSep sessionKey Production r s)
               T.isInfixOf "Ungültige Kombination aus Email und Passwort" out @?= True,
           testCase "render form with message if credentials don't match" $ do
             withDB $ \conn -> do
               (_, sessionKey) <- ClientSession.randomKey
               SQLite.execute_ conn "insert into users (password_digest, email) values ('foo', 'foo@bar.com')"
-              out <- T.decodeUtf8 . B.concat . LB.toChunks . simpleBody <$> withFormRequest "email=foo@bar.com&password=foo" (\r s -> do login conn userSalt signerKey saltSep sessionKey Production r s)
+              out <- T.decodeUtf8 . B.concat . LB.toChunks . simpleBody <$> withFormRequest "email=foo@bar.com&password=foo" (\r s -> do login conn signerKey saltSep sessionKey Production r s)
               T.isInfixOf "Ungültige Kombination aus Email und Passwort" out @?= True,
           testCase "returns encrypted session cookie upon successful login" $ do
             withDB $ \conn -> do
               (_, sessionKey) <- ClientSession.randomKey
               SQLite.execute_ conn "insert into users (password_digest, email) values ('$2y$04$NFwlwssLnLtvJEwZ0XtXgOjAHPqUIDHZfd2CiZsVDgmk1NTrdwT1a', 'foo@bar.com')"
-              out <- withFormRequest "email=foo@bar.com&password=foobar" (\r s -> do login conn userSalt signerKey saltSep sessionKey Production r s)
+              out <- withFormRequest "email=foo@bar.com&password=foobar" (\r s -> do login conn signerKey saltSep sessionKey Production r s)
               simpleStatus out @?= status302
               rows <- SQLite.query_ conn "select key from sessions"
               case rows of
@@ -76,8 +76,8 @@ tests = do
           testCase "can also verify firebase passwords" $ do
             withDB $ \conn -> do
               (_, sessionKey) <- ClientSession.randomKey
-              SQLite.execute_ conn "insert into users (password_digest, email) values ('lSrfV15cpx95/sZS2W9c9Kp6i/LVgQNDNC/qzrCnh1SAyZvqmZqAjTdn3aoItz+VHjoZilo78198JAdRuid5lQ==', 'foo@bar.com')"
-              out <- withFormRequest "email=foo@bar.com&password=user1password" (\r s -> do login conn userSalt signerKey saltSep sessionKey Production r s)
+              SQLite.execute conn "insert into users (password_digest, salt, email) values ('lSrfV15cpx95/sZS2W9c9Kp6i/LVgQNDNC/qzrCnh1SAyZvqmZqAjTdn3aoItz+VHjoZilo78198JAdRuid5lQ==', ?, 'foo@bar.com')" ["42xEC+ixf3L2lw==" :: B.ByteString]
+              out <- withFormRequest "email=foo@bar.com&password=user1password" (\r s -> do login conn signerKey saltSep sessionKey Production r s)
               simpleStatus out @?= status302
               rows <- SQLite.query_ conn "select key from sessions"
               case rows of

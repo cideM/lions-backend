@@ -29,7 +29,7 @@ import Session.Session
     getSessionsFromDbByUser,
     saveSession,
   )
-import User.DB (getIdAndPwByEmail)
+import User.DB (getCredentials)
 import Wai (parseParams)
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
@@ -40,7 +40,6 @@ import Prelude hiding (id)
 -- Scrypt so that old password hashes from Firebase auth still work.
 createSessionId ::
   SQLite.Connection ->
-  ByteString -> -- User's salt
   ByteString -> -- Project's base64_signer_key
   ByteString -> -- Project's base64_salt_separator
   ClientSession.Key ->
@@ -49,27 +48,36 @@ createSessionId ::
   IO (Either Text (ByteString, Time.UTCTime))
 createSessionId
   conn
-  userSalt
   signerKey
   saltSep
   sessionKey
   email
   formPw = do
-    getIdAndPwByEmail conn email >>= \case
+    getCredentials conn email >>= \case
       Nothing -> return $ Left "no user found"
-      Just (userId, dbPw) -> do
+      Just (userId, userSalt, dbPw) -> do
         let formPw' = encodeUtf8 formPw
         let dbPw' = encodeUtf8 dbPw
-        case verifyPassword userSalt signerKey saltSep dbPw' formPw' of
-          Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
-          Right result ->
-            if not $ (BCrypt.validatePassword dbPw' formPw' || result)
+        case userSalt of
+          -- Firebase credentials
+          Just us -> do
+            case verifyPassword us signerKey saltSep dbPw' formPw' of
+              Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
+              Right ok ->
+                if ok
+                  then onSuccess userId
+                  else (return $ Left "incorrect password")
+          -- BCrypt, new credentials
+          Nothing -> do
+            if not $ BCrypt.validatePassword dbPw' formPw'
               then return $ Left "incorrect password"
-              else do
-                newSession@(ValidSession (Session (SessionId sessionId) expires _)) <- createNewSession userId
-                saveSession conn newSession
-                encryptedSessionId <- ClientSession.encryptIO sessionKey (encodeUtf8 sessionId)
-                return $ Right (encryptedSessionId, expires)
+              else onSuccess userId
+    where
+      onSuccess userId = do
+        newSession@(ValidSession (Session (SessionId sessionId) expires _)) <- createNewSession userId
+        saveSession conn newSession
+        encryptedSessionId <- ClientSession.encryptIO sessionKey (encodeUtf8 sessionId)
+        return $ Right (encryptedSessionId, expires)
 
 logout ::
   SQLite.Connection ->
@@ -112,7 +120,6 @@ logout conn env sessionDataVaultKey req send = do
 -- encrypted session ID
 login ::
   SQLite.Connection ->
-  ByteString -> -- User's salt
   ByteString -> -- Project's base64_signer_key
   ByteString -> -- Project's base64_salt_separator
   ClientSession.Key ->
@@ -120,11 +127,11 @@ login ::
   Wai.Request ->
   (Wai.Response -> IO a) ->
   IO a
-login conn userSalt signerKey saltSep sessionKey env req send = do
+login conn signerKey saltSep sessionKey env req send = do
   params <- parseParams req
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
-  (createSessionId conn userSalt signerKey saltSep sessionKey email formPw) >>= \case
+  (createSessionId conn signerKey saltSep sessionKey email formPw) >>= \case
     Left _ -> renderFormInvalid email formPw
     Right (sessionId, expires) -> do
       let cookie = makeCookie sessionId expires

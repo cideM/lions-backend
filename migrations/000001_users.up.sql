@@ -3,6 +3,7 @@ CREATE TABLE users
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL,
   password_digest TEXT NOT NULL,
+  salt TEXT,
   first_name TEXT,
   last_name TEXT,
   address TEXT,
@@ -13,4 +14,3 @@ CREATE TABLE users
   last_name_partner TEXT,
   birthday_partner TEXT
 )
-

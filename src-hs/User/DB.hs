@@ -2,7 +2,7 @@ module User.DB
   ( deleteUserById,
     getUser,
     getUsers,
-    getIdAndPwByEmail,
+    getCredentials,
     saveUser,
     hasUser,
     getRolesFromDb,
@@ -14,6 +14,7 @@ where
 import Control.Exception.Safe
 import Control.Monad (forM_)
 import qualified Crypto.BCrypt as BCrypt
+import qualified Data.ByteString as B
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
@@ -235,14 +236,16 @@ getUsers conn =
         Left e -> throwString $ "error making profile: " <> Text.unpack e
         Right v -> pure v
 
--- TODO: Email type
-getIdAndPwByEmail :: SQLite.Connection -> Text -> IO (Maybe (UserId, Text))
-getIdAndPwByEmail conn email = do
-  r <- SQLite.query conn "SELECT id, password_digest FROM users WHERE email = ?" [email]
+-- Returns ID, hashed password and salt used for hashing. This will be a
+-- non-empty text for firebase data that was imported. It will be empty for all
+-- other users.
+getCredentials :: SQLite.Connection -> Text -> IO (Maybe (UserId, Maybe B.ByteString, Text))
+getCredentials conn email = do
+  r <- SQLite.query conn "SELECT id, salt, password_digest FROM users WHERE email = ?" [email]
   return $ case r of
-    [(userid, pw)] -> Just ((UserId userid), pw)
+    [(userid, salt, pw)] -> Just ((UserId userid), salt, pw)
     [] -> Nothing
-    _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getIdAndPwByEmail"
+    _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getCredentials"
 
 updateUser :: SQLite.Connection -> UserId -> UserProfile -> IO ()
 updateUser conn uid@(UserId userid) profile@UserProfile {..} = do

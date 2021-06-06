@@ -26,7 +26,7 @@ import qualified Network.Wai as Wai
 import qualified PasswordReset.ChangePasswordForm as ChangePasswordForm
 import qualified PasswordReset.ResetEmailForm as ResetEmailForm
 import Time.Time (timeDaysFromNow)
-import User.DB (getIdAndPwByEmail, hasUser)
+import User.DB (getCredentials, hasUser)
 import User.Domain (UserId (..))
 import Wai (parseParams, parseQueryParams)
 import Prelude hiding (id)
@@ -105,9 +105,9 @@ createNewToken = do
 -- in the DB, removing whatever old tokens existed
 updateUserResetToken :: SQLite.Connection -> Text -> IO (Maybe Text)
 updateUserResetToken conn email =
-  getIdAndPwByEmail conn email >>= \case
+  getCredentials conn email >>= \case
     Nothing -> return Nothing
-    Just (userid, _) -> do
+    Just (userid, _, _) -> do
       (tokenValue, expires) <- createNewToken
       let token = TokenCreate tokenValue expires userid
       SQLite.withTransaction conn $ do

@@ -48,7 +48,6 @@ server ::
   Int ->
   Environment ->
   SessionDataVaultKey ->
-  BS.ByteString -> -- User's salt
   BS.ByteString -> -- Project's base64_signer_key
   BS.ByteString -> -- Project's base64_salt_separator
   Wai.Request ->
@@ -63,7 +62,6 @@ server
   port
   appEnv
   sessionDataVaultKey
-  userSalt
   signerKey
   saltSep
   req
@@ -203,7 +201,7 @@ server
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.login dbConn userSalt signerKey saltSep sessionKey appEnv req send
+          "POST" -> Login.login dbConn signerKey saltSep sessionKey appEnv req send
           "GET" -> (Login.showLoginForm sessionDataVaultKey req) >>= send200
           _ -> send404
       ["logout"] ->
@@ -251,7 +249,6 @@ main = do
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
-  userSalt <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_USER_SALT"
   signerKey <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
   saltSep <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_SALT_SEP"
   sessionKey <- ClientSession.getKey sessionKeyFile
@@ -279,7 +276,6 @@ main = do
                   port
                   appEnv
                   sessionDataVaultKey
-                  userSalt
                   signerKey
                   saltSep
 
