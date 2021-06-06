@@ -9,8 +9,7 @@ import Layout (ActiveNavLink (..), layout)
 import Lucid
 import qualified Routes.Data as Auth
 import qualified WelcomeMessage.Card
-import WelcomeMessage.DB (getAllWelcomeMsgsFromDb)
-import WelcomeMessage.Domain (WelcomeMsg (..), WelcomeMsgId (..))
+import WelcomeMessage.WelcomeMessage (getAllWelcomeMsgsFromDb,WelcomeMsg (..), WelcomeMsgId (..))
 import Prelude hiding (id)
 
 showLandingPage ::

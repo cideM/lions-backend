@@ -42,10 +42,11 @@ test-suite tests
   hs-source-dirs: tests-hs
   other-modules:
     Helpers
-    ScryptTest
+    Scrypt.Test
+    Session.Session.Test
     Login.Test
     PasswordReset.Test
-    Events.DBTests
+    Events.DB.Test
   build-depends:
     , base
     , filepattern
@@ -57,8 +58,11 @@ test-suite tests
     , wai-extra
     , wai
     , amazonka-ses
+    , vault
+    , warp
     , fast-logger
     , uri-encode
+    , cookie
     , email-validate
     , lens
     , lucid
@@ -129,9 +133,7 @@ library
     RequestID.Middleware
     Routes.Data
     Scrypt
-    Session.DB
-    Session.Domain
-    Session.Middleware
+    Session.Session
     Time.Time
     User.DB
     User.Domain
@@ -141,8 +143,6 @@ library
     User.Profile
     Wai
     WelcomeMessage.Card
-    WelcomeMessage.DB
-    WelcomeMessage.Domain
     WelcomeMessage.Form
     WelcomeMessage.WelcomeMessage
 

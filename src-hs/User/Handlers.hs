@@ -15,6 +15,7 @@ import Control.Monad (when)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
@@ -59,7 +60,7 @@ renderDateForInput :: Time.Day -> Text
 renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y"
 
 showEditUserForm :: SQLite.Connection -> UserId -> Auth.Authenticated -> IO (Html ())
-showEditUserForm conn userIdToEdit@(UserId i) auth = do
+showEditUserForm conn userIdToEdit@(UserId uid) auth = do
   let Auth.UserSession _ sessionRoles = case auth of
         Auth.IsUser session -> session
         Auth.IsAdmin (Auth.AdminUser session) -> session
@@ -76,7 +77,7 @@ showEditUserForm conn userIdToEdit@(UserId i) auth = do
               render
                 (CanEditRoles $ any isAdmin sessionRoles)
                 "Nutzer editieren"
-                ("/nutzer/" <> Text.pack (show i) <> "/editieren")
+                [i|/nutzer/#{uid}/editieren|]
                 ( FormInput
                     { inputEmail = showEmail email,
                       inputBirthday = maybe "" renderDateForInput userBirthday,
@@ -248,7 +249,7 @@ deleteUser conn userId _ = do
                 "Nutzer " <> show (userEmail userProfile) <> " erfolgreich gelöscht"
 
 showDeleteConfirmation :: SQLite.Connection -> UserId -> Auth.AdminUser -> IO (Html ())
-showDeleteConfirmation conn userId _ = do
+showDeleteConfirmation conn userId@(UserId uid) _ = do
   user <- getUser conn userId
   case user of
     Nothing -> throwString $ "delete user but no user for eid found: " <> show userId
@@ -259,7 +260,7 @@ showDeleteConfirmation conn userId _ = do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
               toHtml ("Nutzer " <> show (userEmail userProfile) <> " wirklich löschen?")
             form_
-              [ action_ . Text.pack $ "/nutzer/" <> show userId <> "/loeschen",
+              [ action_ [i|/nutzer/#{uid}/loeschen|],
                 method_ "post",
                 class_ "d-flex justify-content-center"
               ]

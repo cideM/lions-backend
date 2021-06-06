@@ -33,7 +33,7 @@ let
     nix build .#assets .#clientside
     cp -r -n ./result/* ./public/
     cp -r -n ./result-1/* ./public/
-    cabal v2-run
+    cabal v2-run run-lions-backend
   '';
 
   spago2nix' = import spago2nix { inherit pkgs; };

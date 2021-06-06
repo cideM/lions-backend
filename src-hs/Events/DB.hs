@@ -3,7 +3,7 @@ module Events.DB
     getAll,
     deleteReply,
     createEvent,
-    GetEventRow(..),
+    GetEventRow (..),
     createAndAggregateEventsFromDb,
     updateEvent,
     upsertReply,
@@ -100,7 +100,7 @@ createAndAggregateEventsFromDb :: [GetEventRow] -> Either Text (Map EventId Even
 createAndAggregateEventsFromDb rows = M.fromListWith (<>) <$> traverse createEventFromDb rows
 
 getEvent :: SQLite.Connection -> EventId -> IO (Maybe Event)
-getEvent conn (EventId eventid) = do
+getEvent conn eid@(EventId eventid) = do
   (rows :: [GetEventRow]) <-
     SQLite.query
       conn
@@ -121,13 +121,12 @@ getEvent conn (EventId eventid) = do
         where events.id = ?
       |]
       [eventid]
-  case rows of
-    [] -> return Nothing
-    [x] ->
-      case createEventFromDb x of
-        Left e -> throwString $ [i|"couldn't parse event with id #{eventid} from DB: #{e}"|]
-        Right ok -> return . Just $ snd ok
-    result -> throwString $ "got unexpected getEvent result" <> show result
+  case createAndAggregateEventsFromDb rows of
+    Left e -> throwString $ [i|couldn't parse event with id #{eventid} from DB: #{e}|]
+    Right ok ->
+      case M.lookup eid ok of
+        Nothing -> throwString "parsed GetEventRow but no map entry"
+        Just v -> return $ Just v
 
 -- Gets all events from the DB and aggregates them by event ID by merging all
 -- user replies for a given event and making them unique on the odd chance that

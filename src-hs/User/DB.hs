@@ -44,6 +44,7 @@ instance ToRow UserProfileCreateWithPw where
 
 newtype DBUserProfileCreate = DBUserProfileCreate UserProfileCreate deriving (Show)
 
+-- This type is necessary because SQLite only support tuples of length 10
 instance ToRow DBUserProfileCreate where
   toRow
     ( DBUserProfileCreate
@@ -61,7 +62,7 @@ instance ToRow DBUserProfileCreate where
             _userRoles
           )
       ) =
-      [ toField (Email.toByteString _userEmail),
+      [ toField (decodeUtf8 $ Email.toByteString _userEmail),
         toField _userFirstName,
         toField _userLastName,
         toField _userAddress,
@@ -305,11 +306,10 @@ getRolesFromDb conn (UserId userId) =
         r <- SQLite.query conn q [userId]
         case r of
           [] -> return Nothing
-          ([roles :: [Text]]) -> do
-            case traverse parseRole roles of
+          (roles :: [[Text]]) -> do
+            case traverse parseRole $ concat roles of
               Left e -> throwString $ "couldn't parse roles: " <> show e
               Right parsedRoles -> return $ Just parsedRoles
-          other -> throwString $ "unexpected DB result: " <> show other
 
 saveUserRoles :: SQLite.Connection -> UserId -> [Role] -> IO ()
 saveUserRoles conn (UserId userid) roles =

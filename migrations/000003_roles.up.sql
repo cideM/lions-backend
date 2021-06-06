@@ -1,5 +1,5 @@
 CREATE TABLE roles (
-  id INTEGER PRIMARY KEY, 
+  id INTEGER PRIMARY KEY,
   label TEXT NOT NULL
 );
 

@@ -1,4 +1,4 @@
-module Scrypt where
+module Scrypt (verifyPassword, firebaseHashPw) where
 
 -- https://github.com/firebase/scrypt/issues/2
 -- https://github.com/JaakkoL/firebase-scrypt-python/blob/master/firebasescrypt/firebasescrypt.py
@@ -22,6 +22,7 @@ import Crypto.Scrypt
 import qualified Data.ByteString as BS
 import Data.ByteString.Base64
 import Data.Text
+import Data.Text.Encoding (encodeUtf8)
 
 firebaseHashPw ::
   BS.ByteString -> -- User's salt
@@ -46,3 +47,14 @@ firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
           let derivedKey = getHash $ scrypt params (Salt (userSaltDec <> saltSepDec)) (Pass pw)
               aes = initAES (BS.take 32 derivedKey)
            in Right . encodeBase64 $ encryptCTR aes (nullIV :: IV AES) signerKeyDec
+
+verifyPassword ::
+  BS.ByteString -> -- User's salt
+  BS.ByteString -> -- Project's base64_signer_key
+  BS.ByteString -> -- Project's base64_salt_separator
+  BS.ByteString -> -- Existing password from database
+  BS.ByteString -> -- Input that we want to verify
+  Either Text Bool
+verifyPassword userSalt signerKey saltSep want have = do
+  hashed <- encodeUtf8 <$> firebaseHashPw userSalt signerKey saltSep 14 8 have
+  return $ want == hashed

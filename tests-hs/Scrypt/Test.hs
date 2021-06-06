@@ -1,4 +1,4 @@
-module ScryptTest where
+module Scrypt.Test where
 
 import qualified Data.ByteString as B
 import Scrypt
@@ -28,3 +28,4 @@ memcost = 14
 
 rounds :: Integer
 rounds = 8
+

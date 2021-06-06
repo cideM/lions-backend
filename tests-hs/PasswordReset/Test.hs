@@ -62,7 +62,7 @@ tests =
                 let body = T.decodeUtf8 $ simpleBody' out
                     needle = "Password erfolgreich geändert"
                 assertBool
-                  [i|"Expected '#{needle}' in response but got: #{body}"|]
+                  [i|Expected '#{needle}' in response but got: #{body}|]
                   (T.isInfixOf needle body)
                 rows <- SQLite.query_ conn "select password_digest from users"
                 case rows of

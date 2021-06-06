@@ -241,28 +241,28 @@ showChangePwForm req = do
 -- actual logic
 changePwNoToken :: Text
 changePwNoToken =
-  [i|"Zum Ändern des Passworts ist ein Verifizierungs-Code notwendig, der
+  [i|Zum Ändern des Passworts ist ein Verifizierungs-Code notwendig, der
   normalerweise automatisch aus dem Link in der Email herausgelesen wird.
   Dieser Code fehlt jedoch. Das Password kann nur über den Link in der Email
   geändert werden. Falls der richtige Link verwendet wurde, bitte an einen
-  Administrator wenden."|]
+  Administrator wenden.|]
 
 changePwTokenExpired :: Text -> Text
 changePwTokenExpired expired =
-  [i|"Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen
+  [i|Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen
   neuen Link anfordern per 'Password vergessen' Knopf. Falls das Problem
   weiterhin besteht bitte an einen Administrator wenden. Der Code ist am
-  #{expired} abgelaufen."|]
+  #{expired} abgelaufen.|]
 
 changePwUserNotFound :: Text -> Text
 changePwUserNotFound userid =
-  [i|"Kein Nutzer zu diesem Verifizierungs-Code registriert. Bitte an einen
-  Administrator wenden: #{userid}"|]
+  [i|Kein Nutzer zu diesem Verifizierungs-Code registriert. Bitte an einen
+  Administrator wenden: #{userid}|]
 
 changePwTokenNotFound :: Text -> Text
 changePwTokenNotFound token =
-  [i|"Der Verifizierungs-Code aus der Email wurde nicht gefunden, bitte an
-  einen Administrator wenden: #{token}"|]
+  [i|Der Verifizierungs-Code aus der Email wurde nicht gefunden, bitte an
+  einen Administrator wenden: #{token}|]
 
 changePwNoMatch :: Text
 changePwNoMatch = "Passwörter stimmen nicht überein"

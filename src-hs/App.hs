@@ -1,7 +1,10 @@
 module App (server, main) where
 
+-- TODO: rename to Main
+
 import Control.Exception.Safe
 import Control.Monad ((>=>))
+import qualified Data.ByteString as BS
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
@@ -25,15 +28,15 @@ import qualified PasswordReset.SendEmail as SendEmail
 import RequestID.Middleware (RequestIdVaultKey)
 import qualified RequestID.Middleware
 import qualified Routes.Data as Auth
-import Session.Domain (SessionDataVaultKey)
-import qualified Session.Middleware
+import Session.Session (SessionDataVaultKey)
+import qualified Session.Session as Session
 import System.Environment (getEnv)
 import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpleTimeFormat, withTimedFastLogger)
 import Text.Read (readEither)
 import User.Domain (UserId (..), isAdmin)
 import qualified User.Handlers
 import qualified Web.ClientSession as ClientSession
-import WelcomeMessage.Domain (WelcomeMsgId (..))
+import WelcomeMessage.WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage.WelcomeMessage as WelcomeMessage
 import Prelude hiding (id)
 
@@ -46,6 +49,9 @@ server ::
   Int ->
   Environment ->
   SessionDataVaultKey ->
+  BS.ByteString -> -- User's salt
+  BS.ByteString -> -- Project's base64_signer_key
+  BS.ByteString -> -- Project's base64_salt_separator
   Wai.Request ->
   (Wai.Response -> IO Wai.ResponseReceived) ->
   IO Wai.ResponseReceived
@@ -58,6 +64,9 @@ server
   port
   appEnv
   sessionDataVaultKey
+  userSalt
+  signerKey
+  saltSep
   req
   send = do
     let vault = Wai.vault req
@@ -195,7 +204,7 @@ server
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.login dbConn sessionKey appEnv req send
+          "POST" -> Login.login dbConn userSalt signerKey saltSep sessionKey appEnv req send
           "GET" -> (Login.showLoginForm sessionDataVaultKey req) >>= send200
           _ -> send404
       ["logout"] ->
@@ -237,11 +246,15 @@ server
 
 main :: IO ()
 main = do
+  -- TODO: Would be nicer to read all of this from a file
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
   appEnv <- getEnv "LIONS_ENV" >>= parseEnv
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
+  userSalt <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_USER_SALT"
+  signerKey <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
+  saltSep <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_SALT_SEP"
   sessionKey <- ClientSession.getKey sessionKeyFile
   sessionDataVaultKey <- Vault.newKey
   requestIdVaultKey <- Vault.newKey
@@ -257,6 +270,7 @@ main = do
         withTimedFastLogger formattedTime (LogStdout defaultBufSize) $ \logger -> do
           let port = (3000 :: Int)
               app' =
+                -- Yeah this is getting long. Maybe back to capability or smth else?
                 server
                   logger
                   conn
@@ -266,25 +280,31 @@ main = do
                   port
                   appEnv
                   sessionDataVaultKey
+                  userSalt
+                  signerKey
+                  saltSep
 
           SQLite.execute_ conn "PRAGMA foreign_keys"
           (runSettings . setPort port $ setHost "localhost" defaultSettings)
             . logStdout
             . staticPolicy (addBase "public")
-            $ (\req send -> 
-                handleAny
-                ( \e -> do
-                    Logging.log logger $ show e
-                    send500 send
-                )
-                $ (RequestID.Middleware.middleware requestIdVaultKey
-                  . ( Session.Middleware.middleware
-                        logger
-                        sessionDataVaultKey
-                        conn
-                        sessionKey
-                    ))
-                    app' req send
+            $ ( \req send ->
+                  handleAny
+                    ( \e -> do
+                        Logging.log logger $ show e
+                        send500 send
+                    )
+                    $ ( RequestID.Middleware.middleware requestIdVaultKey
+                          . ( Session.middleware
+                                logger
+                                sessionDataVaultKey
+                                conn
+                                sessionKey
+                            )
+                      )
+                      app'
+                      req
+                      send
               )
     )
   where

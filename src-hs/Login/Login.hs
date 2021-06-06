@@ -7,42 +7,69 @@ import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..))
+import qualified Login.LoginForm as LoginForm
 import Lucid
-import qualified Login.LoginForm  as LoginForm
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
-import Session.DB (deleteSession, getSessionsFromDbByUser, saveSession)
-import Session.Domain (Session (..), SessionDataVaultKey, SessionId (..), ValidSession (..), createNewSession)
+import Scrypt (verifyPassword)
+import Session.Session
+  ( Session (..),
+    SessionDataVaultKey,
+    SessionId (..),
+    ValidSession (..),
+    createNewSession,
+    deleteSession,
+    getSessionsFromDbByUser,
+    saveSession,
+  )
 import User.DB (getIdAndPwByEmail)
 import Wai (parseParams)
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
--- Creates a new session ID and returns that ID and its expiration date
+-- Validates the given password based on the user account that is associated
+-- with that email. Tries to validate the password with BCrypt and Firebase
+-- Scrypt so that old password hashes from Firebase auth still work.
 createSessionId ::
   SQLite.Connection ->
+  ByteString -> -- User's salt
+  ByteString -> -- Project's base64_signer_key
+  ByteString -> -- Project's base64_salt_separator
   ClientSession.Key ->
   Text ->
   Text ->
   IO (Either Text (ByteString, Time.UTCTime))
-createSessionId conn sessionKey email formPw = do
-  getIdAndPwByEmail conn email >>= \case
-    Nothing -> return $ Left "no user found"
-    Just (userId, dbPw) -> do
-      if not $ BCrypt.validatePassword (encodeUtf8 dbPw) (encodeUtf8 formPw)
-        then return $ Left "incorrect password"
-        else do
-          newSession@(ValidSession (Session (SessionId sessionId) expires _)) <- createNewSession userId
-          saveSession conn newSession
-          encryptedSessionId <- ClientSession.encryptIO sessionKey (encodeUtf8 sessionId)
-          return $ Right (encryptedSessionId, expires)
+createSessionId
+  conn
+  userSalt
+  signerKey
+  saltSep
+  sessionKey
+  email
+  formPw = do
+    getIdAndPwByEmail conn email >>= \case
+      Nothing -> return $ Left "no user found"
+      Just (userId, dbPw) -> do
+        let formPw' = encodeUtf8 formPw
+        let dbPw' = encodeUtf8 dbPw
+        case verifyPassword userSalt signerKey saltSep dbPw' formPw' of
+          Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
+          Right result ->
+            if not $ (BCrypt.validatePassword dbPw' formPw' || result)
+              then return $ Left "incorrect password"
+              else do
+                newSession@(ValidSession (Session (SessionId sessionId) expires _)) <- createNewSession userId
+                saveSession conn newSession
+                encryptedSessionId <- ClientSession.encryptIO sessionKey (encodeUtf8 sessionId)
+                return $ Right (encryptedSessionId, expires)
 
 logout ::
   SQLite.Connection ->
@@ -85,16 +112,19 @@ logout conn env sessionDataVaultKey req send = do
 -- encrypted session ID
 login ::
   SQLite.Connection ->
+  ByteString -> -- User's salt
+  ByteString -> -- Project's base64_signer_key
+  ByteString -> -- Project's base64_salt_separator
   ClientSession.Key ->
   Environment ->
   Wai.Request ->
   (Wai.Response -> IO a) ->
   IO a
-login conn sessionKey env req send = do
+login conn userSalt signerKey saltSep sessionKey env req send = do
   params <- parseParams req
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
-  (createSessionId conn sessionKey email formPw) >>= \case
+  (createSessionId conn userSalt signerKey saltSep sessionKey email formPw) >>= \case
     Left _ -> renderFormInvalid email formPw
     Right (sessionId, expires) -> do
       let cookie = makeCookie sessionId expires

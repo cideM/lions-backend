@@ -1,7 +1,8 @@
-import qualified Events.DBTests
+import qualified Events.DB.Test
+import qualified Session.Session.Test
 import qualified Login.Test
 import qualified PasswordReset.Test
-import qualified ScryptTest
+import qualified Scrypt.Test
 import Test.Tasty
 
 main :: IO ()
@@ -11,8 +12,9 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ ScryptTest.tests,
+    [ Scrypt.Test.tests,
       PasswordReset.Test.tests,
       Login.Test.tests,
-      Events.DBTests.tests
+      Session.Session.Test.tests,
+      Events.DB.Test.tests
     ]
