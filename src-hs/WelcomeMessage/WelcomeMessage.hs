@@ -1,6 +1,10 @@
 module WelcomeMessage.WelcomeMessage
   ( saveNewMessage,
     showMessageEditForm,
+    showFeed,
+    render,
+    DeleteHref (..),
+    EditHref (..),
     showAddMessageForm,
     WelcomeMsgId (..),
     WelcomeMsg (..),
@@ -12,6 +16,7 @@ module WelcomeMessage.WelcomeMessage
 where
 
 import Control.Exception.Safe
+import Control.Monad (when)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -19,6 +24,7 @@ import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), layout, success)
+import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
@@ -26,6 +32,24 @@ import Wai (parseParams)
 import WelcomeMessage.Form (WelcomeMsgFormState (..))
 import qualified WelcomeMessage.Form as Form
 import Prelude hiding (id)
+
+type ShowEditBtn = Bool
+
+newtype EditHref = EditHref Text
+
+newtype DeleteHref = DeleteHref Text
+
+render :: EditHref -> DeleteHref -> (Text, Time.ZonedTime) -> ShowEditBtn -> Html ()
+render (EditHref editHref) (DeleteHref deleteHref) (msg, date) canEdit =
+  article_ [class_ ""] $ do
+    let formatted = Time.formatTime german "%A, %d. %B %Y" date
+     in do
+          h2_ [class_ "h4"] $ toHtml formatted
+          p_ [class_ "", style_ "white-space: pre-wrap"] $ toHtml msg
+          when canEdit $
+            div_ [class_ "d-flex"] $ do
+              a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
+              a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
 
 -- | Returns the MOST RECENT welcome message, if there is one
 getWelcomeMsgFromDb :: SQLite.Connection -> WelcomeMsgId -> IO (Maybe WelcomeMsg)
@@ -123,3 +147,38 @@ showMessageEditForm conn mid@(WelcomeMsgId msgid) _ = do
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
     Just (WelcomeMsg _ content _) ->
       return . editPageLayout $ Form.form NotValidated [i|/editieren/#{msgid}|] content
+
+showFeed ::
+  SQLite.Connection ->
+  Auth.Authenticated ->
+  IO (Html ())
+showFeed conn auth = do
+  let userIsAdmin = case auth of
+        Auth.IsAdmin _ -> True
+        _ -> False
+  msgs <-
+    handleAny (\e -> throwString $ "error getting welcome messages: " <> show e) $
+      getAllWelcomeMsgsFromDb conn
+  zone <- Time.getCurrentTimeZone
+  return $
+    layout "Willkommen" (Just Welcome) $
+      div_ [class_ "container"] $ do
+        div_ [class_ "row row-cols-1 g-4"] $ do
+          div_ [class_ "col"] $
+            p_ [class_ "m-0 alert alert-primary"] $ do
+              "Alle Dateien (inklusive Bilderarchiv) des Lions Club Achern befinden sich auf "
+              a_ [href_ "https://1drv.ms/f/s!As3H-io1fRdFcZnEJ0BXdpeV9Lw"] "Microsoft OneDrive"
+          div_ [class_ "col d-flex flex-wrap-reverse align-items-center"] $ do
+            h1_ [class_ "h3 m-0 me-2 mb-1"] "Interne Neuigkeiten"
+            when userIsAdmin $
+              a_ [class_ "btn btn-primary mb-1", href_ "/neu", role_ "button"] "Neue Nachricht"
+          div_ [class_ "col"] $ do
+            div_ [class_ "row row-cols-1 g-5"] $ do
+              mapM_
+                ( \(WelcomeMsg (WelcomeMsgId id) content datetime) ->
+                    let editHref = EditHref $ Text.pack $ "/editieren/" <> show id
+                        deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show id
+                        zoned = Time.utcToZonedTime zone datetime
+                     in (render editHref deleteHref (content, zoned) userIsAdmin)
+                )
+                msgs

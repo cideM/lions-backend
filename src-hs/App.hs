@@ -12,7 +12,6 @@ import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..), parseEnv)
 import Events.Domain (EventId (..))
 import qualified Events.Handlers
-import qualified LandingPage.Handlers
 import Layout (layout)
 import qualified Logging.Logging as Logging
 import qualified Login.Login as Login
@@ -96,7 +95,7 @@ server
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (LandingPage.Handlers.showLandingPage dbConn auth) >>= send200
+          "GET" -> authenticatedOnly' $ \auth -> (WelcomeMessage.showFeed dbConn auth) >>= send200
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
