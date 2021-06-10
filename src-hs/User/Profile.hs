@@ -50,19 +50,20 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
           let formatted = Text.pack . Time.formatTime german "%A, %d. %B %Y" <$> userBirthdayPartner
           small_ [class_ "text-muted"] "Geburtstag des Partners"
           p_ [class_ "fs-5"] $ toHtml' formatted
-    div_ [class_ "card-footer d-flex d-grid"] $ do
-      when canDelete $
-        a_
-          [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/loeschen",
-            class_ "link link-danger me-4"
-          ]
-          "Nutzer löschen"
-      when canEdit $
-        a_
-          [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/editieren",
-            class_ "link link-secondary me-4"
-          ]
-          "Nutzer editieren"
+    when (canDelete || canEdit) $
+      div_ [class_ "card-footer d-flex d-grid"] $ do
+        when canDelete $
+          a_
+            [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/loeschen",
+              class_ "link link-danger me-4"
+            ]
+            "Nutzer löschen"
+        when canEdit $
+          a_
+            [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/editieren",
+              class_ "link link-secondary me-4"
+            ]
+            "Nutzer editieren"
   where
     toHtml' = toHtml . fromMaybe ""
     displayBadges = Text.intercalate ", " . map showBadge . filter dropUser

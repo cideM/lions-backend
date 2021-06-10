@@ -56,9 +56,11 @@ showAllEvents conn auth = do
         Auth.IsUser session -> (False, session)
   events <- map (addOwnReply userSessionUserId) . sortByDateDesc . Map.toList <$> getAll conn
   return . layout "Veranstaltungen" (Just Events) $
-    div_ [class_ "container p-2"] $ do
-      when userIsAdmin $
-        a_ [class_ "mb-4 btn btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
+    div_ [class_ "container"] $ do
+      div_ [class_ "col d-flex flex-wrap-reverse align-items-center"] $ do
+        h1_ [class_ "h3 m-0 me-2 mb-1"] "Veranstaltungen"
+        when userIsAdmin $
+          a_ [class_ "mb-1 btn btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
       div_ [class_ "row row-cols-1 row-cols-lg-2 g-5"] $
         mapM_ (div_ [class_ "col"] . Events.EventCard.render) events
   where
