@@ -69,6 +69,8 @@ pkgs.mkShell {
       pkgs.nodePackages.purty
 
       # Scripts
+      pkgs.bash_5
+      pkgs.jq
       pkgs.parallel
       lions-vm
       lions-ghcid

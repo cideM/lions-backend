@@ -34,6 +34,7 @@ import User.Domain
     UserProfileCreate (..),
     isAdmin,
     isBoard,
+    isPassive,
     isPresident,
     showEmail,
   )
@@ -53,7 +54,7 @@ showAddUserForm _ =
           (CanEditRoles True)
           "Nutzer erstellen"
           "/nutzer/neu"
-          (FormInput "" "" "" False False False "" "" "" "" "" "" "")
+          (FormInput "" "" "" False False False False "" "" "" "" "" "" "")
           emptyForm
 
 renderDateForInput :: Time.Day -> Text
@@ -85,6 +86,7 @@ showEditUserForm conn userIdToEdit@(UserId uid) auth = do
                       inputIsAdmin = any isAdmin userRoles,
                       inputIsBoard = any isBoard userRoles,
                       inputIsPresident = any isPresident userRoles,
+                      inputIsPassive = any isPassive userRoles,
                       inputAddress = fromMaybe "" userAddress,
                       inputFirstName = fromMaybe "" userFirstName,
                       inputFirstNamePartner = fromMaybe "" userFirstNamePartner,
@@ -105,6 +107,7 @@ updateExistingUser conn req userId auth = do
       loggedInAsAdmin = any isAdmin sessionRoles
       isAdminNow = maybe False (any isAdmin) rolesForUserToUpdate
       isBoardNow = maybe False (any isBoard) rolesForUserToUpdate
+      isPassiveNow = maybe False (any isPassive) rolesForUserToUpdate
       isPresidentNow = maybe False (any isPresident) rolesForUserToUpdate
       Auth.UserSession _ sessionRoles = case auth of
         Auth.IsUser session -> session
@@ -117,6 +120,7 @@ updateExistingUser conn req userId auth = do
           (if loggedInAsAdmin then paramb "inputIsAdmin" else isAdminNow)
           (if loggedInAsAdmin then paramb "inputIsBoard" else isBoardNow)
           (if loggedInAsAdmin then paramb "inputIsPresident" else isPresidentNow)
+          (if loggedInAsAdmin then paramb "inputIsPassive" else isPassiveNow)
           (paramt "inputAddress")
           (paramt "inputFirstName")
           (paramt "inputFirstNamePartner")
@@ -174,6 +178,7 @@ saveNewUser conn req _ = do
           (paramb "inputIsAdmin")
           (paramb "inputIsBoard")
           (paramb "inputIsPresident")
+          (paramb "inputIsPassive")
           (paramt "inputAddress")
           (paramt "inputFirstName")
           (paramt "inputFirstNamePartner")

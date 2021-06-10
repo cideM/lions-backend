@@ -134,6 +134,16 @@ render (CanEditRoles canEditRoles) btnlabel action FormInput {..} EditFormState 
             ++ [disabled_ "" | not canEditRoles]
         label_ [class_ "form-check-label", for_ "inputIsPresident"] "Präsident"
       div_ [class_ "form-check col-12"] $ do
+        input_ $
+          [ class_ "form-check-input",
+            type_ "checkbox",
+            id_ "inputIsPassive",
+            name_ "inputIsPassive"
+          ]
+            ++ [checked_ | inputIsPassive]
+            ++ [disabled_ "" | not canEditRoles]
+        label_ [class_ "form-check-label", for_ "inputIsPassive"] "Passiv"
+      div_ [class_ "form-check col-12"] $ do
         input_
           [ class_ "form-check-input",
             type_ "checkbox",
@@ -161,6 +171,7 @@ data FormInput = FormInput
     inputIsAdmin :: Bool,
     inputIsBoard :: Bool,
     inputIsPresident :: Bool,
+    inputIsPassive :: Bool,
     inputAddress :: Text,
     inputFirstName :: Text,
     inputFirstNamePartner :: Text,
@@ -181,6 +192,7 @@ makeProfile FormInput {..} =
                 [ if inputIsAdmin then Just Admin else Nothing,
                   if inputIsBoard then Just Board else Nothing,
                   if inputIsPresident then Just President else Nothing,
+                  if inputIsPassive then Just Passive else Nothing,
                   Just User
                 ]
        in case roles of
