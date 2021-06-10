@@ -6,6 +6,7 @@ module User.Domain
     UserId (..),
     Role (..),
     isAdmin,
+    isPassive,
     isBoard,
     isPresident,
     parseRole,
@@ -63,7 +64,7 @@ data UserProfile = UserProfile
 instance ToJSON UserProfile where
   toEncoding = genericToEncoding defaultOptions
 
-data Role = Admin | User | Board | President deriving (Eq, Generic)
+data Role = Admin | User | Board | President | Passive deriving (Eq, Generic)
 
 instance ToJSON Role where
   toEncoding = genericToEncoding defaultOptions
@@ -71,8 +72,13 @@ instance ToJSON Role where
 instance Show Role where
   show Admin = "admin"
   show User = "user"
+  show Passive = "passive"
   show Board = "board"
   show President = "president"
+
+isPassive :: Role -> Bool
+isPassive Passive = True
+isPassive _ = False
 
 isAdmin :: Role -> Bool
 isAdmin Admin = True

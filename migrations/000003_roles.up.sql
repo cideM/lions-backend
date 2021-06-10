@@ -7,5 +7,6 @@ INSERT INTO roles (id, label) VALUES
   (0, "admin"),
   (1, "user"),
   (2, "board"),
-  (3, "president");
+  (3, "president"),
+  (4, "passive");
 

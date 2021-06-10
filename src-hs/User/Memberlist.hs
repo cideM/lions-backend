@@ -49,6 +49,7 @@ render users activeGroup = do
     dropUser User = False
     dropUser _ = True
     showBadge President = "Präsident"
+    showBadge Passive = "Passiv"
     showBadge Board = "Vorstand"
     showBadge Admin = "Administrator"
     showBadge User = "Nutzer"
