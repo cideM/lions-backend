@@ -127,9 +127,10 @@ middleware ::
   ClientSession.Key ->
   Wai.Application ->
   Wai.Application
-middleware _ sessionDataVaultKey dbConn sessionKey nextApp req send = do
+middleware logger sessionDataVaultKey dbConn sessionKey nextApp req send = do
   tryLogin dbConn sessionKey sessionDataVaultKey req >>= \case
-    Left _ -> do
+    Left e -> do
+      Logging.log logger $ "error in tryLogin: " <> show e
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send

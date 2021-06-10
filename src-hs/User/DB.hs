@@ -14,7 +14,6 @@ where
 import Control.Exception.Safe
 import Control.Monad (forM_)
 import qualified Crypto.BCrypt as BCrypt
-import qualified Data.ByteString as B
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
@@ -95,7 +94,7 @@ instance ToRow DBUserProfile where
             _userRoles
           )
       ) =
-      [ toField (Email.toByteString _userEmail),
+      [ toField (decodeUtf8 $ Email.toByteString _userEmail),
         toField _userFirstName,
         toField _userLastName,
         toField _userAddress,
@@ -153,38 +152,40 @@ hasUser conn (UserId id) = do
 -- I've spent about 2h debugging this GROUP BY NULL shit, fml
 -- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present
 getUser :: SQLite.Connection -> UserId -> IO (Maybe UserProfile)
-getUser conn (UserId userid) = do
-  rows <-
-    SQLite.query
-      conn
-      [sql|
-           SELECT
-              GROUP_CONCAT(label,","),
-              users.id,
-              email,
-              first_name,
-              last_name,
-              address,
-              mobile_phone_nr,
-              landline_nr,
-              birthday,
-              first_name_partner,
-              last_name_partner,
-              birthday_partner
-           FROM users
-           JOIN user_roles ON users.id = userid
-           JOIN roles ON roles.id = roleid
-           WHERE users.id = ?
-           GROUP BY NULL
-          |]
-      [userid]
-  case rows of
-    [] -> return Nothing
-    [getUserRows :: GetUserRow] -> do
-      case makeProfile getUserRows of
-        Left e -> throwString $ Text.unpack ("couldn't get user: " <> e)
-        Right v' -> return $ Just v'
-    result -> throwString $ "got unexpected getUser result" <> show result
+getUser conn (UserId userid) =
+  handleAny
+    (\e -> throwString $ "error getting single user: " <> show e)
+    ( SQLite.query
+        conn
+        [sql|
+               SELECT
+                  GROUP_CONCAT(label,","),
+                  users.id,
+                  email,
+                  first_name,
+                  last_name,
+                  address,
+                  mobile_phone_nr,
+                  landline_nr,
+                  birthday,
+                  first_name_partner,
+                  last_name_partner,
+                  birthday_partner
+               FROM users
+               JOIN user_roles ON users.id = userid
+               JOIN roles ON roles.id = roleid
+               WHERE users.id = ?
+               GROUP BY NULL
+              |]
+        [userid]
+        >>= \case
+          [] -> return Nothing
+          [getUserRows :: GetUserRow] -> do
+            case makeProfile getUserRows of
+              Left e -> throwString $ Text.unpack ("couldn't get user: " <> e)
+              Right v' -> return $ Just v'
+          result -> throwString $ "got unexpected getUser result" <> show result
+    )
 
 makeProfile :: GetUserRow -> Either Text UserProfile
 makeProfile GetUserRow {..} = do
@@ -239,13 +240,17 @@ getUsers conn =
 -- Returns ID, hashed password and salt used for hashing. This will be a
 -- non-empty text for firebase data that was imported. It will be empty for all
 -- other users.
-getCredentials :: SQLite.Connection -> Text -> IO (Maybe (UserId, Maybe B.ByteString, Text))
+getCredentials :: SQLite.Connection -> Text -> IO (Maybe (UserId, Maybe Text, Text))
 getCredentials conn email = do
-  r <- SQLite.query conn "SELECT id, salt, password_digest FROM users WHERE email = ?" [email]
-  return $ case r of
-    [(userid, salt, pw)] -> Just ((UserId userid), salt, pw)
-    [] -> Nothing
-    _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getCredentials"
+  handleAny
+    (\e -> throwString $ "error getCredentials: " <> show e)
+    ( do
+        r <- SQLite.query conn "SELECT id, salt, password_digest FROM users WHERE email = ?" [email]
+        return $ case r of
+          [(userid, salt, pw)] -> Just ((UserId userid), salt, pw)
+          [] -> Nothing
+          _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getCredentials"
+    )
 
 updateUser :: SQLite.Connection -> UserId -> UserProfile -> IO ()
 updateUser conn uid@(UserId userid) profile@UserProfile {..} = do

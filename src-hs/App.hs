@@ -201,7 +201,7 @@ server
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.login dbConn signerKey saltSep sessionKey appEnv req send
+          "POST" -> Login.login dbConn logger signerKey saltSep sessionKey appEnv req send
           "GET" -> (Login.showLoginForm sessionDataVaultKey req) >>= send200
           _ -> send404
       ["logout"] ->

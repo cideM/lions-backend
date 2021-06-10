@@ -5,6 +5,7 @@ import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
+import qualified Logging.Logging as Logging
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.String.Interpolate (i)
@@ -61,7 +62,7 @@ createSessionId
         case userSalt of
           -- Firebase credentials
           Just us -> do
-            case verifyPassword us signerKey saltSep dbPw' formPw' of
+            case verifyPassword (encodeUtf8 us) signerKey saltSep dbPw' formPw' of
               Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
               Right ok ->
                 if ok
@@ -120,6 +121,7 @@ logout conn env sessionDataVaultKey req send = do
 -- encrypted session ID
 login ::
   SQLite.Connection ->
+  Logging.TimedFastLogger -> 
   ByteString -> -- Project's base64_signer_key
   ByteString -> -- Project's base64_salt_separator
   ClientSession.Key ->
@@ -127,13 +129,14 @@ login ::
   Wai.Request ->
   (Wai.Response -> IO a) ->
   IO a
-login conn signerKey saltSep sessionKey env req send = do
+login conn logger signerKey saltSep sessionKey env req send = do
   params <- parseParams req
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
   (createSessionId conn signerKey saltSep sessionKey email formPw) >>= \case
     Left _ -> renderFormInvalid email formPw
     Right (sessionId, expires) -> do
+      Logging.log logger ("successful login" :: Text)
       let cookie = makeCookie sessionId expires
       send $ Wai.responseLBS status302 [("Set-Cookie", cookie), ("Location", "/")] mempty
   where
