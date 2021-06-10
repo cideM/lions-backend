@@ -61,7 +61,7 @@
             packages = flake-utils.lib.flattenTree {
               litestream = litestream;
               server = release.lions-server;
-              assets = release.assets;
+              allAssets = release.allAssets;
               clientside = release.clientside;
             };
 

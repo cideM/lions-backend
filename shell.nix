@@ -27,15 +27,6 @@ let
     litestream replicate $LIONS_SQLITE_PATH s3://lions-achern-litestream-replica-1/dev-db
   '';
 
-  lions-dev = pkgs.writeShellScriptBin "lions-dev" ''
-    [[ -d public ]] || mkdir public
-    [[ -f "$LIONS_SQLITE_PATH" ]] || touch "$LIONS_SQLITE_PATH"
-    nix build .#assets .#clientside
-    cp -r -n ./result/* ./public/
-    cp -r -n ./result-1/* ./public/
-    cabal v2-run run-lions-backend
-  '';
-
   spago2nix' = import spago2nix { inherit pkgs; };
 
 in
@@ -78,7 +69,7 @@ pkgs.mkShell {
       pkgs.nodePackages.purty
 
       # Scripts
-      lions-dev
+      pkgs.parallel
       lions-vm
       lions-ghcid
       lions-dummy

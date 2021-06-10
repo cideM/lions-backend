@@ -73,6 +73,14 @@ let
 
   bin = pkgs.haskellPackages.callPackage ./project.nix { };
 
+  allAssets = pkgs.symlinkJoin {
+    name = "lions-all-client-assets";
+    paths = [
+      clientside
+      assets
+    ];
+  };
+
   production = pkgs.stdenv.mkDerivation {
     name = "lions-website";
     dontUnpack = true;
@@ -80,8 +88,7 @@ let
     installPhase = ''
       mkdir $out
       mkdir $out/public/
-      cp -r ${assets}/* $out/public/
-      cp -r ${clientside} $out/public/
+      cp -r ${allAssets}/* $out/public/
       cp ${bin}/bin/lions-backend $out/server
     '';
   };
@@ -118,6 +125,6 @@ let
 
 in
 {
-  inherit css assets icons production clientside lions-server;
+  inherit css assets icons production clientside lions-server allAssets;
   project = bin;
 }

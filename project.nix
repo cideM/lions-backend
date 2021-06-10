@@ -20,8 +20,12 @@ mkDerivation {
     time uri-encode uuid vault wai wai-extra wai-middleware-static
     wai-session warp
   ];
+  executableHaskellDepends = [ base ];
   testHaskellDepends = [
-    base filepattern sqlite-simple tasty tasty-hunit
+    amazonka-ses base bytestring clientsession containers cookie
+    email-validate fast-logger filepattern http-types lens lucid
+    sqlite-simple string-interpolate tasty tasty-hunit text time
+    uri-encode vault wai wai-extra warp
   ];
   license = "unknown";
   hydraPlatforms = lib.platforms.none;
