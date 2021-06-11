@@ -53,9 +53,18 @@
               vendorSha256 = "sha256-O1d2xQ+1Xn88JCaVv4ge8HmrFqEl3lRTJIhgZoAri7U=";
             };
 
-            release = import ./release.nix { inherit bootstrap-icons bootstrap pkgs; };
+            # Add turtle to my environment so any Haskell script inside
+            # scripts/ can be run with runghc without having to think about
+            # where the dependencies come from.
+            haskellScriptDeps = [ pkgs.haskellPackages.turtle ];
 
-            projectEnv = release.project.env;
+            backend = pkgs.haskellPackages.callPackage ./project.nix { };
+            projectEnv = (pkgs.haskell.lib.overrideCabal backend (drv: {
+              libraryHaskellDepends = drv.libraryHaskellDepends ++ haskellScriptDeps;
+            })).env;
+
+            release = import ./release.nix { inherit bootstrap-icons bootstrap pkgs backend; };
+
           in
           rec {
             packages = flake-utils.lib.flattenTree {

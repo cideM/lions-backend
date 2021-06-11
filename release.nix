@@ -1,4 +1,4 @@
-{ pkgs, bootstrap, bootstrap-icons }:
+{ pkgs, bootstrap, bootstrap-icons, backend }:
 let
   css = pkgs.stdenv.mkDerivation {
     name = "lions-css";
@@ -71,8 +71,6 @@ let
     '';
   };
 
-  bin = pkgs.haskellPackages.callPackage ./project.nix { };
-
   allAssets = pkgs.symlinkJoin {
     name = "lions-all-client-assets";
     paths = [
@@ -89,7 +87,7 @@ let
       mkdir $out
       mkdir $out/public/
       cp -r ${allAssets}/* $out/public/
-      cp ${bin}/bin/lions-backend $out/server
+      cp ${backend}/bin/lions-backend $out/server
     '';
   };
 
@@ -113,8 +111,8 @@ let
       '';
     in
     # We want the script that runs the migrations and starts the server to
-    # reside in the same folder in /nix/store so it's easier to handle the
-    # working directory for systemd
+      # reside in the same folder in /nix/store so it's easier to handle the
+      # working directory for systemd
     pkgs.symlinkJoin {
       name = "lions-server";
       paths = [
@@ -126,5 +124,4 @@ let
 in
 {
   inherit css assets icons production clientside lions-server allAssets;
-  project = bin;
 }
