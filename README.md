@@ -1,5 +1,11 @@
 # Hi!
 
+## Deploy
+
+`deploy .`
+
+This might fail because of a weird error message that complains about the current env not being Linux. Whatever? Just comment out the darwin system in the flake and if you're on Darwin then please figure this out :), sincerely, paste me.
+
 ## SQLite
 
 ### Running Migrations
@@ -33,14 +39,27 @@ for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
 
 ### Litestream
 
+When opening S3 from the Administrator account keep in mind that that user
+doesn't have access to the S3 bucket. You can only access it through the
+Litestream user. User the shell below together with values from either `.envrc`
+or 1Password to check which replicas there are.
+
+```shell
+$ AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= aws s3 ls lions-achern-litestream-replica-1/
+```
+
+Check all generations that exist:
+
 ```shell
 litestream generations s3://lions-achern-litestream-replica-1/test/
 ```
 
-Restore the DB **from** S3 **to** a local file called `prod.db`:
+Restore the DB **from** S3 **to** a local file on the server. This process is pretty dangerous. First of all, files can only be accessed by the dynamic user created by systemd. You can override this with `sudo` but then you need to `chown` the files afterwards. Also, be sure to delete all DB files, not just the DB itself, also the WAL and the `.db-litestream` I guess?
 
 ```shell
-litestream restore -o prod.db s3://lions-achern-litestream-replica-1/prod
+[admin@lions-server:~]$ sudo rm /var/lib/lions-server/db /var/lib/lions-server/.db-litestream
+[admin@lions-server:~]$ sudo LITESTREAM_ACCESS_KEY_ID= LITESTREAM_SECRET_ACCESS_KEY= litestream restore -o /var/lib/lions-server/db s3://lions-achern-litestream-replica-1/dev-db
+[admin@lions-server:~]$ sudo chown lions-server:lions /var/lib/lions-server/db
 ```
 
 ## Development

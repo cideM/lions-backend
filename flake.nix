@@ -36,7 +36,7 @@
     , litestream-src
     }:
     let
-      allSystems = flake-utils.lib.eachDefaultSystem
+      allSystems = flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ]
         (system:
           let
             pkgs = import nixpkgs {
@@ -159,12 +159,12 @@
           }
         );
 
-      serverSystem = system: nixpkgs.lib.nixosSystem {
+      serverSystem = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
           sops-nix.nixosModules.sops
           {
-            # This sucks, install the server systemwide or something
+            # TODO: This sucks, install the server systemwide or something
             config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
             config.serverExe = "${allSystems.packages.x86_64-linux.server}/bin/migrate-and-serve";
           }
