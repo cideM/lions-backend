@@ -1,5 +1,5 @@
 public
-node_modules
+client/node_modules
 dist-newstyle
 .envrc
 result

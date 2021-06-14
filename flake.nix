@@ -41,8 +41,8 @@
           let
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ (import ./migrate.nix) ];
-              config = import ./config.nix;
+              overlays = [ (import ./nix/migrate.nix) ];
+              config = import ./nix/config.nix;
             };
 
             litestream = pkgs.buildGoModule rec {
@@ -58,20 +58,62 @@
             # where the dependencies come from.
             haskellScriptDeps = [ pkgs.haskellPackages.turtle ];
 
-            backend = pkgs.haskellPackages.callPackage ./project.nix { };
+            backend = import ./backend/default.nix { inherit pkgs; };
             projectEnv = (pkgs.haskell.lib.overrideCabal backend (drv: {
               libraryHaskellDepends = drv.libraryHaskellDepends ++ haskellScriptDeps;
             })).env;
 
-            release = import ./release.nix { inherit bootstrap-icons bootstrap pkgs backend; };
+            clientStuff = import ./client/default.nix { inherit bootstrap-icons bootstrap pkgs backend; };
+
+            production = pkgs.stdenv.mkDerivation {
+              name = "lions-website";
+              dontUnpack = true;
+              dontBuild = true;
+              installPhase = ''
+                mkdir $out
+                mkdir $out/public/
+                cp -r ${clientStuff.allAssets}/* $out/public/
+                cp ${backend}/bin/lions-backend $out/server
+              '';
+            };
+
+            migrationsDir = builtins.path {
+              name = "lions-migrations";
+              path = ./backend/migrations;
+            };
+
+            lions-server =
+              let
+                wrapped = pkgs.writeScriptBin "migrate-and-serve" ''
+                  #!${pkgs.bash}/bin/bash
+                  if [ -z ''${LIONS_SQLITE_PATH+x} ]; then
+                    echo "LIONS_SQLITE_PATH not set"
+                    exit 1
+                  fi
+                  echo "running migrations"
+                  ${pkgs.go-migrate}/bin/migrate -path ${migrationsDir} -database "sqlite3://$LIONS_SQLITE_PATH" up
+                  echo "starting server"
+                  ${production}/server
+                '';
+              in
+              # We want the script that runs the migrations and starts the server to
+                # reside in the same folder in /nix/store so it's easier to handle the
+                # working directory for systemd
+              pkgs.symlinkJoin {
+                name = "lions-server";
+                paths = [
+                  wrapped
+                  production
+                ];
+              };
 
           in
           rec {
             packages = flake-utils.lib.flattenTree {
               litestream = litestream;
-              server = release.lions-server;
-              allAssets = release.allAssets;
-              clientside = release.clientside;
+              server = lions-server;
+              allAssets = clientStuff.allAssets;
+              clientside = clientStuff.clientside;
             };
 
             defaultPackage = packages.server;
@@ -100,9 +142,9 @@
           {
             environment.systemPackages = [ allSystems.packages.x86_64-linux.litestream ];
           }
-          ./configuration.nix
-          ./systemd-server.nix
-          ./systemd-litestream.nix
+          ./nix/configuration.nix
+          ./nix/systemd-server.nix
+          ./nix/systemd-litestream.nix
           {
             imports = [
               "${nixpkgs-20-09}/nixos/modules/virtualisation/digital-ocean-image.nix"

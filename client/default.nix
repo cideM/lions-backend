@@ -79,49 +79,7 @@ let
     ];
   };
 
-  production = pkgs.stdenv.mkDerivation {
-    name = "lions-website";
-    dontUnpack = true;
-    dontBuild = true;
-    installPhase = ''
-      mkdir $out
-      mkdir $out/public/
-      cp -r ${allAssets}/* $out/public/
-      cp ${backend}/bin/lions-backend $out/server
-    '';
-  };
-
-  migrationsDir = builtins.path {
-    name = "lions-migrations";
-    path = ./migrations;
-  };
-
-  lions-server =
-    let
-      wrapped = pkgs.writeScriptBin "migrate-and-serve" ''
-        #!${pkgs.bash}/bin/bash
-        if [ -z ''${LIONS_SQLITE_PATH+x} ]; then
-          echo "LIONS_SQLITE_PATH not set"
-          exit 1
-        fi
-        echo "running migrations"
-        ${pkgs.go-migrate}/bin/migrate -path ${migrationsDir} -database "sqlite3://$LIONS_SQLITE_PATH" up
-        echo "starting server"
-        ${production}/server
-      '';
-    in
-    # We want the script that runs the migrations and starts the server to
-      # reside in the same folder in /nix/store so it's easier to handle the
-      # working directory for systemd
-    pkgs.symlinkJoin {
-      name = "lions-server";
-      paths = [
-        wrapped
-        production
-      ];
-    };
-
 in
 {
-  inherit css assets icons production clientside lions-server allAssets;
+  inherit css assets icons clientside allAssets;
 }

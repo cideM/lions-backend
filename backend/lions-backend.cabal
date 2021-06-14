@@ -75,7 +75,7 @@ test-suite tests
 
 library
   import:          shared-props
-  hs-source-dirs:  src-hs
+  hs-source-dirs:  src
   build-depends:
     , aeson
     , amazonka
