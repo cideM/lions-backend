@@ -18,6 +18,7 @@ import qualified Data.ByteString.Lazy.Char8 as LB
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as SQLite
 import Lucid
+import Layout (LayoutStub(..))
 import Network.HTTP.Types (hContentType, status200)
 import qualified Network.Wai as Wai
 import Network.Wai.Test
@@ -43,8 +44,8 @@ withDB f = do
         f conn
     )
 
-as200 :: Html a -> Wai.Response
-as200 = Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")] . renderBS
+as200 :: LayoutStub -> Wai.Response
+as200 = Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")] . renderBS . layoutStubContent
 
 withQueryString ::
   B.ByteString ->

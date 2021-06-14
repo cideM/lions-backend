@@ -48,7 +48,7 @@ litestream restore -o prod.db s3://lions-achern-litestream-replica-1/prod
 Rebuild and restart when source changes. This may or may not work reliably on MacOS.
 
 ```shell
-$ fd . -e hs | entr -cr lions-dev
+$ fd . -e hs -e purs | entr -cr ./scripts/dev.hs
 ```
 
 ### Tests
@@ -56,6 +56,7 @@ $ fd . -e hs | entr -cr lions-dev
 This will recompile and run the test binary, it's not using Cabal's test running facilities.
 
 ```shell
+$ cd backend
 $ fd -e hs | entr -c cabal v2-run test:tests
 ```
 
@@ -63,5 +64,6 @@ This will run the tests through cabal but it seems to generate less output. But
 that output is useful, so prefer the above snippet.
 
 ```shell
+$ cd backend
 $ fd -e hs | entr -c cabal v2-test
 ```

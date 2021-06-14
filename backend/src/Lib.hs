@@ -10,7 +10,7 @@ import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..), parseEnv)
 import Events.Domain (EventId (..))
 import qualified Events.Handlers
-import Layout (layout)
+import Layout (layout, LayoutStub(..))
 import qualified Logging.Logging as Logging
 import qualified Login.Login as Login
 import Lucid
@@ -88,20 +88,43 @@ server
             then "https://www.lions-achern.de"
             else Text.pack $ "http://localhost:" <> show port
         sendMail' = SendEmail.sendMail awsEnv resetHost
+        layout' = layout routeData
+        send200 =
+          send
+            . Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")]
+            . renderBS
+        send403 =
+          send
+            . Wai.responseLBS status403 [("Content-Type", "text/html; charset=UTF-8")]
+            . renderBS
+            . layout'
+            . LayoutStub "Fehler" Nothing
+            $ div_ [class_ "container p-3 d-flex justify-content-center"] $
+              div_ [class_ "row col-6"] $ do
+                p_ [class_ "alert alert-secondary", role_ "alert"] "Du hast keinen Zugriff auf diese Seite"
+        send404 =
+          send
+            . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
+            . renderBS
+            . layout' 
+            . LayoutStub "Nicht gefunden" Nothing
+            $ div_ [class_ "container p-3 d-flex justify-content-center"] $
+              div_ [class_ "row col-6"] $ do
+                p_ [class_ "alert alert-secondary", role_ "alert"] "Nicht Gefunden"
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (WelcomeMessage.showFeed dbConn auth) >>= send200
+          "GET" -> authenticatedOnly' $ \auth -> (WelcomeMessage.showFeed dbConn auth) >>= send200 . layout'
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (Events.Handlers.showAllEvents dbConn auth) >>= send200
+          "GET" -> authenticatedOnly' $ \auth -> (Events.Handlers.showAllEvents dbConn auth) >>= send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", "neu"] ->
         case Wai.requestMethod req of
-          "GET" -> adminOnly' $ \admin -> (Events.Handlers.showCreateEvent admin) >>= send200
-          "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleCreateEvent dbConn req admin) >>= send200
+          "GET" -> adminOnly' $ \admin -> (Events.Handlers.showCreateEvent admin) >>= send200 . layout'
+          "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleCreateEvent dbConn req admin) >>= send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", i] ->
@@ -109,7 +132,11 @@ server
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> authenticatedOnly' $ \auth -> Events.Handlers.showEvent dbConn (EventId parsed) send auth
+              "GET" -> authenticatedOnly' $ \auth ->
+                ( Events.Handlers.showEvent dbConn (EventId parsed) auth >>= \case
+                    Nothing -> send404
+                    Just stub -> send200 $ layout' stub
+                )
               _ -> send404
       ["veranstaltungen", i, "antwort"] ->
         case readEither (Text.unpack i) of
@@ -123,16 +150,16 @@ server
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showDeleteEventConfirmation dbConn (EventId parsed) admin) >>= send200
-              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleDeleteEvent dbConn (EventId parsed) admin) >>= send200
+              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showDeleteEventConfirmation dbConn (EventId parsed) admin) >>= send200 . layout'
+              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleDeleteEvent dbConn (EventId parsed) admin) >>= send200 . layout'
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showEditEventForm dbConn (EventId parsed) admin) >>= send200
-              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleUpdateEvent dbConn req (EventId parsed) admin) >>= send200
+              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showEditEventForm dbConn (EventId parsed) admin) >>= send200 . layout'
+              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleUpdateEvent dbConn req (EventId parsed) admin) >>= send200 . layout'
               _ -> send404
       ["loeschen", i] ->
         case readEither (Text.unpack i) of
@@ -140,13 +167,13 @@ server
           Right (parsed :: Int) ->
             let msgId = (WelcomeMsgId parsed)
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleDeleteMessage dbConn msgId admin) >>= send200
-                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showDeleteConfirmation dbConn msgId admin) >>= send200
+                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleDeleteMessage dbConn msgId admin) >>= send200 . layout'
+                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showDeleteConfirmation dbConn msgId admin) >>= send200 . layout'
                   _ -> send404
       ["neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ \admin -> (WelcomeMessage.saveNewMessage dbConn req admin) >>= send200
-          "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showAddMessageForm admin) >>= send200
+          "POST" -> adminOnly' $ \admin -> (WelcomeMessage.saveNewMessage dbConn req admin) >>= send200 . layout'
+          "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showAddMessageForm admin) >>= send200 . layout'
           _ -> send404
       ["editieren", i] ->
         case readEither (Text.unpack i) of
@@ -154,17 +181,17 @@ server
           Right (parsed :: Int) ->
             let msgId = (WelcomeMsgId parsed)
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleEditMessage dbConn req msgId admin) >>= send200
-                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showMessageEditForm dbConn msgId admin) >>= send200
+                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleEditMessage dbConn req msgId admin) >>= send200 . layout'
+                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showMessageEditForm dbConn msgId admin) >>= send200 . layout'
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (User.Handlers.showMemberList dbConn req auth) >>= send200
+          "GET" -> authenticatedOnly' $ \auth -> (User.Handlers.showMemberList dbConn req auth) >>= send200 . layout'
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ \auth -> (User.Handlers.saveNewUser dbConn req auth) >>= send200
-          "GET" -> adminOnly' (User.Handlers.showAddUserForm >=> send200)
+          "POST" -> adminOnly' $ \auth -> (User.Handlers.saveNewUser dbConn req auth) >>= send200 . layout'
+          "GET" -> adminOnly' (User.Handlers.showAddUserForm >=> send200 . layout')
           _ -> send404
       ["nutzer", int, "editieren"] ->
         case readEither (Text.unpack int) of
@@ -175,18 +202,20 @@ server
                   "GET" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
                       (User.Handlers.showEditUserForm dbConn id auth)
-                        >>= send200
+                        >>= send200 . layout'
                   "POST" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
                       (User.Handlers.updateExistingUser dbConn req id auth)
-                        >>= send200
+                        >>= send200 . layout'
                   _ -> send404
       ["nutzer", int] ->
         case Wai.requestMethod req of
           "GET" ->
             case readEither (Text.unpack int) of
               Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-              Right (parsed :: Int) -> authenticatedOnly' $ \auth -> (User.Handlers.showProfile dbConn parsed auth) >>= send200
+              Right (parsed :: Int) -> authenticatedOnly' $ \auth -> (User.Handlers.showProfile dbConn parsed auth) >>= \case
+                Nothing -> send404
+                Just stub -> send200 $ layout' stub
           _ -> send404
       ["nutzer", int, "loeschen"] ->
         case readEither (Text.unpack int) of
@@ -194,13 +223,13 @@ server
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly' $ \auth -> (User.Handlers.showDeleteConfirmation dbConn userId auth) >>= send200
-                  "POST" -> adminOnly' $ \auth -> (User.Handlers.deleteUser dbConn userId auth) >>= send200
+                  "GET" -> adminOnly' $ \auth -> (User.Handlers.showDeleteConfirmation dbConn userId auth) >>= send200 . layout'
+                  "POST" -> adminOnly' $ \auth -> (User.Handlers.deleteUser dbConn userId auth) >>= send200 . layout'
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
           "POST" -> Login.login dbConn logger signerKey saltSep sessionKey appEnv req send
-          "GET" -> (Login.showLoginForm sessionDataVaultKey req) >>= send200
+          "GET" -> (Login.showLoginForm routeData) >>= send200
           _ -> send404
       ["logout"] ->
         case Wai.requestMethod req of
@@ -208,36 +237,15 @@ server
           _ -> send404
       ["passwort", "aendern"] ->
         case Wai.requestMethod req of
-          "GET" -> (PasswordReset.showChangePwForm req) >>= send200
-          "POST" -> (PasswordReset.handleChangePw logger dbConn req) >>= send200
+          "GET" -> (PasswordReset.showChangePwForm req) >>= send200 . layout'
+          "POST" -> (PasswordReset.handleChangePw logger dbConn req) >>= send200 . layout'
           _ -> send404
       ["passwort", "link"] ->
         case Wai.requestMethod req of
-          "GET" -> (PasswordReset.showResetForm) >>= send200
-          "POST" -> (PasswordReset.handleReset dbConn req sendMail') >>= send200
+          "GET" -> (PasswordReset.showResetForm) >>= send200 . layout'
+          "POST" -> (PasswordReset.handleReset dbConn req sendMail') >>= send200 . layout'
           _ -> send404
       _ -> send404
-    where
-      send200 =
-        send
-          . Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")]
-          . renderBS
-      send403 =
-        send
-          . Wai.responseLBS status403 [("Content-Type", "text/html; charset=UTF-8")]
-          . renderBS
-          . layout "Fehler" Nothing
-          $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-secondary", role_ "alert"] "Du hast keinen Zugriff auf diese Seite"
-      send404 =
-        send
-          . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
-          . renderBS
-          . layout "Nicht gefunden" Nothing
-          $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-secondary", role_ "alert"] "Nicht Gefunden"
 
 main :: IO ()
 main = do
@@ -305,7 +313,8 @@ main = do
       send
         . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-        . layout "Fehler" Nothing
+        . layout Auth.IsNotAuthenticated
+        . LayoutStub "Fehler" Nothing
         $ div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
             p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"

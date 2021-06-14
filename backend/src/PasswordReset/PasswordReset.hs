@@ -17,7 +17,7 @@ import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Form.Form (FormFieldState (..))
-import Layout (layout, success, warning)
+import Layout (LayoutStub(..), success, warning)
 import qualified Logging.Logging as Logging
 import Lucid
 import qualified Network.AWS.SES as SES
@@ -54,12 +54,12 @@ newtype Hashed = Hashed Text deriving (Show)
 -- General layout for the password reset feature. This is NOT the same as
 -- password change, which is essentially the successful outcome of the password
 -- reset procedure
-passwordResetLayout :: Html () -> Html ()
-passwordResetLayout = layout "Passwort Zurücksetzen" Nothing
+passwordResetLayout :: Html () -> LayoutStub
+passwordResetLayout = LayoutStub "Passwort Zurücksetzen" Nothing
 
 -- ... the continuation of the above comment. This is for actually typing in the new PW
-passwordChangeLayout :: Html () -> Html ()
-passwordChangeLayout = layout "Passwort Ändern" Nothing
+passwordChangeLayout :: Html () -> LayoutStub
+passwordChangeLayout = LayoutStub "Passwort Ändern" Nothing
 
 updatePassword :: SQLite.Connection -> Hashed -> UserId -> IO ()
 updatePassword conn hashed (UserId userid) = do
@@ -121,7 +121,7 @@ handleReset ::
   SQLite.Connection ->
   Wai.Request ->
   (Text -> Text -> IO SES.SendEmailResponse) ->
-  IO (Html ())
+  IO LayoutStub
 handleReset conn req sendEmail' = do
   Map.lookup "email" <$> parseParams req >>= \case
     Nothing -> return $ formInvalid pwResetEmptyEmail
@@ -136,7 +136,7 @@ handleReset conn req sendEmail' = do
     formInvalid = passwordResetLayout . ResetEmailForm.form . Just
 
 -- GET handler that just shows a simple email input field
-showResetForm :: IO (Html ())
+showResetForm :: IO LayoutStub
 showResetForm = return $ passwordResetLayout (ResetEmailForm.form Nothing)
 
 -- I'm omitting the password length check and all that stuff. The browser will
@@ -164,7 +164,7 @@ data TryResetError
 
 -- Render the different variations of the TryResetError into Html that we can
 -- send to the user directly. The goal of functions like this one is to have less noise in the handler.
-renderTryResetError :: TryResetError -> Html ()
+renderTryResetError :: TryResetError -> LayoutStub
 renderTryResetError (InvalidPassword input token state) =
   passwordChangeLayout $
     div_
@@ -208,7 +208,7 @@ changePasswordForToken dbConn token pw pwMatch = do
         Just pw' -> return . Hashed $ decodeUtf8 pw'
 
 -- POST handler that actually changes the user's password in the database.
-handleChangePw :: Logging.TimedFastLogger -> SQLite.Connection -> Wai.Request -> IO (Html ())
+handleChangePw :: Logging.TimedFastLogger -> SQLite.Connection -> Wai.Request -> IO LayoutStub
 handleChangePw logger conn req = do
   params <- parseParams req
   case Map.lookup "token" params of
@@ -225,13 +225,13 @@ handleChangePw logger conn req = do
 -- GET handler that shows the form that lets users enter a new password.
 -- Expects a token to be passed via query string parameters. That token is
 -- later used to verify that the change password request is actually valid.
-showChangePwForm :: Wai.Request -> IO (Html ())
+showChangePwForm :: Wai.Request -> IO LayoutStub
 showChangePwForm req = do
   case decode' <$> (Map.lookup "token" $ parseQueryParams req) of
     Nothing -> throwString "password change form requires ?token= to be set, but it's empty"
     Just token ->
       return $
-        layout "Passwort Ändern" Nothing $
+        LayoutStub "Passwort Ändern" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             ChangePasswordForm.form token ChangePasswordForm.emptyForm ChangePasswordForm.emptyState
   where

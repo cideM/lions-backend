@@ -4,6 +4,7 @@ module Layout
     expanded_,
     describedBy_,
     warning,
+    LayoutStub (..),
     success,
     ariaLabel_,
     ariaLabelledBy_,
@@ -11,12 +12,22 @@ module Layout
   )
 where
 
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
+import Routes.Data
+import User.Domain (UserId (..))
 
-data ActiveNavLink = Welcome | Events | Members | Login deriving (Eq)
+data LayoutStub = LayoutStub
+  { layoutStubTitle :: Text,
+    layoutStubActiveNavLink :: Maybe ActiveNavLink,
+    layoutStubContent :: Html ()
+  }
+  deriving (Show)
+
+data ActiveNavLink = Welcome | Events | Members | Login | Profile deriving (Eq, Show)
 
 expanded_, describedBy_, ariaLabel_, ariaLabelledBy_, ariaHidden_, ariaControls_ :: Text -> Attribute
 expanded_ = makeAttribute "aria-expanded"
@@ -26,9 +37,8 @@ ariaLabel_ = makeAttribute "aria-label"
 ariaLabelledBy_ = makeAttribute "aria-labelledby"
 ariaHidden_ = makeAttribute "aria-hidden"
 
--- Must take Authnetication and then render my profile link
-layout :: Text -> Maybe ActiveNavLink -> Html () -> Html ()
-layout pageTitle activeNavLink pageContent =
+layout :: Authentication -> LayoutStub -> Html ()
+layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = activeNavLink, layoutStubContent = pageContent}) =
   doctype_ *> do
     html_ [lang_ "de-DE"] $ do
       head_ $ do
@@ -66,15 +76,27 @@ layout pageTitle activeNavLink pageContent =
                   div_ [class_ "navbar-nav"] $
                     mapM_
                       f
-                      [ ("/", "Startseite", Just Welcome),
-                        ("/veranstaltungen", "Veranstaltungen", Just Events),
-                        ("/nutzer", "Mitglieder", Just Members),
-                        ("/login", "Login", Just Login)
-                      ]
+                      ( [ ("/", "Startseite", Just Welcome),
+                          ("/veranstaltungen", "Veranstaltungen", Just Events),
+                          ("/nutzer", "Mitglieder", Just Members),
+                          ("/login", "Login", Just Login)
+                        ]
+                          ++ ( case getUserId auth of
+                                 Nothing -> []
+                                 Just uid -> [([i|/nutzer/#{uid}|], "Mein Profil", Just Profile)]
+                             )
+                      )
           div_ [class_ "py-4 content"] pageContent
           script_ [src_ "/index.js"] ("" :: Text.Text)
           script_ [src_ "/bootstrap.bundle.min.js"] ("" :: Text.Text)
   where
+    getUserId (IsAuthenticated (IsUser (UserSession {..}))) =
+      let (UserId uid) = userSessionUserId
+       in Just uid
+    getUserId (IsAuthenticated (IsAdmin (AdminUser (UserSession {..})))) =
+      let (UserId uid) = userSessionUserId
+       in Just uid
+    getUserId _ = Nothing
     f :: (Text, Text, Maybe ActiveNavLink) -> Html ()
     f (href, label, route) =
       let classes = Text.unwords $ "nav-link" : (["active text-decoration-underline" | route == activeNavLink])

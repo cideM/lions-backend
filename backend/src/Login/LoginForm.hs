@@ -2,7 +2,7 @@ module Login.LoginForm (form, State (..)) where
 
 import Data.Maybe (isJust)
 import Data.Text (Text)
-import Layout (ActiveNavLink (..), describedBy_, layout)
+import Layout (ActiveNavLink (..), LayoutStub (..), describedBy_)
 import Lucid
 import Prelude hiding (id)
 
@@ -18,9 +18,9 @@ type PwError = Text
 data State = NotLoggedInNotValidated | NotLoggedInValidated Email (Maybe EmailError) Pw (Maybe PwError) | LoggedIn
 
 -- The actual login form. You didn't think it'd be this much code, did you?
-form :: State -> Html ()
+form :: State -> LayoutStub
 form LoggedIn =
-  layout "Login" (Just Login) $ do
+  LayoutStub "Login" (Just Login) $ do
     div_ [class_ "container p-3 d-flex justify-content-center"] $
       div_ [class_ "row col-6"] $ do
         p_ [class_ "alert alert-secondary", role_ "alert"] "Du bist bereits eingelogged!"
@@ -45,7 +45,7 @@ form formState =
               makeFormClass Nothing,
               makeErrMsg "invalidPasswordFeedback" Nothing
             )
-   in layout "Login" (Just Login) $
+   in LayoutStub "Login" (Just Login) $
         div_ [class_ "container-md d-flex justify-content-center p-3"] $ do
           form_ [class_ "col-8", method_ "post", action_ "/login"] $ do
             div_ [class_ "row row-cols-8 g-2"] $ do

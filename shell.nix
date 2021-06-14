@@ -11,8 +11,9 @@ let
     ghcid --no-height-limit --clear --reverse
   '';
 
+  # Need --impure so I can use getEnv in nix build
   lions-vm = pkgs.writeShellScriptBin "lions-vm" ''
-    nix build .#vm
+    nix build --impure .#vm
     echo "visit https://localhost:8081/"
     echo "or http://localhost:8080/"
     export QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"

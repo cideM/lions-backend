@@ -26,6 +26,7 @@ render users activeGroup = do
           [ (All, "Alle anzeigen"),
             (Some User, "Nur Nutzer"),
             (Some Admin, "Nur Administratoren"),
+            (Some Passive, "Nur Passiv"),
             (Some Board, "Nur Vorstand"),
             (Some President, "Nur Präsident")
           ]

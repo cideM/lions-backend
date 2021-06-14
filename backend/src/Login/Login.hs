@@ -5,9 +5,7 @@ import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
-import qualified Logging.Logging as Logging
 import qualified Data.Map.Strict as Map
-import Data.Maybe (isJust)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
@@ -15,10 +13,13 @@ import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..))
+import Layout (layout)
+import qualified Logging.Logging as Logging
 import qualified Login.LoginForm as LoginForm
 import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
+import Routes.Data
 import Scrypt (verifyPassword)
 import Session.Session
   ( Session (..),
@@ -121,7 +122,7 @@ logout conn env sessionDataVaultKey req send = do
 -- encrypted session ID
 login ::
   SQLite.Connection ->
-  Logging.TimedFastLogger -> 
+  Logging.TimedFastLogger ->
   ByteString -> -- Project's base64_signer_key
   ByteString -> -- Project's base64_salt_separator
   ClientSession.Key ->
@@ -155,6 +156,7 @@ login conn logger signerKey saltSep sessionKey env req send = do
       send
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
+        . layout IsNotAuthenticated
         . LoginForm.form
         $ LoginForm.NotLoggedInValidated
           email
@@ -163,7 +165,7 @@ login conn logger signerKey saltSep sessionKey env req send = do
           (Just "Ungültige Kombination aus Email und Passwort")
 
 -- GET handler for showing the login form
-showLoginForm :: SessionDataVaultKey -> Wai.Request -> IO (Html ())
-showLoginForm sessionDataVaultKey req = do
-  let isLoggedIn = isJust . Vault.lookup sessionDataVaultKey $ Wai.vault req
-  return . LoginForm.form $ if isLoggedIn then LoginForm.LoggedIn else LoginForm.NotLoggedInNotValidated
+showLoginForm :: Authentication -> IO (Html ())
+showLoginForm (IsNotAuthenticated) =
+  return . layout IsNotAuthenticated . LoginForm.form $ LoginForm.NotLoggedInNotValidated
+showLoginForm auth = return . layout auth . LoginForm.form $ LoginForm.LoggedIn

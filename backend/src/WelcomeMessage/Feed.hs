@@ -5,7 +5,7 @@ import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import Layout (ActiveNavLink (..), layout)
+import Layout (ActiveNavLink (..), LayoutStub(..))
 import Locale (german)
 import Lucid
 import WelcomeMessage.Types
@@ -29,9 +29,9 @@ renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (msg, date) canE
               a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
               a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
 
-renderFeed :: Time.TimeZone -> Bool -> [WelcomeMsg] -> Html ()
+renderFeed :: Time.TimeZone -> Bool -> [WelcomeMsg] -> LayoutStub
 renderFeed zone userIsAdmin msgs =
-  layout "Willkommen" (Just Welcome) $
+  LayoutStub "Willkommen" (Just Welcome) $
     div_ [class_ "container"] $ do
       div_ [class_ "row row-cols-1 g-4"] $ do
         div_ [class_ "col"] $ do

@@ -19,7 +19,7 @@ import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
-import Layout (ActiveNavLink (..), layout)
+import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
@@ -43,10 +43,10 @@ import User.Profile (CanDelete (..), CanEdit (..))
 import qualified User.Profile
 import Wai (parseParams, parseQueryParams)
 
-showAddUserForm :: Auth.AdminUser -> IO (Html ())
+showAddUserForm :: Auth.AdminUser -> IO LayoutStub
 showAddUserForm _ =
   return $
-    layout "Nutzer Hinzufügen" Nothing $
+    LayoutStub "Nutzer Hinzufügen" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         render
           (CanEditRoles True)
@@ -55,20 +55,20 @@ showAddUserForm _ =
           (FormInput "" "" "" False False False False "" "" "" "" "" "" "")
           emptyForm
 
-showEditUserForm :: SQLite.Connection -> UserId -> Auth.Authenticated -> IO (Html ())
+showEditUserForm :: SQLite.Connection -> UserId -> Auth.Authenticated -> IO LayoutStub
 showEditUserForm conn userIdToEdit@(UserId uid) auth = do
   let Auth.UserSession _ sessionRoles = case auth of
         Auth.IsUser session -> session
         Auth.IsAdmin (Auth.AdminUser session) -> session
   user <- getUser conn userIdToEdit
   return $ case user of
-    Nothing -> layout "Fehler" Nothing $
+    Nothing -> LayoutStub "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just UserProfile {..} ->
       let (UserEmail email) = userEmail
-       in layout "Nutzer Editieren" Nothing $
+       in LayoutStub "Nutzer Editieren" Nothing $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
               render
                 (CanEditRoles $ any isAdmin sessionRoles)
@@ -93,7 +93,7 @@ showEditUserForm conn userIdToEdit@(UserId uid) auth = do
                 )
                 emptyForm
 
-updateExistingUser :: SQLite.Connection -> Wai.Request -> UserId -> Auth.Authenticated -> IO (Html ())
+updateExistingUser :: SQLite.Connection -> Wai.Request -> UserId -> Auth.Authenticated -> IO LayoutStub
 updateExistingUser conn req userId auth = do
   rolesForUserToUpdate <- getRolesFromDb conn userId
   params <- parseParams req
@@ -126,7 +126,7 @@ updateExistingUser conn req userId auth = do
   makeProfile input >>= \case
     Left state ->
       return $
-        layout "Nutzer Editieren" Nothing $
+        LayoutStub "Nutzer Editieren" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             render
               (CanEditRoles $ any isAdmin sessionRoles)
@@ -153,14 +153,14 @@ updateExistingUser conn req userId auth = do
       updateUser conn userId profile
       let (UserEmail email) = userCreateEmail
       return $
-        layout "Nutzer Editieren" Nothing $
+        LayoutStub "Nutzer Editieren" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> showEmail email <> " erfolgreich editiert"
 
 -- TODO: Duplication
-saveNewUser :: SQLite.Connection -> Wai.Request -> Auth.AdminUser -> IO (Html ())
+saveNewUser :: SQLite.Connection -> Wai.Request -> Auth.AdminUser -> IO LayoutStub
 saveNewUser conn req _ = do
   params <- parseParams req
   let paramt name = Map.findWithDefault "" name params
@@ -184,7 +184,7 @@ saveNewUser conn req _ = do
   makeProfile input >>= \case
     Left state ->
       return $
-        layout "Nutzer Hinzufügen" Nothing $
+        LayoutStub "Nutzer Hinzufügen" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             render
               (CanEditRoles True)
@@ -201,13 +201,13 @@ saveNewUser conn req _ = do
           saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
       let (UserEmail email) = userCreateEmail
       return $
-        layout "Nutzer Hinzufügen" Nothing $
+        LayoutStub "Nutzer Hinzufügen" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> showEmail email <> " erfolgreich erstellt"
 
-showProfile :: SQLite.Connection -> Int -> Auth.Authenticated -> IO (Html ())
+showProfile :: SQLite.Connection -> Int -> Auth.Authenticated -> IO (Maybe LayoutStub)
 showProfile conn paramId auth = do
   let userIdToShow = UserId paramId
       userIsAdmin = case auth of
@@ -218,14 +218,10 @@ showProfile conn paramId auth = do
         Auth.IsAdmin (Auth.AdminUser session) -> session
       isOwnProfile = loggedInUserId == userIdToShow
   user <- getUser conn userIdToShow
-  -- TODO: This needs to return a 404
   return $ case user of
-    Nothing -> layout "Fehler" Nothing $
-      div_ [class_ "container p-3 d-flex justify-content-center"] $
-        div_ [class_ "row col-6"] $ do
-          p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
+    Nothing -> Nothing
     Just userProfile -> do
-      layout "Nutzerprofil" Nothing $
+      Just . LayoutStub "Nutzerprofil" (Just Profile) $
         div_
           [class_ "container p-3"]
           ( User.Profile.render
@@ -234,7 +230,7 @@ showProfile conn paramId auth = do
               (CanEdit (isOwnProfile || userIsAdmin))
           )
 
-deleteUser :: SQLite.Connection -> UserId -> Auth.AdminUser -> IO (Html ())
+deleteUser :: SQLite.Connection -> UserId -> Auth.AdminUser -> IO LayoutStub
 deleteUser conn userId _ = do
   user <- getUser conn userId
   case user of
@@ -242,19 +238,19 @@ deleteUser conn userId _ = do
     Just userProfile -> do
       deleteUserById conn userId
       return $
-        layout "Nutzerprofil" Nothing $
+        LayoutStub "Nutzerprofil" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> show (userEmail userProfile) <> " erfolgreich gelöscht"
 
-showDeleteConfirmation :: SQLite.Connection -> UserId -> Auth.AdminUser -> IO (Html ())
+showDeleteConfirmation :: SQLite.Connection -> UserId -> Auth.AdminUser -> IO LayoutStub
 showDeleteConfirmation conn userId@(UserId uid) _ = do
   user <- getUser conn userId
   case user of
     Nothing -> throwString $ "delete user but no user for eid found: " <> show userId
     Just userProfile -> do
-      return . layout "Nutzerprofil" Nothing $
+      return . LayoutStub "Nutzerprofil" Nothing $
         div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
@@ -274,7 +270,7 @@ parseSelection "user" = Right $ Some User
 parseSelection "president" = Right $ Some President
 parseSelection v = Left $ "unknown user group: " <> v
 
-showMemberList :: SQLite.Connection -> Wai.Request -> Auth.Authenticated -> IO (Html ())
+showMemberList :: SQLite.Connection -> Wai.Request -> Auth.Authenticated -> IO LayoutStub
 showMemberList conn req auth = do
   let userIsAdmin = case auth of
         Auth.IsAdmin _ -> True
@@ -289,7 +285,7 @@ showMemberList conn req auth = do
         All -> users
         Some role -> filterUsers role users
   return $
-    layout "Mitglieder" (Just Members) $
+    LayoutStub "Mitglieder" (Just Members) $
       div_ [class_ "container p-2"] $ do
         when userIsAdmin $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
         h1_ [class_ "h4 mb-5"] "Mitgliederliste"

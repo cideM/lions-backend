@@ -73,7 +73,7 @@
                 mkdir $out
                 mkdir $out/public/
                 cp -r ${clientStuff.allAssets}/* $out/public/
-                cp ${backend}/bin/lions-backend $out/server
+                cp ${backend}/bin/run-lions-backend $out/server
               '';
             };
 
@@ -107,11 +107,40 @@
                 ];
               };
 
+            vm = (import "${nixpkgs}/nixos" {
+              inherit system;
+              configuration = { config, pkgs, ... }:
+                {
+                  imports = [
+                    ({
+                      systemd.services.devSecrets =
+                        {
+                          before = [ "server" ];
+                          script = ''
+                            [[ -d /run/secrets ]] || mkdir /run/secrets
+                            echo "${(builtins.getEnv "LIONS_AWS_SES_ACCESS_KEY")}" > /run/secrets/aws_ses_access_key
+                            echo "${(builtins.getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY")}" > /run/secrets/aws_ses_secret_access_key
+                            echo "${(builtins.getEnv "LIONS_SCRYPT_SIGNER_KEY")}" > /run/secrets/signerkey
+                            echo "${(builtins.getEnv "LIONS_SCRYPT_SALT_SEP")}" > /run/secrets/saltsep
+                          '';
+                          wantedBy = [ "multi-user.target" ];
+                        };
+                    })
+                    ./nix/vm.nix
+                    ./nix/systemd-server.nix
+                  ];
+
+                  config.serverWorkingDir = "${lions-server}/";
+                  config.serverExe = "${lions-server}/bin/migrate-and-serve";
+                };
+            }).vm;
+
           in
           rec {
             packages = flake-utils.lib.flattenTree {
               litestream = litestream;
               server = lions-server;
+              vm = vm;
               allAssets = clientStuff.allAssets;
               clientside = clientStuff.clientside;
             };
