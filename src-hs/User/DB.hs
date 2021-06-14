@@ -19,7 +19,6 @@ import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
@@ -116,10 +115,10 @@ data GetUserRow = GetUserRow
     _getUserRowAddress :: Maybe Text,
     _getUserRowMobilePhoneNr :: Maybe Text,
     _getUserRowLandlineNr :: Maybe Text,
-    _getUserRowBirthday :: Maybe Time.Day,
+    _getUserRowBirthday :: Maybe Text,
     _getUserRowFirstNamePartner :: Maybe Text,
     _getUserRowLastNamePartner :: Maybe Text,
-    _getUserRowBirthdayPartner :: Maybe Time.Day
+    _getUserRowBirthdayPartner :: Maybe Text
   }
   deriving (Show)
 

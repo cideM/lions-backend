@@ -31,7 +31,7 @@ import Events.DB
     upsertReply,
   )
 import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
-import qualified Events.EventCard
+import qualified Events.Preview
 import qualified Events.EventForm as EventForm
 import qualified Events.SingleEvent
 import GHC.Exts (sortWith)
@@ -57,12 +57,11 @@ showAllEvents conn auth = do
   events <- map (addOwnReply userSessionUserId) . sortByDateDesc . Map.toList <$> getAll conn
   return . layout "Veranstaltungen" (Just Events) $
     div_ [class_ "container"] $ do
-      div_ [class_ "col d-flex flex-wrap-reverse align-items-center"] $ do
-        h1_ [class_ "h3 m-0 me-2 mb-1"] "Veranstaltungen"
-        when userIsAdmin $
-          a_ [class_ "mb-1 btn btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
-      div_ [class_ "row row-cols-1 row-cols-lg-2 g-5"] $
-        mapM_ (div_ [class_ "col"] . Events.EventCard.render) events
+      when userIsAdmin $
+        a_ [class_ "mb-1 mb-2 btn btn-sm btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
+      h1_ [class_ "h3 mb-3"] "Veranstaltungen"
+      div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] $
+        mapM_ (div_ [class_ "col"] . Events.Preview.render) events
   where
     addOwnReply userid (eventid, e@Event {..}) = (eventid, e, find ((==) userid . replyUserId) eventReplies)
     sortByDateDesc = sortWith (Down . (\(_, Event {..}) -> eventDate))
@@ -162,7 +161,7 @@ handleDeleteEvent conn eventid _ = do
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Veranstaltung " <> show (eventTitle event) <> " erfolgreich gelöscht"
+                "Veranstaltung " <> eventTitle event <> " erfolgreich gelöscht"
 
 showDeleteEventConfirmation ::
   SQLite.Connection ->
@@ -212,7 +211,7 @@ handleCreateEvent conn req _ = do
         div_ [class_ "container p-2"] $ do
           h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
           p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-            "Neue Veranstaltung" <> show eventCreateTitle <> " erfolgreich erstellt!"
+            "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
 
 showEditEventForm ::
   SQLite.Connection ->

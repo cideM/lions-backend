@@ -11,22 +11,15 @@ import Control.Exception.Safe
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
-import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
-import qualified Data.Time as Time
-import qualified Data.Time.Format as TF
 import Form.Form (FormFieldState (..), processField)
 import Layout (describedBy_)
-import Locale (german)
 import Lucid
 import qualified Text.Email.Validate as Email
 import User.Domain (Role (..), UserEmail (..), UserProfileCreate (..))
 
 data EditFormState = EditFormState
-  { formStateEmail :: FormFieldState Email.EmailAddress,
-    formStateBirthday :: FormFieldState (Maybe Time.Day),
-    formStateBirthdayPartner :: FormFieldState (Maybe Time.Day)
-  }
+  {formStateEmail :: FormFieldState Email.EmailAddress}
   deriving (Show)
 
 newtype CanEditRoles = CanEditRoles Bool
@@ -64,35 +57,25 @@ render (CanEditRoles canEditRoles) btnlabel action FormInput {..} EditFormState 
       label_ [class_ "form-label", for_ "inputLastNamePartner"] "Nachname Partner"
       input_ [value_ inputLastNamePartner, class_ "form-control", type_ "text", id_ "inputLastNamePartner", name_ "inputLastNamePartner"]
     div_ [class_ "col-md-6"] $ do
-      let (className, errMsg) = processField formStateBirthday
       label_ [class_ "form-label", for_ "inputBirthday"] "Geburtstag"
       input_
-        [ class_ className,
+        [ class_ "form-control",
           value_ inputBirthday,
           type_ "text",
           placeholder_ "09.02.1951",
-          describedBy_ "validationBirthdayFeedback bdayHelp",
           id_ "inputBirthday",
-          pattern_ "\\d{2}.\\d{2}.\\d{4}",
           name_ "inputBirthday"
         ]
-      div_ [id_ "bdayHelp", class_ "form-text"] "Tag.Monat.Jahr -> 31.01.1990"
-      maybe mempty (div_ [id_ "validationBirthdayFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-6"] $ do
-      let (className, errMsg) = processField formStateBirthdayPartner
       label_ [class_ "form-label", for_ "inputBirthdayPartner"] "Geburtstag Partner"
       input_
-        [ class_ className,
+        [ class_ "form-control",
           value_ inputBirthdayPartner,
           type_ "text",
           placeholder_ "09.02.1951",
-          describedBy_ "validationBirthdayPartnerFeedback bdayPHelp",
           id_ "inputBirthdayPartner",
-          pattern_ "\\d{2}.\\d{2}.\\d{4}",
           name_ "inputBirthdayPartner"
         ]
-      div_ [id_ "bdayPHelp", class_ "form-text"] "Tag.Monat.Jahr -> 31.01.1990"
-      maybe mempty (div_ [id_ "validationBirthdayPartnerFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-6"] $ do
       label_ [class_ "form-label", for_ "inputMobile"] "Handynummer"
       input_ [value_ inputMobile, class_ "form-control", type_ "tel", pattern_ "[0-9-+]*", describedBy_ "mobileHelp", id_ "inputMobile", name_ "inputMobile"]
@@ -157,12 +140,7 @@ render (CanEditRoles canEditRoles) btnlabel action FormInput {..} EditFormState 
     button_ [type_ "submit", class_ "btn btn-primary"] $ toHtml btnlabel
 
 emptyForm :: EditFormState
-emptyForm =
-  EditFormState
-    { formStateEmail = NotValidated,
-      formStateBirthday = NotValidated,
-      formStateBirthdayPartner = NotValidated
-    }
+emptyForm = EditFormState {formStateEmail = NotValidated}
 
 data FormInput = FormInput
   { inputEmail :: Text,
@@ -184,8 +162,8 @@ data FormInput = FormInput
 
 makeProfile :: FormInput -> IO (Either EditFormState UserProfileCreate)
 makeProfile FormInput {..} =
-  case EditFormState (validateEmail inputEmail) (validateDate inputBirthday) (validateDate inputBirthdayPartner) of
-    (EditFormState (Valid email) (Valid bday) (Valid bdayp)) ->
+  case EditFormState (validateEmail inputEmail) of
+    (EditFormState (Valid email)) ->
       let roles =
             NE.nonEmpty $
               catMaybes
@@ -206,10 +184,10 @@ makeProfile FormInput {..} =
                   (Just inputAddress)
                   (Just inputMobile)
                   (Just inputLandline)
-                  bday
+                  (Just inputBirthday)
                   (Just inputFirstNamePartner)
                   (Just inputLastNamePartner)
-                  bdayp
+                  (Just inputBirthdayPartner)
                   roles'
     state -> return $ Left state
   where
@@ -218,9 +196,3 @@ makeProfile FormInput {..} =
       case Email.emailAddress (encodeUtf8 email) of
         Just addr -> Valid addr
         Nothing -> Invalid "Falsches Format"
-
-    validateDate "" = Valid Nothing
-    validateDate datestr =
-      case TF.parseTimeM True german "%d.%m.%Y" $ Text.unpack datestr of
-        Nothing -> Invalid "Falsches Format"
-        date -> Valid date

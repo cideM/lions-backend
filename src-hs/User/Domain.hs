@@ -18,7 +18,6 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
-import qualified Data.Time as Time
 import GHC.Generics
 import Text.Email.Validate (EmailAddress, toByteString)
 
@@ -34,10 +33,10 @@ data UserProfileCreate = UserProfileCreate
     userCreateAddress :: Maybe Text,
     userCreateMobilePhoneNr :: Maybe Text,
     userCreateLandlineNr :: Maybe Text,
-    userCreateBirthday :: Maybe Time.Day,
+    userCreateBirthday :: Maybe Text,
     userCreateFirstNamePartner :: Maybe Text,
     userCreateLastNamePartner :: Maybe Text,
-    userCreateBirthdayPartner :: Maybe Time.Day,
+    userCreateBirthdayPartner :: Maybe Text,
     userCreateRoles :: NonEmpty Role
   }
   deriving (Show, Generic)
@@ -52,10 +51,10 @@ data UserProfile = UserProfile
     userAddress :: Maybe Text,
     userMobilePhoneNr :: Maybe Text,
     userLandlineNr :: Maybe Text,
-    userBirthday :: Maybe Time.Day,
+    userBirthday :: Maybe Text,
     userFirstNamePartner :: Maybe Text,
     userLastNamePartner :: Maybe Text,
-    userBirthdayPartner :: Maybe Time.Day,
+    userBirthdayPartner :: Maybe Text,
     userId :: UserId,
     userRoles :: NonEmpty Role
   }
@@ -97,6 +96,7 @@ parseRole "admin" = Right Admin
 parseRole "user" = Right User
 parseRole "board" = Right Board
 parseRole "president" = Right President
+parseRole "passive" = Right Passive
 parseRole v = Left $ "unknown role: " <> Text.pack (show v)
 
 newtype UserId = UserId Int

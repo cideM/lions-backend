@@ -1,4 +1,4 @@
-module Events.EventCard (render) where
+module Events.Preview (render) where
 
 import Control.Monad (when)
 import Data.Function ((&))
@@ -16,14 +16,16 @@ render (EventId eventid, Event {..}, ownReply) = do
       coming = eventReplies & filter replyComing & length
       notComing = eventReplies & filter (not . replyComing) & length
       guests = eventReplies & filter replyComing & map replyGuests & sum
+  -- Remove duplication in the actual event card which is same in preview and single view
   div_ [class_ "card"] $ do
     div_ [class_ "card-header"] $ do
-      span_ [] $ toHtml formatted
-      when eventFamilyAllowed $ do span_ [class_ "ms-2 badge bg-primary"] "Mit Familie"
+      span_ [class_ "me-2"] $ toHtml formatted
+      when eventFamilyAllowed $ span_ [class_ "badge bg-success"] "Mit Familie"
       when ((replyComing <$> ownReply) == Just True) $ do span_ [class_ "ms-2 badge bg-success text-white"] "Zugesagt"
       when ((replyComing <$> ownReply) == Just False) $ do span_ [class_ "ms-2 badge bg-danger text-white"] "Abgesagt"
     div_ [class_ "card-body"] $ do
-      a_ [href_ $ "/veranstaltungen/" <> (Text.pack $ show eventid)] $ h1_ [class_ "card-title fs-4"] $ toHtml eventTitle
+      a_ [href_ $ "/veranstaltungen/" <> (Text.pack $ show eventid)] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle
+      h2_ [class_ "card-subtitle fs-6 mb-3 text-muted"] $ toHtml $ "Ort: " <> eventLocation
       p_ [class_ "card-text"] $ toHtml eventDescription
     div_ [class_ "row g-0 border-top"] $ do
       replyThing "Zusagen" (Text.pack $ show coming)

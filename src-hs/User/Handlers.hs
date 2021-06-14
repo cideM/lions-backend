@@ -18,10 +18,8 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), layout)
-import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
@@ -57,9 +55,6 @@ showAddUserForm _ =
           (FormInput "" "" "" False False False False "" "" "" "" "" "" "")
           emptyForm
 
-renderDateForInput :: Time.Day -> Text
-renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y"
-
 showEditUserForm :: SQLite.Connection -> UserId -> Auth.Authenticated -> IO (Html ())
 showEditUserForm conn userIdToEdit@(UserId uid) auth = do
   let Auth.UserSession _ sessionRoles = case auth of
@@ -81,8 +76,8 @@ showEditUserForm conn userIdToEdit@(UserId uid) auth = do
                 [i|/nutzer/#{uid}/editieren|]
                 ( FormInput
                     { inputEmail = showEmail email,
-                      inputBirthday = maybe "" renderDateForInput userBirthday,
-                      inputBirthdayPartner = maybe "" renderDateForInput userBirthdayPartner,
+                      inputBirthday = fromMaybe "" userBirthday,
+                      inputBirthdayPartner = fromMaybe "" userBirthdayPartner,
                       inputIsAdmin = any isAdmin userRoles,
                       inputIsBoard = any isBoard userRoles,
                       inputIsPresident = any isPresident userRoles,
@@ -297,6 +292,7 @@ showMemberList conn req auth = do
     layout "Mitglieder" (Just Members) $
       div_ [class_ "container p-2"] $ do
         when userIsAdmin $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
+        h1_ [class_ "h4 mb-5"] "Mitgliederliste"
         div_ [class_ "row row-cols-1 g-2"] $
           Memberlist.render usersToShow selectionParsed
   where

@@ -111,11 +111,11 @@ library
     , warp
 
   exposed-modules:
-    App
+    Lib
     Env
     Events.DB
     Events.Domain
-    Events.EventCard
+    Events.Preview
     Events.EventForm
     Events.Handlers
     Events.SingleEvent
@@ -142,6 +142,9 @@ library
     User.Profile
     Wai
     WelcomeMessage.Form
+    WelcomeMessage.Feed
+    WelcomeMessage.Types
+    WelcomeMessage.DB
     WelcomeMessage.WelcomeMessage
 
 executable run-lions-backend
