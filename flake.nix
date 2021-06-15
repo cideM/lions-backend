@@ -107,40 +107,11 @@
                 ];
               };
 
-            vm = (import "${nixpkgs}/nixos" {
-              inherit system;
-              configuration = { config, pkgs, ... }:
-                {
-                  imports = [
-                    ({
-                      systemd.services.devSecrets =
-                        {
-                          before = [ "server" ];
-                          script = ''
-                            [[ -d /run/secrets ]] || mkdir /run/secrets
-                            echo "${(builtins.getEnv "LIONS_AWS_SES_ACCESS_KEY")}" > /run/secrets/aws_ses_access_key
-                            echo "${(builtins.getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY")}" > /run/secrets/aws_ses_secret_access_key
-                            echo "${(builtins.getEnv "LIONS_SCRYPT_SIGNER_KEY")}" > /run/secrets/signerkey
-                            echo "${(builtins.getEnv "LIONS_SCRYPT_SALT_SEP")}" > /run/secrets/saltsep
-                          '';
-                          wantedBy = [ "multi-user.target" ];
-                        };
-                    })
-                    ./nix/vm.nix
-                    ./nix/systemd-server.nix
-                  ];
-
-                  config.serverWorkingDir = "${lions-server}/";
-                  config.serverExe = "${lions-server}/bin/migrate-and-serve";
-                };
-            }).vm;
-
           in
           rec {
             packages = flake-utils.lib.flattenTree {
               litestream = litestream;
               server = lions-server;
-              vm = vm;
               allAssets = clientStuff.allAssets;
               clientside = clientStuff.clientside;
             };
@@ -183,6 +154,34 @@
         ];
       };
 
+      vm = (import "${nixpkgs}/nixos" {
+        system = "x86_64-linux";
+        configuration = { config, pkgs, ... }:
+          {
+            imports = [
+              ({
+                systemd.services.devSecrets =
+                  {
+                    before = [ "server" ];
+                    script = ''
+                      [[ -d /run/secrets ]] || mkdir /run/secrets
+                      echo "${(builtins.getEnv "LIONS_AWS_SES_ACCESS_KEY")}" > /run/secrets/aws_ses_access_key
+                      echo "${(builtins.getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY")}" > /run/secrets/aws_ses_secret_access_key
+                      echo "${(builtins.getEnv "LIONS_SCRYPT_SIGNER_KEY")}" > /run/secrets/signerkey
+                      echo "${(builtins.getEnv "LIONS_SCRYPT_SALT_SEP")}" > /run/secrets/saltsep
+                    '';
+                    wantedBy = [ "multi-user.target" ];
+                  };
+              })
+              ./nix/vm.nix
+              ./nix/systemd-server.nix
+            ];
+
+            config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
+            config.serverExe = "${allSystems.packages.x86_64-linux.server}/bin/migrate-and-serve";
+          };
+      }).vm;
+
     in
     allSystems // rec {
       deploy.nodes.server = {
@@ -194,6 +193,7 @@
         };
       };
       nixosConfigurations.server = serverSystem;
+      nixosConfigurations.vm = vm;
       checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
     };
 }
