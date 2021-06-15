@@ -136,9 +136,11 @@ library
     Time.Time
     User.DB
     User.Types
+    User.List.Handler
+    User.List.View
+    User.Profile
     User.Form
     User.Handlers
-    User.Memberlist
     Wai
     WelcomeMessage.Form
     WelcomeMessage.Feed

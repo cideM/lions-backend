@@ -32,6 +32,7 @@ import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpl
 import Text.Read (readEither)
 import User.Types (UserId (..), isAdmin)
 import qualified User.Handlers
+import qualified User.List.Handler
 import qualified Web.ClientSession as ClientSession
 import WelcomeMessage.WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage.WelcomeMessage as WelcomeMessage
@@ -186,7 +187,7 @@ server
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (User.Handlers.showMemberList dbConn req auth) >>= send200 . layout'
+          "GET" -> authenticatedOnly' $ \auth -> (User.List.Handler.get dbConn req auth) >>= send200 . layout'
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of

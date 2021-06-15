@@ -1,35 +1,31 @@
-module User.Memberlist (render, UserGroupToShow (..)) where
+module User.List.View where
 
 import Control.Monad (unless)
-import Data.List.NonEmpty (toList)
-import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Layout (ariaLabel_)
 import Lucid
-import User.Types (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
 
-data UserGroupToShow = All | Some Role deriving (Eq)
+data Option a = Option {optionLabel :: Text, optionValue :: a} deriving (Show, Eq)
 
-instance Show UserGroupToShow where
-  show All = "all"
-  show (Some r) = show r
+data Dropdown a = Dropdown {dropdownSelected :: Option a, dropdownOthers :: [Option a]} deriving (Show, Eq)
 
-render :: [UserProfile] -> UserGroupToShow -> Html ()
-render users activeGroup = do
+data MemberlistProfile = MemberlistProfile
+  { memberlistProfileName :: Text,
+    memberlistProfileProfileLink :: Text,
+    memberlistProfileEmailLink :: Text,
+    memberlistProfileEmail :: Text,
+    memberlistProfileRoles :: [Text]
+  }
+
+render :: Show a => [MemberlistProfile] -> Dropdown a -> Html ()
+render users Dropdown {..} = do
   div_ [class_ "d-flex justify-content-between align-items-center mb-3 flex-wrap"] $ do
     form_ [method_ "get", action_ "/nutzer", class_ "d-flex mb-2"] $ do
       select_ [name_ "userselect", class_ "form-select form-select-sm me-1", ariaLabel_ "Nutzergruppe auswählen"] $ do
-        mapM_
-          (\(role, label) -> option_ (value_ (Text.pack $ show role) : [selected_ "selected" | role == activeGroup]) label)
-          [ (All, "Alle anzeigen"),
-            (Some User, "Nur Nutzer"),
-            (Some Admin, "Nur Administratoren"),
-            (Some Passive, "Nur Passiv"),
-            (Some Board, "Nur Vorstand"),
-            (Some President, "Nur Präsident")
-          ]
+        option_ [value_ (Text.pack . show $ optionValue dropdownSelected)] . toHtml $ optionLabel dropdownSelected
+        mapM_ (\Option {..} -> option_ [value_ . Text.pack $ show optionValue] $ toHtml optionLabel) dropdownOthers
       button_ [class_ "btn btn-sm btn-secondary", type_ "submit"] "Ok"
     a_ [href_ "", class_ "btn btn-primary btn-sm disabled", role_ "button", id_ "email-button"] $ "Email abschicken"
   table_ [class_ "table mb-3", id_ "userslist"] $ do
@@ -42,18 +38,16 @@ render users activeGroup = do
         th_ [scope_ "col", class_ "text-center"] $ envelopeSvg
     tbody_ [] $
       mapM_
-        ( \UserProfile {..} -> do
-            let name = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
-                (UserEmail email) = userEmail
-                (UserId uid) = userId
+        ( \MemberlistProfile {..} -> do
             tr_ [] $ do
               td_ [class_ "text-center align-middle"] $
-                a_ [href_ ("/nutzer/" <> (Text.pack $ show uid))] personCircleSvg
-              td_ [] $ a_ [href_ [i|mailto:#{showEmail email}|], class_ "text-break"] . toHtml $ showEmail email
-              td_ [class_ "d-none d-lg-table-cell"] $ unless (Text.null $ Text.strip name) $ p_ [class_ "fw-bold m-0"] $ toHtml name
-              td_ [class_ "text-muted d-none d-lg-table-cell"] $ toHtml . displayBadges $ toList userRoles
+                a_ [href_ memberlistProfileProfileLink] personCircleSvg
+              td_ [] $ a_ [href_ memberlistProfileEmailLink, class_ "text-break"] $ toHtml memberlistProfileEmail
+              td_ [class_ "d-none d-lg-table-cell"] $
+                unless (Text.null $ Text.strip memberlistProfileName) $ p_ [class_ "fw-bold m-0"] $ toHtml memberlistProfileName
+              td_ [class_ "text-muted d-none d-lg-table-cell"] . toHtml $ Text.intercalate "," memberlistProfileRoles
               td_ [class_ "text-center align-middle"] $
-                input_ [type_ "checkbox", value_ "", data_ "email" (showEmail email)]
+                input_ [type_ "checkbox", value_ "", data_ "email" memberlistProfileEmail]
         )
         users
   where
@@ -76,11 +70,3 @@ render users activeGroup = do
       |] ::
             Text
         )
-    displayBadges = Text.intercalate ", " . map showBadge . filter dropUser
-    dropUser User = False
-    dropUser _ = True
-    showBadge President = "Präsident"
-    showBadge Passive = "Passiv"
-    showBadge Board = "Vorstand"
-    showBadge Admin = "Administrator"
-    showBadge User = "Nutzer"
