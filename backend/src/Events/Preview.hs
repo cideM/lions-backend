@@ -5,6 +5,7 @@ import Data.Function ((&))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
+import Data.String.Interpolate (i)
 import Events.Domain (Event (..), EventId (..), Reply (..))
 import Locale (german)
 import Lucid
@@ -24,7 +25,7 @@ render (EventId eventid, Event {..}, ownReply) = do
       when ((replyComing <$> ownReply) == Just True) $ do span_ [class_ "ms-2 badge bg-success text-white"] "Zugesagt"
       when ((replyComing <$> ownReply) == Just False) $ do span_ [class_ "ms-2 badge bg-danger text-white"] "Abgesagt"
     div_ [class_ "card-body"] $ do
-      a_ [href_ $ "/veranstaltungen/" <> (Text.pack $ show eventid)] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle
+      a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle
       h2_ [class_ "card-subtitle fs-6 mb-3 text-muted"] $ toHtml $ "Ort: " <> eventLocation
       p_ [class_ "card-text"] $ toHtml eventDescription
     div_ [class_ "row g-0 border-top"] $ do

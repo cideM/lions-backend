@@ -18,7 +18,7 @@ import Lucid
 import qualified Text.Email.Validate as Email
 import User.Types (Role (..), UserEmail (..), UserProfileCreate (..))
 
-data EditFormState = EditFormState
+newtype EditFormState = EditFormState
   {formStateEmail :: FormFieldState Email.EmailAddress}
   deriving (Show)
 

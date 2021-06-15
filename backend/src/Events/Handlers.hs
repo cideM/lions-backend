@@ -40,7 +40,7 @@ import Locale (german)
 import Lucid
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
-import qualified Session as Session
+import qualified Session
 import Text.Read (readEither)
 import User.DB (getUser)
 import User.Types (UserProfile (..))
@@ -113,7 +113,7 @@ showEvent conn eventid auth = do
   let (userIsAdmin, Session.UserSession {..}) = case auth of
         Session.IsAdmin (Session.AdminUser session) -> (True, session)
         Session.IsUser session -> (False, session)
-  maybeevent <- (getEvent conn eventid)
+  maybeevent <- getEvent conn eventid
   case maybeevent of
     Nothing -> return Nothing
     Just e@Event {..} -> do

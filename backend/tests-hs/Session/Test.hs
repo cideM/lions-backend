@@ -50,7 +50,7 @@ middelwareTests =
                 req = defaultRequest {requestHeaders = [(hCookie, cookieRendered)]}
             out <- do
               let session = srequest $ SRequest req ""
-              runSession session (\r send -> testApp' r send)
+              runSession session testApp'
             simpleStatus out @?= status200,
       testCase "returns 302 if session id is invalid" $ do
         withDB $ \conn -> do
@@ -67,6 +67,6 @@ middelwareTests =
                 req = defaultRequest {requestHeaders = [(hCookie, cookieRendered)]}
             out <- do
               let session = srequest $ SRequest req ""
-              runSession session (\r send -> testApp' r send)
+              runSession session testApp'
             simpleStatus out @?= status302
     ]

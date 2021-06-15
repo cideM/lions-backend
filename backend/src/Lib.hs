@@ -5,15 +5,15 @@ import Control.Monad ((>=>))
 import qualified Data.ByteString as BS
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
-import qualified Data.Vault.Lazy as Vault
 import Data.UUID (UUID)
 import Data.UUID.V4 (nextRandom)
+import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..), parseEnv)
 import Events.Domain (EventId (..))
 import qualified Events.Handlers
 import Layout (LayoutStub (..), layout)
-import qualified Logging as Logging
+import qualified Logging
 import qualified Login.Login as Login
 import Lucid
 import qualified Network.AWS as AWS
@@ -25,7 +25,7 @@ import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
 import Session (SessionDataVaultKey)
-import qualified Session as Session
+import qualified Session
 import System.Environment (getEnv)
 import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpleTimeFormat, withTimedFastLogger)
 import Text.Read (readEither)
@@ -81,7 +81,7 @@ server
           Nothing -> Session.IsNotAuthenticated
           Just (roles, userid) ->
             Session.IsAuthenticated $
-              if any ((==) Admin) roles
+              if Admin `elem` roles
                 then Session.IsAdmin . Session.AdminUser $ Session.UserSession userid roles
                 else Session.IsUser $ Session.UserSession userid roles
         resetHost =
@@ -115,17 +115,17 @@ server
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (WelcomeMessage.showFeed dbConn auth) >>= send200 . layout'
+          "GET" -> authenticatedOnly' $ WelcomeMessage.showFeed dbConn >=> send200 . layout'
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (Events.Handlers.showAllEvents dbConn auth) >>= send200 . layout'
+          "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents dbConn >=> send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", "neu"] ->
         case Wai.requestMethod req of
-          "GET" -> adminOnly' $ \admin -> (Events.Handlers.showCreateEvent admin) >>= send200 . layout'
-          "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleCreateEvent dbConn req admin) >>= send200 . layout'
+          "GET" -> adminOnly' $ Events.Handlers.showCreateEvent >=> send200 . layout'
+          "POST" -> adminOnly' $ Events.Handlers.handleCreateEvent dbConn req >=> send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", i] ->
@@ -133,65 +133,65 @@ server
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> authenticatedOnly' $ \auth ->
-                ( Events.Handlers.showEvent dbConn (EventId parsed) auth >>= \case
+              "GET" ->
+                authenticatedOnly' $
+                  Events.Handlers.showEvent dbConn (EventId parsed) >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
-                )
               _ -> send404
       ["veranstaltungen", i, "antwort"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "POST" -> authenticatedOnly' $ \auth -> Events.Handlers.replyToEvent dbConn req send (EventId parsed) auth
+              "POST" -> authenticatedOnly' $ Events.Handlers.replyToEvent dbConn req send (EventId parsed)
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showDeleteEventConfirmation dbConn (EventId parsed) admin) >>= send200 . layout'
-              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleDeleteEvent dbConn (EventId parsed) admin) >>= send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation dbConn (EventId parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent dbConn (EventId parsed) >=> send200 . layout'
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ \admin -> (Events.Handlers.showEditEventForm dbConn (EventId parsed) admin) >>= send200 . layout'
-              "POST" -> adminOnly' $ \admin -> (Events.Handlers.handleUpdateEvent dbConn req (EventId parsed) admin) >>= send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm dbConn (EventId parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Events.Handlers.handleUpdateEvent dbConn req (EventId parsed) >=> send200 . layout'
               _ -> send404
       ["loeschen", i] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
           Right (parsed :: Int) ->
-            let msgId = (WelcomeMsgId parsed)
+            let msgId = WelcomeMsgId parsed
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleDeleteMessage dbConn msgId admin) >>= send200 . layout'
-                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showDeleteConfirmation dbConn msgId admin) >>= send200 . layout'
+                  "POST" -> adminOnly' $ WelcomeMessage.handleDeleteMessage dbConn msgId >=> send200 . layout'
+                  "GET" -> adminOnly' $ WelcomeMessage.showDeleteConfirmation dbConn msgId >=> send200 . layout'
                   _ -> send404
       ["neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ \admin -> (WelcomeMessage.saveNewMessage dbConn req admin) >>= send200 . layout'
-          "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showAddMessageForm admin) >>= send200 . layout'
+          "POST" -> adminOnly' $ WelcomeMessage.saveNewMessage dbConn req >=> send200 . layout'
+          "GET" -> adminOnly' $ WelcomeMessage.showAddMessageForm >=> send200 . layout'
           _ -> send404
       ["editieren", i] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
           Right (parsed :: Int) ->
-            let msgId = (WelcomeMsgId parsed)
+            let msgId = WelcomeMsgId parsed
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ \admin -> (WelcomeMessage.handleEditMessage dbConn req msgId admin) >>= send200 . layout'
-                  "GET" -> adminOnly' $ \admin -> (WelcomeMessage.showMessageEditForm dbConn msgId admin) >>= send200 . layout'
+                  "POST" -> adminOnly' $ WelcomeMessage.handleEditMessage dbConn req msgId >=> send200 . layout'
+                  "GET" -> adminOnly' $ WelcomeMessage.showMessageEditForm dbConn msgId >=> send200 . layout'
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (Userlist.get dbConn req auth) >>= send200 . layout'
+          "GET" -> authenticatedOnly' $ Userlist.get dbConn req >=> send200 . layout'
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ \auth -> (User.User.createPost dbConn req auth) >>= send200 . layout'
+          "POST" -> adminOnly' $ User.User.createPost dbConn req >=> send200 . layout'
           "GET" -> adminOnly' (User.User.createGet >=> send200 . layout')
           _ -> send404
       ["nutzer", int, "editieren"] ->
@@ -202,11 +202,11 @@ server
              in case Wai.requestMethod req of
                   "GET" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      (User.User.editGet dbConn id auth)
+                      User.User.editGet dbConn id auth
                         >>= send200 . layout'
                   "POST" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      (User.User.editPost dbConn req id auth)
+                      User.User.editPost dbConn req id auth
                         >>= send200 . layout'
                   _ -> send404
       ["nutzer", int] ->
@@ -214,10 +214,11 @@ server
           "GET" ->
             case readEither (Text.unpack int) of
               Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-              Right (parsed :: Int) -> authenticatedOnly' $ \auth ->
-                (Userprofile.get dbConn parsed auth) >>= \case
-                  Nothing -> send404
-                  Just stub -> send200 $ layout' stub
+              Right (parsed :: Int) ->
+                authenticatedOnly' $
+                  Userprofile.get dbConn parsed >=> \case
+                    Nothing -> send404
+                    Just stub -> send200 $ layout' stub
           _ -> send404
       ["nutzer", int, "loeschen"] ->
         case readEither (Text.unpack int) of
@@ -225,13 +226,13 @@ server
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly' $ \auth -> (User.User.deleteGet dbConn userId auth) >>= send200 . layout'
-                  "POST" -> adminOnly' $ \auth -> (User.User.deletePost dbConn userId auth) >>= send200 . layout'
+                  "GET" -> adminOnly' $ User.User.deleteGet dbConn userId >=> send200 . layout'
+                  "POST" -> adminOnly' $ User.User.deletePost dbConn userId >=> send200 . layout'
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
           "POST" -> Login.login dbConn logger signerKey saltSep sessionKey appEnv req send
-          "GET" -> (Login.showLoginForm routeData) >>= send200
+          "GET" -> Login.showLoginForm routeData >>= send200
           _ -> send404
       ["logout"] ->
         case Wai.requestMethod req of
@@ -239,19 +240,19 @@ server
           _ -> send404
       ["passwort", "aendern"] ->
         case Wai.requestMethod req of
-          "GET" -> (PasswordReset.showChangePwForm req) >>= send200 . layout'
-          "POST" -> (PasswordReset.handleChangePw logger dbConn req) >>= send200 . layout'
+          "GET" -> PasswordReset.showChangePwForm req >>= send200 . layout'
+          "POST" -> PasswordReset.handleChangePw logger dbConn req >>= send200 . layout'
           _ -> send404
       ["passwort", "link"] ->
         case Wai.requestMethod req of
-          "GET" -> (PasswordReset.showResetForm) >>= send200 . layout'
-          "POST" -> (PasswordReset.handleReset dbConn req sendMail') >>= send200 . layout'
+          "GET" -> PasswordReset.showResetForm >>= send200 . layout'
+          "POST" -> PasswordReset.handleReset dbConn req sendMail' >>= send200 . layout'
           _ -> send404
       _ -> send404
 
 type RequestIdVaultKey = Vault.Key UUID
 
-addRequestId ::  RequestIdVaultKey -> Wai.Application -> Wai.Application
+addRequestId :: RequestIdVaultKey -> Wai.Application -> Wai.Application
 addRequestId requestIdVaultKey next req send = do
   uuid <- nextRandom
   let vault' = Vault.insert requestIdVaultKey uuid (Wai.vault req)
@@ -266,8 +267,8 @@ main = do
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
-  signerKey <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
-  saltSep <- (encodeUtf8 . Text.pack) <$> getEnv "LIONS_SCRYPT_SALT_SEP"
+  signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
+  saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
   sessionKey <- ClientSession.getKey sessionKeyFile
   sessionDataVaultKey <- Vault.newKey
   requestIdVaultKey <- Vault.newKey
@@ -306,14 +307,7 @@ main = do
                         Logging.log logger $ show e
                         send500 send
                     )
-                    $ ( addRequestId requestIdVaultKey
-                          . ( Session.middleware
-                                logger
-                                sessionDataVaultKey
-                                conn
-                                sessionKey
-                            )
-                      )
+                    $ (addRequestId requestIdVaultKey . Session.middleware logger sessionDataVaultKey conn sessionKey)
                       app'
                       req
                       send

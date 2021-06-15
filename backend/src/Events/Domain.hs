@@ -53,7 +53,7 @@ data Event = Event
 instance Semigroup Event where
   e1 <> e2 =
     e1
-      { eventReplies = nub $ (eventReplies e1) ++ (eventReplies e2)
+      { eventReplies = nub $ eventReplies e1 ++ eventReplies e2
       }
 
 instance ToJSON Event where

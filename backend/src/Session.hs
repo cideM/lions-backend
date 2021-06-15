@@ -22,7 +22,7 @@ import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import qualified Logging as Logging
+import qualified Logging
 import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)

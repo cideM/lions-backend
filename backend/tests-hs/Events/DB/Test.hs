@@ -38,9 +38,9 @@ db =
               Nothing -> assertFailure "couldn't parse email in test prep"
               Just v -> return v
             let rows =
-                  [ (GetEventRow 1 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "foo@bar.com")),
-                    (GetEventRow 1 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "bar@bar.com")),
-                    (GetEventRow 2 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "bar@bar.com"))
+                  [ GetEventRow 1 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "foo@bar.com"),
+                    GetEventRow 1 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "bar@bar.com"),
+                    GetEventRow 2 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "bar@bar.com")
                   ]
                 expected =
                   [ ( EventId 1,
@@ -50,8 +50,8 @@ db =
                         True
                         "Some Event"
                         "Location"
-                        [ (Reply True (UserEmail emailBar) (UserId 1) 5),
-                          (Reply True (UserEmail emailFoo) (UserId 1) 5)
+                        [ Reply True (UserEmail emailBar) (UserId 1) 5,
+                          Reply True (UserEmail emailFoo) (UserId 1) 5
                         ]
                     ),
                     ( EventId 2,
@@ -61,10 +61,10 @@ db =
                         True
                         "Some Event"
                         "Location"
-                        [(Reply True (UserEmail emailBar) (UserId 1) 5)]
+                        [Reply True (UserEmail emailBar) (UserId 1) 5]
                     )
                   ]
 
-            createAndAggregateEventsFromDb rows @?= (Right $ M.fromList expected)
+            createAndAggregateEventsFromDb rows @?= Right (M.fromList expected)
         ]
     ]

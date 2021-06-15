@@ -7,7 +7,7 @@ import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
-import qualified Session as Session
+import qualified Session
 import User.DB (getUser)
 import User.Types
   ( Role (..),
@@ -31,7 +31,7 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
           -- Every user has role "User"
           hasDisplayRules = length userRoles > 2
       unless (Text.null $ Text.strip fullName) $ h1_ [class_ "card-title fs-3"] $ toHtml fullName
-      unless (not hasDisplayRules) $ div_ [class_ "text-muted mb-4"] $ toHtml $ displayBadges $ NE.toList userRoles
+      when hasDisplayRules $ div_ [class_ "text-muted mb-4"] $ toHtml $ displayBadges $ NE.toList userRoles
       div_ [class_ "row"] $ do
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Email"
@@ -62,13 +62,13 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
       div_ [class_ "card-footer d-flex d-grid"] $ do
         when canDelete $
           a_
-            [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/loeschen",
+            [ href_ . Text.pack $ "/nutzer/" <> show uid <> "/loeschen",
               class_ "link link-danger me-4"
             ]
             "Nutzer löschen"
         when canEdit $
           a_
-            [ href_ . Text.pack $ "/nutzer/" <> (show uid) <> "/editieren",
+            [ href_ . Text.pack $ "/nutzer/" <> show uid <> "/editieren",
               class_ "link link-secondary me-4"
             ]
             "Nutzer editieren"

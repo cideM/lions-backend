@@ -11,7 +11,7 @@ import Prelude hiding (id)
 -- | Returns the MOST RECENT welcome message, if there is one
 getWelcomeMsgFromDb :: SQLite.Connection -> WelcomeMsgId -> IO (Maybe WelcomeMsg)
 getWelcomeMsgFromDb conn (WelcomeMsgId id) =
-  (SQLite.query conn "SELECT id, content, date FROM welcome_text WHERE id = ?" [id])
+  SQLite.query conn "SELECT id, content, date FROM welcome_text WHERE id = ?" [id]
     >>= \case
       [(mid, msg, createdAt) :: (Int, Text, Time.UTCTime)] ->
         return . Just $ WelcomeMsg (WelcomeMsgId mid) msg createdAt
@@ -21,7 +21,7 @@ getWelcomeMsgFromDb conn (WelcomeMsgId id) =
 -- | Returns all welcome messages in chronological order
 getAllWelcomeMsgsFromDb :: SQLite.Connection -> IO [WelcomeMsg]
 getAllWelcomeMsgsFromDb conn =
-  (SQLite.query_ conn "SELECT id, content, date FROM welcome_text ORDER BY date DESC")
+  SQLite.query_ conn "SELECT id, content, date FROM welcome_text ORDER BY date DESC"
     >>= \case
       (msgs :: [(Int, Text, Time.UTCTime)]) ->
         return $ map (\(id, msg, createdAt) -> WelcomeMsg (WelcomeMsgId id) msg createdAt) msgs
