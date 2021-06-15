@@ -43,7 +43,7 @@ import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
 import Text.Read (readEither)
 import User.DB (getUser)
-import User.Domain (UserProfile (..))
+import User.Types (UserProfile (..))
 import Wai (parseParams)
 
 showAllEvents ::

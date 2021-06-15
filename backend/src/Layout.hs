@@ -18,7 +18,7 @@ import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
 import Routes.Data
-import User.Domain (UserId (..))
+import User.Types (UserId (..))
 
 data LayoutStub = LayoutStub
   { layoutStubTitle :: Text,

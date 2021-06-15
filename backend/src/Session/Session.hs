@@ -26,7 +26,7 @@ import Time.Time (timeDaysFromNow)
 import User.DB
   ( getRolesFromDb,
   )
-import User.Domain (Role, UserId (..))
+import User.Types (Role, UserId (..))
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)

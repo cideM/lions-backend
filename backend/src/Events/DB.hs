@@ -23,7 +23,7 @@ import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
 import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
 import Text.Email.Validate (emailAddress)
-import User.Domain (UserEmail (..), UserId (..))
+import User.Types (UserEmail (..), UserId (..))
 import Prelude hiding (id)
 
 data GetEventRow = GetEventRow

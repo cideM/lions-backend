@@ -27,7 +27,7 @@ import qualified PasswordReset.ChangePasswordForm as ChangePasswordForm
 import qualified PasswordReset.ResetEmailForm as ResetEmailForm
 import Time.Time (timeDaysFromNow)
 import User.DB (getCredentials, hasUser)
-import User.Domain (UserId (..))
+import User.Types (UserId (..))
 import Wai (parseParams, parseQueryParams)
 import Prelude hiding (id)
 

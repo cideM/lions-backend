@@ -5,7 +5,7 @@ import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Lucid
-import User.Domain (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
+import User.Types (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
 
 newtype CanDelete = CanDelete Bool
 

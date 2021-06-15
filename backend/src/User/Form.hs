@@ -16,7 +16,7 @@ import Form.Form (FormFieldState (..), processField)
 import Layout (describedBy_)
 import Lucid
 import qualified Text.Email.Validate as Email
-import User.Domain (Role (..), UserEmail (..), UserProfileCreate (..))
+import User.Types (Role (..), UserEmail (..), UserProfileCreate (..))
 
 data EditFormState = EditFormState
   {formStateEmail :: FormFieldState Email.EmailAddress}

@@ -26,7 +26,7 @@ import Database.SQLite.Simple.ToField (ToField (..))
 import Database.SQLite.Simple.ToRow (ToRow (..))
 import Text.Email.Validate (emailAddress)
 import qualified Text.Email.Validate as Email
-import User.Domain
+import User.Types
   ( Role (..),
     UserEmail (..),
     UserId (..),

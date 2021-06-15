@@ -7,7 +7,7 @@ module Routes.Data
 where
 
 -- import Session.Domain (SessionId)
-import User.Domain (Role, UserId)
+import User.Types (Role, UserId)
 
 -- userSessionSessionId :: SessionId,
 data UserSession = UserSession

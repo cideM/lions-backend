@@ -18,7 +18,7 @@ import Network.Wai.Test
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Email.Validate (emailAddress)
-import User.Domain
+import User.Types
 
 tests :: TestTree
 tests = testGroup "Events" [db]

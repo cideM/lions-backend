@@ -135,11 +135,10 @@ library
     Session.Session
     Time.Time
     User.DB
-    User.Domain
+    User.Types
     User.Form
     User.Handlers
     User.Memberlist
-    User.Profile
     Wai
     WelcomeMessage.Form
     WelcomeMessage.Feed

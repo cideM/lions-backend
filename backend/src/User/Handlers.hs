@@ -24,7 +24,7 @@ import Lucid
 import qualified Network.Wai as Wai
 import qualified Routes.Data as Auth
 import User.DB (deleteUserById, getRolesFromDb, getUser, getUsers, saveUser, saveUserRoles, updateUser)
-import User.Domain
+import User.Types
   ( Role (..),
     UserEmail (..),
     UserId (..),

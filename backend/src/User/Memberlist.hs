@@ -8,7 +8,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Layout (ariaLabel_)
 import Lucid
-import User.Domain (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
+import User.Types (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
 
 data UserGroupToShow = All | Some Role deriving (Eq)
 

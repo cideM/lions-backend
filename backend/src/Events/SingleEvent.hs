@@ -9,7 +9,7 @@ import Events.Domain (Event (..), EventId (..), Reply (..))
 import Layout (ariaLabel_)
 import Locale (german)
 import Lucid
-import User.Domain (UserEmail (..), UserId (..), showEmail)
+import User.Types (UserEmail (..), UserId (..), showEmail)
 
 newtype ShowAdminTools = ShowAdminTools Bool deriving (Show)
 

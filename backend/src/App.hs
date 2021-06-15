@@ -30,7 +30,7 @@ import qualified Session.Session as Session
 import System.Environment (getEnv)
 import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpleTimeFormat, withTimedFastLogger)
 import Text.Read (readEither)
-import User.Domain (UserId (..), isAdmin)
+import User.Types (UserId (..), isAdmin)
 import qualified User.Handlers
 import qualified Web.ClientSession as ClientSession
 import WelcomeMessage.WelcomeMessage (WelcomeMsgId (..))

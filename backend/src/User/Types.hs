@@ -1,4 +1,4 @@
-module User.Domain
+module User.Types
   ( UserProfile (..),
     UserProfileCreate (..),
     UserEmail (..),
