@@ -1,23 +1,16 @@
 module Session.Test where
 
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.ByteString.Lazy.Char8 as LB
 import qualified Data.Text as T
 import Data.Text.Encoding as T
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import Env (Environment (..))
 import Helpers (withDB, withoutLogging)
-import Login.Login (login)
 import Network.HTTP.Types
-import Network.HTTP.Types (status302)
-import Network.HTTP.Types.Header
 import Network.Wai
-import Network.Wai.Handler.Warp (run)
 import Network.Wai.Test
-import Session (SessionDataVaultKey, middleware)
+import Session (middleware)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Time (timeDaysFromNow)
