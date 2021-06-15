@@ -11,7 +11,7 @@ import Env (Environment (..), parseEnv)
 import Events.Domain (EventId (..))
 import qualified Events.Handlers
 import Layout (layout)
-import qualified Logging.Logging as Logging
+import qualified Logging as Logging
 import qualified Login.Login as Login
 import Lucid
 import qualified Network.AWS as AWS
@@ -25,8 +25,8 @@ import qualified PasswordReset.SendEmail as SendEmail
 import RequestID.Middleware (RequestIdVaultKey)
 import qualified RequestID.Middleware
 import qualified Routes.Data as Auth
-import Session.Session (SessionDataVaultKey)
-import qualified Session.Session as Session
+import Session (SessionDataVaultKey)
+import qualified Session as Session
 import System.Environment (getEnv)
 import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpleTimeFormat, withTimedFastLogger)
 import Text.Read (readEither)

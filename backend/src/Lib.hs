@@ -6,12 +6,14 @@ import qualified Data.ByteString as BS
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
+import Data.UUID (UUID)
+import Data.UUID.V4 (nextRandom)
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..), parseEnv)
 import Events.Domain (EventId (..))
 import qualified Events.Handlers
-import Layout (layout, LayoutStub(..))
-import qualified Logging.Logging as Logging
+import Layout (LayoutStub (..), layout)
+import qualified Logging as Logging
 import qualified Login.Login as Login
 import Lucid
 import qualified Network.AWS as AWS
@@ -22,17 +24,15 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
-import RequestID.Middleware (RequestIdVaultKey)
-import qualified RequestID.Middleware
-import qualified Routes.Data as Auth
-import Session.Session (SessionDataVaultKey)
-import qualified Session.Session as Session
+import Session (SessionDataVaultKey)
+import qualified Session as Session
 import System.Environment (getEnv)
 import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpleTimeFormat, withTimedFastLogger)
 import Text.Read (readEither)
-import User.Types (UserId (..), isAdmin)
-import qualified User.Handlers
-import qualified User.List.Handler
+import User.Types (Role (..), UserId (..))
+import qualified User.User
+import qualified Userlist
+import qualified Userprofile
 import qualified Web.ClientSession as ClientSession
 import WelcomeMessage.WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage.WelcomeMessage as WelcomeMessage
@@ -67,23 +67,23 @@ server
   send = do
     let vault = Wai.vault req
         adminOnlyOrOwn id next = case routeData of
-          Auth.IsAuthenticated auth@(Auth.IsAdmin _) -> next (id, auth)
-          Auth.IsAuthenticated auth@(Auth.IsUser Auth.UserSession {Auth.userSessionUserId = userId}) ->
+          Session.IsAuthenticated auth@(Session.IsAdmin _) -> next (id, auth)
+          Session.IsAuthenticated auth@(Session.IsUser Session.UserSession {Session.userSessionUserId = userId}) ->
             if userId == id then next (id, auth) else send403
           _ -> send403
         adminOnly' next = case routeData of
-          Auth.IsAuthenticated (Auth.IsAdmin auth) -> next auth
+          Session.IsAuthenticated (Session.IsAdmin auth) -> next auth
           _ -> send403
         authenticatedOnly' next = case routeData of
-          Auth.IsAuthenticated auth -> next auth
+          Session.IsAuthenticated auth -> next auth
           _ -> send403
         routeData = case Vault.lookup sessionDataVaultKey vault of
-          Nothing -> Auth.IsNotAuthenticated
+          Nothing -> Session.IsNotAuthenticated
           Just (roles, userid) ->
-            Auth.IsAuthenticated $
-              if any isAdmin roles
-                then Auth.IsAdmin . Auth.AdminUser $ Auth.UserSession userid roles
-                else Auth.IsUser $ Auth.UserSession userid roles
+            Session.IsAuthenticated $
+              if any ((==) Admin) roles
+                then Session.IsAdmin . Session.AdminUser $ Session.UserSession userid roles
+                else Session.IsUser $ Session.UserSession userid roles
         resetHost =
           if appEnv == Production
             then "https://www.lions-achern.de"
@@ -107,7 +107,7 @@ server
           send
             . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
             . renderBS
-            . layout' 
+            . layout'
             . LayoutStub "Nicht gefunden" Nothing
             $ div_ [class_ "container p-3 d-flex justify-content-center"] $
               div_ [class_ "row col-6"] $ do
@@ -187,12 +187,12 @@ server
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ \auth -> (User.List.Handler.get dbConn req auth) >>= send200 . layout'
+          "GET" -> authenticatedOnly' $ \auth -> (Userlist.get dbConn req auth) >>= send200 . layout'
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ \auth -> (User.Handlers.saveNewUser dbConn req auth) >>= send200 . layout'
-          "GET" -> adminOnly' (User.Handlers.showAddUserForm >=> send200 . layout')
+          "POST" -> adminOnly' $ \auth -> (User.User.createPost dbConn req auth) >>= send200 . layout'
+          "GET" -> adminOnly' (User.User.createGet >=> send200 . layout')
           _ -> send404
       ["nutzer", int, "editieren"] ->
         case readEither (Text.unpack int) of
@@ -202,11 +202,11 @@ server
              in case Wai.requestMethod req of
                   "GET" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      (User.Handlers.showEditUserForm dbConn id auth)
+                      (User.User.editGet dbConn id auth)
                         >>= send200 . layout'
                   "POST" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      (User.Handlers.updateExistingUser dbConn req id auth)
+                      (User.User.editPost dbConn req id auth)
                         >>= send200 . layout'
                   _ -> send404
       ["nutzer", int] ->
@@ -214,9 +214,10 @@ server
           "GET" ->
             case readEither (Text.unpack int) of
               Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-              Right (parsed :: Int) -> authenticatedOnly' $ \auth -> (User.Handlers.showProfile dbConn parsed auth) >>= \case
-                Nothing -> send404
-                Just stub -> send200 $ layout' stub
+              Right (parsed :: Int) -> authenticatedOnly' $ \auth ->
+                (Userprofile.get dbConn parsed auth) >>= \case
+                  Nothing -> send404
+                  Just stub -> send200 $ layout' stub
           _ -> send404
       ["nutzer", int, "loeschen"] ->
         case readEither (Text.unpack int) of
@@ -224,8 +225,8 @@ server
           Right (parsed :: Int) ->
             let userId = UserId parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly' $ \auth -> (User.Handlers.showDeleteConfirmation dbConn userId auth) >>= send200 . layout'
-                  "POST" -> adminOnly' $ \auth -> (User.Handlers.deleteUser dbConn userId auth) >>= send200 . layout'
+                  "GET" -> adminOnly' $ \auth -> (User.User.deleteGet dbConn userId auth) >>= send200 . layout'
+                  "POST" -> adminOnly' $ \auth -> (User.User.deletePost dbConn userId auth) >>= send200 . layout'
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
@@ -247,6 +248,15 @@ server
           "POST" -> (PasswordReset.handleReset dbConn req sendMail') >>= send200 . layout'
           _ -> send404
       _ -> send404
+
+type RequestIdVaultKey = Vault.Key UUID
+
+addRequestId ::  RequestIdVaultKey -> Wai.Application -> Wai.Application
+addRequestId requestIdVaultKey next req send = do
+  uuid <- nextRandom
+  let vault' = Vault.insert requestIdVaultKey uuid (Wai.vault req)
+      req' = req {Wai.vault = vault'}
+  next req' send
 
 main :: IO ()
 main = do
@@ -296,7 +306,7 @@ main = do
                         Logging.log logger $ show e
                         send500 send
                     )
-                    $ ( RequestID.Middleware.middleware requestIdVaultKey
+                    $ ( addRequestId requestIdVaultKey
                           . ( Session.middleware
                                 logger
                                 sessionDataVaultKey
@@ -314,7 +324,7 @@ main = do
       send
         . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-        . layout Auth.IsNotAuthenticated
+        . layout Session.IsNotAuthenticated
         . LayoutStub "Fehler" Nothing
         $ div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do

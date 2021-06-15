@@ -1,11 +1,21 @@
-module User.Profile (render, CanDelete (..), CanEdit (..)) where
+module Userprofile (get) where
 
-import Control.Monad (when, unless)
+import Control.Monad (unless, when)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
+import qualified Database.SQLite.Simple as SQLite
+import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
-import User.Types (Role (..), UserEmail (..), UserId (..), UserProfile (..), showEmail)
+import qualified Session as Session
+import User.DB (getUser)
+import User.Types
+  ( Role (..),
+    UserEmail (..),
+    UserId (..),
+    UserProfile (..),
+    showEmail,
+  )
 
 newtype CanDelete = CanDelete Bool
 
@@ -72,3 +82,26 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
     showBadge Board = "Vorstand"
     showBadge Admin = "Administrator"
     showBadge User = "Nutzer"
+
+get :: SQLite.Connection -> Int -> Session.Authenticated -> IO (Maybe LayoutStub)
+get conn paramId auth = do
+  let userIdToShow = UserId paramId
+      userIsAdmin = case auth of
+        Session.IsAdmin _ -> True
+        _ -> False
+      Session.UserSession loggedInUserId _ = case auth of
+        Session.IsUser session -> session
+        Session.IsAdmin (Session.AdminUser session) -> session
+      isOwnProfile = loggedInUserId == userIdToShow
+  user <- getUser conn userIdToShow
+  return $ case user of
+    Nothing -> Nothing
+    Just userProfile -> do
+      Just . LayoutStub "Nutzerprofil" (Just Profile) $
+        div_
+          [class_ "container p-3"]
+          ( render
+              userProfile
+              (CanDelete userIsAdmin)
+              (CanEdit (isOwnProfile || userIsAdmin))
+          )

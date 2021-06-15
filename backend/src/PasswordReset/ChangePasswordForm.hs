@@ -8,7 +8,7 @@ module PasswordReset.ChangePasswordForm
 where
 
 import Data.Text (Text)
-import Form.Form (FormFieldState (..), processField)
+import Form (FormFieldState (..), processField)
 import Layout (describedBy_)
 import Lucid
 

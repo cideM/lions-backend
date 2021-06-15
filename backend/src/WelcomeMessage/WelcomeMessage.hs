@@ -20,7 +20,7 @@ import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), LayoutStub (..), success)
 import Lucid
 import qualified Network.Wai as Wai
-import qualified Routes.Data as Auth
+import qualified Session as Session
 import Wai (parseParams)
 import WelcomeMessage.DB
 import WelcomeMessage.Feed (renderFeed)
@@ -43,7 +43,7 @@ editPageLayout = pageLayout "Nachricht Editieren"
 createPageLayout = pageLayout "Nachricht Erstellen"
 deletePageLayout = pageLayout "Nachricht Löschen"
 
-saveNewMessage :: SQLite.Connection -> Wai.Request -> Auth.AdminUser -> IO LayoutStub
+saveNewMessage :: SQLite.Connection -> Wai.Request -> Session.AdminUser -> IO LayoutStub
 saveNewMessage conn req _ = do
   params <- parseParams req
   case Map.lookup "message" params of
@@ -56,7 +56,7 @@ handleEditMessage ::
   SQLite.Connection ->
   Wai.Request ->
   WelcomeMsgId ->
-  Auth.AdminUser ->
+  Session.AdminUser ->
   IO LayoutStub
 handleEditMessage conn req mid@(WelcomeMsgId msgid) _ =
   Map.findWithDefault "" "message" <$> parseParams req >>= \case
@@ -67,7 +67,7 @@ handleEditMessage conn req mid@(WelcomeMsgId msgid) _ =
       updateWelcomeMsg conn mid newMsg
       return . editPageLayout $ success "Nachricht erfolgreich editiert"
 
-showDeleteConfirmation :: SQLite.Connection -> WelcomeMsgId -> Auth.AdminUser -> IO LayoutStub
+showDeleteConfirmation :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
 showDeleteConfirmation conn mid@(WelcomeMsgId msgid) _ = do
   getWelcomeMsgFromDb conn mid >>= \case
     Nothing -> throwString [i|delete request, but no message with ID: #{msgid}|]
@@ -78,25 +78,25 @@ showDeleteConfirmation conn mid@(WelcomeMsgId msgid) _ = do
         form_ [action_ [i|/loeschen/#{msgid}|], method_ "post", class_ ""] $
           button_ [class_ "btn btn-danger", type_ "submit"] "Ja, Nachricht löschen!"
 
-handleDeleteMessage :: SQLite.Connection -> WelcomeMsgId -> Auth.AdminUser -> IO LayoutStub
+handleDeleteMessage :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
 handleDeleteMessage conn msgid _ = do
   deleteMessage conn msgid
   return . editPageLayout $ success "Nachricht erfolgreich gelöscht"
 
-showAddMessageForm :: Auth.AdminUser -> IO LayoutStub
+showAddMessageForm :: Session.AdminUser -> IO LayoutStub
 showAddMessageForm _ = return . createPageLayout $ Form.form NotValidated "/neu" ""
 
-showMessageEditForm :: SQLite.Connection -> WelcomeMsgId -> Auth.AdminUser -> IO LayoutStub
+showMessageEditForm :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
 showMessageEditForm conn mid@(WelcomeMsgId msgid) _ = do
   getWelcomeMsgFromDb conn mid >>= \case
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
     Just (WelcomeMsg _ content _) ->
       return . editPageLayout $ Form.form NotValidated [i|/editieren/#{msgid}|] content
 
-showFeed :: SQLite.Connection -> Auth.Authenticated -> IO LayoutStub
+showFeed :: SQLite.Connection -> Session.Authenticated -> IO LayoutStub
 showFeed conn auth = do
   let userIsAdmin = case auth of
-        Auth.IsAdmin _ -> True
+        Session.IsAdmin _ -> True
         _ -> False
   msgs <- handleAny onError (getAllWelcomeMsgsFromDb conn)
   zone <- Time.getCurrentTimeZone

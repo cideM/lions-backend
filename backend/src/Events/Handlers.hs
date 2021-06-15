@@ -40,7 +40,7 @@ import Locale (german)
 import Lucid
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
-import qualified Routes.Data as Auth
+import qualified Session as Session
 import Text.Read (readEither)
 import User.DB (getUser)
 import User.Types (UserProfile (..))
@@ -48,12 +48,12 @@ import Wai (parseParams)
 
 showAllEvents ::
   SQLite.Connection ->
-  Auth.Authenticated ->
+  Session.Authenticated ->
   IO LayoutStub
 showAllEvents conn auth = do
-  let (userIsAdmin, Auth.UserSession {..}) = case auth of
-        Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
-        Auth.IsUser session -> (False, session)
+  let (userIsAdmin, Session.UserSession {..}) = case auth of
+        Session.IsAdmin (Session.AdminUser session) -> (True, session)
+        Session.IsUser session -> (False, session)
   events <- map (addOwnReply userSessionUserId) . sortByDateDesc . Map.toList <$> getAll conn
   return . LayoutStub "Veranstaltungen" (Just Events) $
     div_ [class_ "container"] $ do
@@ -71,12 +71,12 @@ replyToEvent ::
   Wai.Request ->
   (Wai.Response -> IO a) ->
   EventId ->
-  Auth.Authenticated ->
+  Session.Authenticated ->
   IO a
 replyToEvent conn req send eventid@(EventId i) auth = do
-  let (_, Auth.UserSession {..}) = case auth of
-        Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
-        Auth.IsUser session -> (False, session)
+  let (_, Session.UserSession {..}) = case auth of
+        Session.IsAdmin (Session.AdminUser session) -> (True, session)
+        Session.IsUser session -> (False, session)
   UserProfile {..} <-
     getUser conn userSessionUserId >>= \case
       Nothing -> throwString $ "no user for userid from session, here's the user id: " <> show userSessionUserId
@@ -107,12 +107,12 @@ replyToEvent conn req send eventid@(EventId i) auth = do
 showEvent ::
   SQLite.Connection ->
   EventId ->
-  Auth.Authenticated ->
+  Session.Authenticated ->
   IO (Maybe LayoutStub)
 showEvent conn eventid auth = do
-  let (userIsAdmin, Auth.UserSession {..}) = case auth of
-        Auth.IsAdmin (Auth.AdminUser session) -> (True, session)
-        Auth.IsUser session -> (False, session)
+  let (userIsAdmin, Session.UserSession {..}) = case auth of
+        Session.IsAdmin (Session.AdminUser session) -> (True, session)
+        Session.IsUser session -> (False, session)
   maybeevent <- (getEvent conn eventid)
   case maybeevent of
     Nothing -> return Nothing
@@ -124,7 +124,7 @@ showEvent conn eventid auth = do
           (Just Events)
         $ Events.SingleEvent.render (Events.SingleEvent.ShowAdminTools userIsAdmin) ownReply eventid e
 
-showCreateEvent :: Auth.AdminUser -> IO LayoutStub
+showCreateEvent :: Session.AdminUser -> IO LayoutStub
 showCreateEvent _ = do
   return . LayoutStub "Neue Veranstaltung" (Just Events) $
     div_ [class_ "container p-2"] $ do
@@ -134,7 +134,7 @@ showCreateEvent _ = do
 handleDeleteEvent ::
   SQLite.Connection ->
   EventId ->
-  Auth.AdminUser ->
+  Session.AdminUser ->
   IO LayoutStub
 handleDeleteEvent conn eventid _ = do
   maybeEvent <- getEvent conn eventid
@@ -155,7 +155,7 @@ handleDeleteEvent conn eventid _ = do
 showDeleteEventConfirmation ::
   SQLite.Connection ->
   EventId ->
-  Auth.AdminUser ->
+  Session.AdminUser ->
   IO LayoutStub
 showDeleteEventConfirmation conn eid@(EventId eventid) _ = do
   -- TODO: Duplicated
@@ -177,7 +177,7 @@ showDeleteEventConfirmation conn eid@(EventId eventid) _ = do
 handleCreateEvent ::
   SQLite.Connection ->
   Wai.Request ->
-  Auth.AdminUser ->
+  Session.AdminUser ->
   IO LayoutStub
 handleCreateEvent conn req _ = do
   params <- parseParams req
@@ -205,7 +205,7 @@ handleCreateEvent conn req _ = do
 showEditEventForm ::
   SQLite.Connection ->
   EventId ->
-  Auth.AdminUser ->
+  Session.AdminUser ->
   IO LayoutStub
 showEditEventForm conn eid@(EventId eventid) _ = do
   getEvent conn eid >>= \case
@@ -229,7 +229,7 @@ handleUpdateEvent ::
   SQLite.Connection ->
   Wai.Request ->
   EventId ->
-  Auth.AdminUser ->
+  Session.AdminUser ->
   IO LayoutStub
 handleUpdateEvent conn req eid@(EventId eventid) _ = do
   params <- parseParams req

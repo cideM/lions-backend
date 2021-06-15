@@ -1,4 +1,4 @@
-module Time.Time (timeDaysFromNow) where
+module Time (timeDaysFromNow) where
 
 import Data.List (foldl')
 import qualified Data.Time as Time

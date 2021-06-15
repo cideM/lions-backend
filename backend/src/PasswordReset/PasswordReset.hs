@@ -16,16 +16,16 @@ import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Form.Form (FormFieldState (..))
+import Form (FormFieldState (..))
 import Layout (LayoutStub(..), success, warning)
-import qualified Logging.Logging as Logging
+import qualified Logging as Logging
 import Lucid
 import qualified Network.AWS.SES as SES
 import Network.URI.Encode (decode, encode)
 import qualified Network.Wai as Wai
 import qualified PasswordReset.ChangePasswordForm as ChangePasswordForm
 import qualified PasswordReset.ResetEmailForm as ResetEmailForm
-import Time.Time (timeDaysFromNow)
+import Time (timeDaysFromNow)
 import User.DB (getCredentials, hasUser)
 import User.Types (UserId (..))
 import Wai (parseParams, parseQueryParams)

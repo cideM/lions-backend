@@ -14,7 +14,7 @@ import Network.Wai.Test
 import PasswordReset.PasswordReset (handleChangePw, handleReset)
 import Test.Tasty
 import Test.Tasty.HUnit
-import Time.Time (timeDaysFromNow)
+import Time (timeDaysFromNow)
 
 tests :: TestTree
 tests =

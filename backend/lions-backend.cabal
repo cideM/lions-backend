@@ -43,7 +43,7 @@ test-suite tests
   other-modules:
     Helpers
     Scrypt.Test
-    Session.Session.Test
+    Session.Test
     Login.Test
     PasswordReset.Test
     Events.DB.Test
@@ -119,28 +119,25 @@ library
     Events.EventForm
     Events.Handlers
     Events.SingleEvent
-    Form.Form
+    Form
     Layout
     Locale
-    Logging.Logging
+    Logging
     Login.Login
     Login.LoginForm
     PasswordReset.PasswordReset
     PasswordReset.ResetEmailForm
     PasswordReset.ChangePasswordForm
     PasswordReset.SendEmail
-    RequestID.Middleware
-    Routes.Data
     Scrypt
-    Session.Session
-    Time.Time
+    Session
+    Time
     User.DB
     User.Types
-    User.List.Handler
-    User.List.View
-    User.Profile
+    Userlist
+    Userprofile
     User.Form
-    User.Handlers
+    User.User
     Wai
     WelcomeMessage.Form
     WelcomeMessage.Feed

@@ -1,4 +1,4 @@
-module Session.Session
+module Session
   ( middleware,
     Session (..),
     SessionDataVaultKey,
@@ -8,6 +8,10 @@ module Session.Session
     deleteSession,
     getSessionsFromDbByUser,
     saveSession,
+    UserSession (..),
+    Authentication (..),
+    AdminUser (..),
+    Authenticated (..),
   )
 where
 
@@ -18,11 +22,11 @@ import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import qualified Logging.Logging as Logging
+import qualified Logging as Logging
 import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
-import Time.Time (timeDaysFromNow)
+import Time (timeDaysFromNow)
 import User.DB
   ( getRolesFromDb,
   )
@@ -30,6 +34,18 @@ import User.Types (Role, UserId (..))
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
+
+data UserSession = UserSession
+  { userSessionUserId :: UserId,
+    userSessionUserRoles :: [Role]
+  }
+  deriving (Show, Eq)
+
+data Authentication = IsNotAuthenticated | IsAuthenticated Authenticated deriving (Show, Eq)
+
+data Authenticated = IsUser UserSession | IsAdmin AdminUser deriving (Show, Eq)
+
+newtype AdminUser = AdminUser UserSession deriving (Show, Eq)
 
 data Session = Session SessionId Time.UTCTime UserId deriving (Show)
 

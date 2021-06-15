@@ -12,7 +12,7 @@ import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
-import Form.Form (FormFieldState (..), processField)
+import Form (FormFieldState (..), processField)
 import Layout (describedBy_)
 import Lucid
 import qualified Text.Email.Validate as Email

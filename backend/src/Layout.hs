@@ -17,7 +17,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
-import Routes.Data
+import Session
 import User.Types (UserId (..))
 
 data LayoutStub = LayoutStub

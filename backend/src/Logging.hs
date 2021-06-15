@@ -1,4 +1,4 @@
-module Logging.Logging (log, TimedFastLogger) where
+module Logging (log, TimedFastLogger) where
 
 import System.Log.FastLogger
 import Prelude hiding (log)

@@ -5,10 +5,6 @@ module User.Types
     showEmail,
     UserId (..),
     Role (..),
-    isAdmin,
-    isPassive,
-    isBoard,
-    isPresident,
     parseRole,
   )
 where
@@ -74,22 +70,6 @@ instance Show Role where
   show Passive = "passive"
   show Board = "board"
   show President = "president"
-
-isPassive :: Role -> Bool
-isPassive Passive = True
-isPassive _ = False
-
-isAdmin :: Role -> Bool
-isAdmin Admin = True
-isAdmin _ = False
-
-isBoard :: Role -> Bool
-isBoard Board = True
-isBoard _ = False
-
-isPresident :: Role -> Bool
-isPresident President = True
-isPresident _ = False
 
 parseRole :: Text -> Either Text Role
 parseRole "admin" = Right Admin

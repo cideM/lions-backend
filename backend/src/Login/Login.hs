@@ -14,18 +14,18 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..))
 import Layout (layout)
-import qualified Logging.Logging as Logging
+import qualified Logging as Logging
 import qualified Login.LoginForm as LoginForm
 import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
-import Routes.Data
 import Scrypt (verifyPassword)
-import Session.Session
+import Session
   ( Session (..),
     SessionDataVaultKey,
     SessionId (..),
     ValidSession (..),
+    Authentication(..),
     createNewSession,
     deleteSession,
     getSessionsFromDbByUser,

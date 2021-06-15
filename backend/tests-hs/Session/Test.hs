@@ -1,4 +1,4 @@
-module Session.Session.Test where
+module Session.Test where
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as BSBuilder
@@ -17,10 +17,10 @@ import Network.HTTP.Types.Header
 import Network.Wai
 import Network.Wai.Handler.Warp (run)
 import Network.Wai.Test
-import Session.Session (SessionDataVaultKey, middleware)
+import Session (SessionDataVaultKey, middleware)
 import Test.Tasty
 import Test.Tasty.HUnit
-import Time.Time (timeDaysFromNow)
+import Time (timeDaysFromNow)
 import qualified Web.ClientSession as ClientSession
 import Web.Cookie
 

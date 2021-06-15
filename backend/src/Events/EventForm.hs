@@ -13,7 +13,7 @@ import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Data.Time.Format as TF
 import Events.Domain (EventCreate (..))
-import Form.Form (FormFieldState (..), processField)
+import Form (FormFieldState (..), processField)
 import Layout (describedBy_)
 import Locale (german)
 import Lucid

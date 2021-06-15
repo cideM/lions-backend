@@ -1,4 +1,4 @@
-module Form.Form (processField, FormFieldState (..)) where
+module Form (processField, FormFieldState (..)) where
 
 import Data.Maybe (isJust)
 import Data.Text (Text)
