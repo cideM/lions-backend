@@ -39,10 +39,12 @@ for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
 
 ### Litestream
 
-When opening S3 from the Administrator account keep in mind that that user
+When opening S3 from the Administrator account, keep in mind that the user
 doesn't have access to the S3 bucket. You can only access it through the
-Litestream user. User the shell below together with values from either `.envrc`
+Litestream user. Use the shell below, together with values from either `.envrc`
 or 1Password to check which replicas there are.
+
+There's a `prod` and a `dev-db` prefix.
 
 ```shell
 $ AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= aws s3 ls lions-achern-litestream-replica-1/
@@ -51,7 +53,7 @@ $ AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= aws s3 ls lions-achern-litestream-re
 Check all generations that exist:
 
 ```shell
-litestream generations s3://lions-achern-litestream-replica-1/test/
+litestream generations s3://lions-achern-litestream-replica-1/prod/
 ```
 
 Restore the DB **from** S3 **to** a local file on the server. This process is pretty dangerous. First of all, files can only be accessed by the dynamic user created by systemd. You can override this with `sudo` but then you need to `chown` the files afterwards. Also, be sure to delete all DB files, not just the DB itself, also the WAL and the `.db-litestream` I guess?

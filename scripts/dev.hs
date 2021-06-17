@@ -17,7 +17,7 @@ main = do
 
       procs "nix" ["build", ".#allAssets", "-o", "public"] empty
 
-      let litestream = proc "litestream" ["replicate", "$LIONS_SQLITE_PATH", "s3://lions-achern-litestream-replica-1/dev-db"] empty
+      let litestream = proc "litestream" ["replicate", sqlitePath, "s3://lions-achern-litestream-replica-1/dev-db"] empty
           cabal = proc "cabal" ["v2-run", "--cabal-file", "./backend/lions-backend.cabal", "run-lions-backend"] empty
 
       view $ parallel [litestream, cabal]
