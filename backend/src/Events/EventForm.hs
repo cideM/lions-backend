@@ -9,13 +9,10 @@ module Events.EventForm
 where
 
 import Data.Text (Text)
-import qualified Data.Text as Text
 import qualified Data.Time as Time
-import qualified Data.Time.Format as TF
 import Events.Domain (EventCreate (..))
-import Form (FormFieldState (..), processField)
+import Form (FormFieldState (..), processField, validDate, notEmpty)
 import Layout (describedBy_)
-import Locale (german)
 import Lucid
 
 data FormState = FormState
@@ -58,15 +55,7 @@ makeEvent FormInput {..} =
     FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
       Right $ EventCreate title date createEventInputFamilyAllowed description location
     state -> Left state
-  where
-    notEmpty "" = Invalid "Feld darf nicht leer sein"
-    notEmpty v = Valid v
 
-    validDate "" = Invalid "Feld darf nicht leer sein"
-    validDate datestr =
-      case TF.parseTimeM True german "%d.%m.%Y %R" $ Text.unpack datestr of
-        Nothing -> Invalid "Falsches Format"
-        Just date -> Valid date
 
 render :: Text -> Text -> FormInput -> FormState -> Html ()
 render btnLabel action FormInput {..} FormState {..} = do

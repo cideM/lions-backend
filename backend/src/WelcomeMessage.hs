@@ -14,12 +14,12 @@ where
 import Control.Exception.Safe
 import Control.Monad (when)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
+import Form (FormFieldState (..), notEmpty, processField, validDate)
 import Layout (ActiveNavLink (..), LayoutStub (..), describedBy_, success)
 import Locale (german)
 import Lucid
@@ -50,41 +50,62 @@ getAllWelcomeMsgsFromDb conn =
       (msgs :: [(Int, Text, Time.UTCTime)]) ->
         return $ map (\(id, msg, createdAt) -> WelcomeMsg (WelcomeMsgId id) msg createdAt) msgs
 
-data WelcomeMsgFormState = Valid | NotValidated | Invalid Text
+data FormState = FormState
+  { welcomeMsgStateDate :: FormFieldState Time.UTCTime,
+    welcomeMsgStateMessage :: FormFieldState Text
+  }
+  deriving (Show)
 
-form :: WelcomeMsgFormState -> Text -> Text -> Html ()
-form state formAction currentMsg =
-  let messageFieldClass =
-        "form-control"
-          <> ( case state of
-                 NotValidated -> ""
-                 Invalid _ -> " is-invalid"
-                 Valid -> " is-valid"
-             )
-      errMsg = case state of
-        Invalid e -> Just e
-        _ -> Nothing
-      successMsg = case state of
-        Valid -> Just (div_ [class_ "alert alert-success"] "Neue Nachricht erfolgreich gespeichert")
-        _ -> Nothing
-   in form_ [method_ "post", action_ formAction] $ do
-        fromMaybe mempty successMsg
-        fieldset_ [class_ "mb-3"] $ do
-          label_ [class_ "form-label", for_ "message"] "Nachricht"
-          textarea_
-            [ class_ messageFieldClass,
-              type_ "textfield",
-              name_ "message",
-              id_ "message",
-              required_ "required",
-              autofocus_,
-              rows_ "10",
-              cols_ "10",
-              describedBy_ "invalidMessageFeedback"
-            ]
-            (toHtml currentMsg)
-          maybe mempty (div_ [class_ "invalid-feedback", id_ "invalidMessageFeedback"] . toHtml) errMsg
-        button_ [class_ "btn btn-primary", type_ "submit"] "Speichern"
+data FormInput = FormInput
+  { welcomeMsgInputDate :: Text,
+    welcomeMsgInputMessage :: Text
+  }
+  deriving (Show)
+
+emptyState :: FormState
+emptyState = FormState NotValidated NotValidated
+
+makeMessage :: FormInput -> Either FormState (Text, Time.UTCTime)
+makeMessage FormInput {..} =
+  case FormState (validDate welcomeMsgInputDate) (notEmpty welcomeMsgInputMessage) of
+    FormState (Valid date) (Valid message) ->
+      Right (message, date)
+    state -> Left state
+
+form :: FormInput -> FormState -> Text -> Html ()
+form FormInput {..} FormState {..} formAction = do
+  form_ [method_ "post", class_ "row g-4", action_ formAction] $ do
+    div_ [class_ "col-12"] $ do
+      let (className, errMsg) = processField welcomeMsgStateDate
+      label_ [class_ "form-label", for_ "date"] "Datum"
+      input_
+        [ class_ className,
+          type_ "text",
+          name_ "date",
+          pattern_ "\\d{2}.\\d{2}.\\d{4} \\d{2}:\\d{2}",
+          value_ welcomeMsgInputDate,
+          id_ "date",
+          required_ "required",
+          describedBy_ "invalidDateFeedback"
+        ]
+      maybe mempty (div_ [class_ "invalid-feedback", id_ "invalidDateFeedback"] . toHtml) errMsg
+    div_ [class_ "col-12"] $ do
+      let (className, errMsg) = processField welcomeMsgStateMessage
+      label_ [class_ "form-label", for_ "message"] "Nachricht"
+      textarea_
+        [ class_ className,
+          type_ "textfield",
+          name_ "message",
+          id_ "message",
+          required_ "required",
+          autofocus_,
+          rows_ "10",
+          cols_ "10",
+          describedBy_ "invalidMessageFeedback"
+        ]
+        (toHtml welcomeMsgInputMessage)
+      maybe mempty (div_ [class_ "invalid-feedback", id_ "invalidMessageFeedback"] . toHtml) errMsg
+    button_ [class_ "btn btn-primary", type_ "submit"] "Speichern"
 
 type ShowEditBtn = Bool
 
@@ -138,13 +159,13 @@ renderFeed zone userIsAdmin msgs =
               )
               msgs
 
-updateWelcomeMsg :: SQLite.Connection -> WelcomeMsgId -> Text -> IO ()
-updateWelcomeMsg conn (WelcomeMsgId id) newMsg =
-  SQLite.execute conn "UPDATE welcome_text SET content = ? WHERE id = ?" [newMsg, Text.pack $ show id]
+updateWelcomeMsg :: SQLite.Connection -> WelcomeMsgId -> Text -> Time.UTCTime -> IO ()
+updateWelcomeMsg conn (WelcomeMsgId id) newMsg newDate =
+  SQLite.execute conn "UPDATE welcome_text SET content = ?, date = ? WHERE id = ?" (newMsg, newDate, id)
 
-saveNewWelcomeMsg :: SQLite.Connection -> Text -> IO ()
-saveNewWelcomeMsg conn =
-  SQLite.execute conn "INSERT INTO welcome_text (content, date) VALUES (?, datetime('now'))" . SQLite.Only
+saveNewWelcomeMsg :: SQLite.Connection -> Text -> Time.UTCTime -> IO ()
+saveNewWelcomeMsg conn msg date =
+  SQLite.execute conn "INSERT INTO welcome_text (content, date) VALUES (?, ?)" (msg, date)
 
 deleteMessage :: SQLite.Connection -> WelcomeMsgId -> IO ()
 deleteMessage conn (WelcomeMsgId id) = SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]
@@ -166,11 +187,16 @@ deletePageLayout = pageLayout "Nachricht Löschen"
 saveNewMessage :: SQLite.Connection -> Wai.Request -> Session.AdminUser -> IO LayoutStub
 saveNewMessage conn req _ = do
   params <- parseParams req
-  case Map.lookup "message" params of
-    Nothing -> return . createPageLayout $ form (Invalid "Nachricht darf nicht leer sein") "/neu" ""
-    Just msg -> do
-      saveNewWelcomeMsg conn msg
-      return . createPageLayout $ form Valid "/neu" msg
+  let input =
+        FormInput
+          (Map.findWithDefault "" "date" params)
+          (Map.findWithDefault "" "message" params)
+  case makeMessage input of
+    Left state ->
+      return . createPageLayout $ form input state "/neu"
+    Right (message, date) -> do
+      saveNewWelcomeMsg conn message date
+      return . createPageLayout $ success "Nachricht erfolgreich erstellt"
 
 handleEditMessage ::
   SQLite.Connection ->
@@ -178,13 +204,17 @@ handleEditMessage ::
   WelcomeMsgId ->
   Session.AdminUser ->
   IO LayoutStub
-handleEditMessage conn req mid@(WelcomeMsgId msgid) _ =
-  Map.findWithDefault "" "message" <$> parseParams req >>= \case
-    "" ->
-      return . editPageLayout $
-        form (Invalid "Nachricht darf nicht leer sein") [i|/editieren/#{msgid}|] ""
-    newMsg -> do
-      updateWelcomeMsg conn mid newMsg
+handleEditMessage conn req mid@(WelcomeMsgId msgid) _ = do
+  params <- parseParams req
+  let input =
+        FormInput
+          (Map.findWithDefault "" "date" params)
+          (Map.findWithDefault "" "message" params)
+  case makeMessage input of
+    Left state ->
+      return . editPageLayout $ form input state [i|/editieren/#{msgid}|]
+    Right (message, date) -> do
+      updateWelcomeMsg conn mid message date
       return . editPageLayout $ success "Nachricht erfolgreich editiert"
 
 showDeleteConfirmation :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
@@ -201,17 +231,21 @@ showDeleteConfirmation conn mid@(WelcomeMsgId msgid) _ = do
 handleDeleteMessage :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
 handleDeleteMessage conn msgid _ = do
   deleteMessage conn msgid
-  return . editPageLayout $ success "Nachricht erfolgreich gelöscht"
+  return . deletePageLayout $ success "Nachricht erfolgreich gelöscht"
 
 showAddMessageForm :: Session.AdminUser -> IO LayoutStub
-showAddMessageForm _ = return . createPageLayout $ form NotValidated "/neu" ""
+showAddMessageForm _ = do
+  now <- Time.getCurrentTime
+  let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ now
+  return . createPageLayout $ form (FormInput formatted "") emptyState "/neu"
 
 showMessageEditForm :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
 showMessageEditForm conn mid@(WelcomeMsgId msgid) _ = do
   getWelcomeMsgFromDb conn mid >>= \case
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
-    Just (WelcomeMsg _ content _) ->
-      return . editPageLayout $ form NotValidated [i|/editieren/#{msgid}|] content
+    Just (WelcomeMsg _ content date) -> do
+      let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ date
+      return . editPageLayout $ form (FormInput formatted content) emptyState [i|/editieren/#{msgid}|]
 
 showFeed :: SQLite.Connection -> Session.Authenticated -> IO LayoutStub
 showFeed conn auth = do

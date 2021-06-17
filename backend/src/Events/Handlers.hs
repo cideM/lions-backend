@@ -35,7 +35,7 @@ import qualified Events.EventForm as EventForm
 import qualified Events.Preview
 import qualified Events.SingleEvent
 import GHC.Exts (sortWith)
-import Layout (ActiveNavLink (..), LayoutStub (..))
+import Layout (ActiveNavLink (..), LayoutStub (..), success)
 import Locale (german)
 import Lucid
 import Network.HTTP.Types (status303)
@@ -147,10 +147,7 @@ handleDeleteEvent conn eventid _ = do
       deleteEvent conn eventid
       return $
         LayoutStub "Veranstaltung" (Just Events) $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Veranstaltung " <> eventTitle event <> " erfolgreich gelöscht"
+          success $ "Veranstaltung " <> eventTitle event <> " erfolgreich gelöscht"
 
 showDeleteEventConfirmation ::
   SQLite.Connection ->
@@ -197,10 +194,7 @@ handleCreateEvent conn req _ = do
     Right newEvent@EventCreate {..} -> do
       createEvent conn newEvent
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
-        div_ [class_ "container p-2"] $ do
-          h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
-          p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-            "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
+        success $ "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
 
 showEditEventForm ::
   SQLite.Connection ->
@@ -254,7 +248,4 @@ handleUpdateEvent conn req eid@(EventId eventid) _ = do
       updateEvent conn eid event
       return $
         LayoutStub "Veranstaltung Editieren" (Just Events) $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"
+          success $ "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"
