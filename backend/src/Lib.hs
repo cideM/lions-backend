@@ -34,8 +34,8 @@ import qualified User.User
 import qualified Userlist
 import qualified Userprofile
 import qualified Web.ClientSession as ClientSession
-import WelcomeMessage.WelcomeMessage (WelcomeMsgId (..))
-import qualified WelcomeMessage.WelcomeMessage as WelcomeMessage
+import WelcomeMessage (WelcomeMsgId (..))
+import qualified WelcomeMessage
 import Prelude hiding (id)
 
 server ::

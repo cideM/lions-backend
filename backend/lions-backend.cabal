@@ -139,11 +139,7 @@ library
     User.Form
     User.User
     Wai
-    WelcomeMessage.Form
-    WelcomeMessage.Feed
-    WelcomeMessage.Types
-    WelcomeMessage.DB
-    WelcomeMessage.WelcomeMessage
+    WelcomeMessage
 
 executable run-lions-backend
   import:         shared-props
