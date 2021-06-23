@@ -262,6 +262,18 @@ addRequestId requestIdVaultKey next req send = do
 main :: IO ()
 main = do
   -- TODO: Would be nicer to read all of this from a file
+  -- 1. Create new S3 user
+  -- 2. Create S3 bucket, no CF all users come from same town basically speed doesn't matter
+  -- 3. Add keys everywhere
+  -- 4..Add form field multiple files
+  -- 5. Figure out how to use those form fields... it'll suck because
+  --    validation comes from the server and now you need to wait for
+  --    validation until your files are also transmitted... but then again
+  --    those PDFs shouldn't be too big or whatever else it is
+  -- 6. Upload files to S3 and insert into table event_attachments eventid fileurl or path on S3
+  -- 7. When someone looks at one of those events, just generate presigned URL
+  --    for all files in bucket and display that as link
+  -- 8. Display remove icon next to each file in event which is a DELETE requets
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
   appEnv <- getEnv "LIONS_ENV" >>= parseEnv
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"

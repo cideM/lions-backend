@@ -195,6 +195,7 @@
           path = deploy-rs.lib.x86_64-linux.activate.nixos serverSystem;
         };
       };
+      nixosConfigurations.server = serverSystem;
       checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
     };
 }
