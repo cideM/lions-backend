@@ -4,7 +4,7 @@
 
 `deploy .`
 
-This might fail because of a weird error message that complains about the current env not being Linux. Whatever? Just comment out the darwin system in the flake and if you're on Darwin then please figure this out :), sincerely, paste me.
+On Darwin please use `./scripts/deploy-docker`. If this fails with something about `variable $src or $srcs should point to the source` then remember that [you made this go away](https://discourse.nixos.org/t/how-to-make-my-flake-work-on-darwin-macos/13713/5) by randomly commenting things out, but ultimately you **didn't change the code at all**. Could be that I was calling `nix develop` followed by `deploy .` and the script instead uses `nix run`. I don't know and I'm currently not motivated to find out.
 
 ## SQLite
 
