@@ -1,0 +1,2 @@
+#! /bin/sh
+docker run -it --rm -v nixcache2:/nix -v (pwd):/foo -w /foo nixpkgs/nix-flakes nix develop
