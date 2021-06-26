@@ -87,8 +87,8 @@ resource "aws_ses_domain_dkim" "lions" {
 }
 
 # Litestream SQLite replication
-# This only let's use "aws ls" this specific bucket! Running just "aws s3 ls"
-# without specifying the bucket name will result in Access Denied
+# This only let's "aws ls" use the specified buckets! Running just "aws s3 ls"
+# without specifying the bucket name will result in "Access Denied".
 # $ terraform output -json
 # $ AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= aws s3 ls lions-achern-litestream-replica-1
 module "s3_user" {
@@ -98,7 +98,8 @@ module "s3_user" {
   s3_actions   = ["s3:*"]
   s3_resources = [
     "${aws_s3_bucket.litestream-replica-1.arn}/*",
-    "${aws_s3_bucket.litestream-replica-1.arn}"
+    "${aws_s3_bucket.litestream-replica-1.arn}",
+    "${aws_s3_bucket.event-attachments.arn}"
    ]
 }
 
@@ -110,6 +111,18 @@ output "litestream_user_access_key_id" {
 output "litestream_user_access_key_secret" {
   value = module.s3_user.secret_access_key
   sensitive = true
+}
+
+resource "aws_s3_bucket" "event-attachments" {
+    bucket = "lions-achern-event-attachments"
+
+    versioning {
+      enabled = true
+    }
+
+    lifecycle {
+      prevent_destroy = true
+    }
 }
 
 resource "aws_s3_bucket" "litestream-replica-1" {

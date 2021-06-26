@@ -11,7 +11,7 @@ where
 import Data.Text (Text)
 import qualified Data.Time as Time
 import Events.Domain (EventCreate (..))
-import Form (FormFieldState (..), processField, validDate, notEmpty)
+import Form (FormFieldState (..), notEmpty, processField, validDate)
 import Layout (describedBy_)
 import Lucid
 
@@ -19,7 +19,8 @@ data FormState = FormState
   { createEventStateTitle :: FormFieldState Text,
     createEventStateDate :: FormFieldState Time.UTCTime,
     createEventStateLocation :: FormFieldState Text,
-    createEventStateDescription :: FormFieldState Text
+    createEventStateDescription :: FormFieldState Text,
+    createEventStateFiles :: FormFieldState [(Text, FilePath)] -- List of (name, file path)
   }
   deriving (Show)
 
@@ -28,7 +29,8 @@ data FormInput = FormInput
     createEventInputDate :: Text,
     createEventInputLocation :: Text,
     createEventInputDescription :: Text,
-    createEventInputFamilyAllowed :: Bool
+    createEventInputFamilyAllowed :: Bool,
+    createEventEventInputWhitelistFiles :: [Text] -- Which uploaded files should be stored permanently
   }
   deriving (Show)
 
@@ -55,7 +57,6 @@ makeEvent FormInput {..} =
     FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
       Right $ EventCreate title date createEventInputFamilyAllowed description location
     state -> Left state
-
 
 render :: Text -> Text -> FormInput -> FormState -> Html ()
 render btnLabel action FormInput {..} FormState {..} = do
@@ -101,6 +102,22 @@ render btnLabel action FormInput {..} FormState {..} = do
         ]
       div_ [id_ "eventDateHelp", class_ "form-text"] "Bitte als Format '12.01.2022 15:00' verwenden."
       maybe mempty (div_ [id_ "eventDateFeedback", class_ "invalid-feedback"] . toHtml) errMsg
+    div_ [class_ "col-md-12 d-flex flex-column"] $ do
+      let (className, errMsg) = processField createEventStateDescription
+      label_ [for_ "eventDescriptionInput", class_ "form-label"] "Beschreibung"
+      textarea_
+        [ class_ className,
+          type_ "textfield",
+          name_ "eventDescriptionInput",
+          id_ "eventDescriptionInput",
+          required_ "required",
+          autofocus_,
+          rows_ "10",
+          describedBy_ "eventDescriptionFeedback",
+          cols_ "10"
+        ]
+        $ toHtml createEventInputDescription
+      maybe mempty (div_ [id_ "eventDescriptionFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-12 d-flex flex-column"] $ do
       let (className, errMsg) = processField createEventStateDescription
       label_ [for_ "eventDescriptionInput", class_ "form-label"] "Beschreibung"
