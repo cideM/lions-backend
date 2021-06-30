@@ -5,8 +5,9 @@ import Control.Monad ((>=>))
 import Control.Monad.Trans.Resource (InternalState, runResourceT, withInternalState)
 import qualified DB
 import qualified Data.ByteString as BS
+import qualified Data.String.Interpolate as Interpolate
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import Data.Text.Encoding (encodeUtf8)
 import Data.UUID (UUID)
 import Data.UUID.V4 (nextRandom)
 import qualified Data.Vault.Lazy as Vault
@@ -20,8 +21,6 @@ import qualified Logging
 import qualified Login.Login as Login
 import Lucid
 import qualified Network.AWS as AWS
-import Network.AWS.Prelude (RqBody (..), toHashed)
-import qualified Network.AWS.S3 as S3
 import Network.HTTP.Types (status200, status403, status404, status500)
 import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
@@ -33,9 +32,8 @@ import Scrypt (verifyPassword)
 import Session (SessionDataVaultKey)
 import qualified Session
 import System.Environment (getEnv)
-import System.Log.FastLogger (LogType' (..), defaultBufSize, newTimeCache, simpleTimeFormat, withTimedFastLogger)
 import Text.Read (readEither)
-import User.Types (Role (..), UserId (..))
+import User.Types (UserId (..))
 import qualified User.User
 import qualified Userlist
 import qualified Userprofile
@@ -43,6 +41,12 @@ import qualified Web.ClientSession as ClientSession
 import WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage
 import Prelude hiding (id)
+
+infoBoxHtml :: Text.Text -> Html ()
+infoBoxHtml msg =
+  div_ [class_ "container p-3 d-flex justify-content-center"] $
+    div_ [class_ "row col-6"] $ do
+      p_ [class_ "alert alert-secondary", role_ "alert"] $ toHtml msg
 
 server ::
   Logging.TimedFastLogger ->
@@ -63,7 +67,7 @@ server
   logger
   dbConn
   sessionKey
-  _
+  requestIdVaultKey
   awsEnv
   port
   appEnv
@@ -74,6 +78,9 @@ server
   req
   send = do
     let vault = Wai.vault req
+
+        -- Create some helpers for doing things based on the user's auth status.
+        routeData = Session.getAuthFromVault sessionDataVaultKey vault
         adminOnlyOrOwn id next = case routeData of
           Session.IsAuthenticated auth@(Session.IsAdmin _) -> next (id, auth)
           Session.IsAuthenticated auth@(Session.IsUser Session.UserSession {Session.userSessionUserId = userId}) ->
@@ -85,44 +92,44 @@ server
         authenticatedOnly' next = case routeData of
           Session.IsAuthenticated auth -> next auth
           _ -> send403
-        routeData = case Vault.lookup sessionDataVaultKey vault of
-          Nothing -> Session.IsNotAuthenticated
-          Just (roles, userid) ->
-            Session.IsAuthenticated $
-              if Admin `elem` roles
-                then Session.IsAdmin . Session.AdminUser $ Session.UserSession userid roles
-                else Session.IsUser $ Session.UserSession userid roles
+
+        -- The layout changes depending on whether you're logged in or not, so
+        -- we dependency inversion through partial application. Witness the
+        -- simplicity!
+        layout' = layout routeData
+
+        -- Because every logger in the Haskell ecosystem insists on forcing
+        -- stupid Monads on me, I'm creating an ad-hoc, shoddily implemented,
+        -- 50% structured logger.
+        requestId = maybe "" (Text.pack . show) $ Vault.lookup requestIdVaultKey vault
+        log' msg = Logging.log logger ([Interpolate.i|"request_id: #{(requestId :: Text.Text)} message: #{(msg :: Text.Text)}"|] :: Text.Text)
+
+        -- TODO: The resetHost should probably be passed in as an argument from the outside
         resetHost =
           if appEnv == Production
             then "https://www.lions-achern.de"
             else Text.pack $ "http://localhost:" <> show port
+
+        -- Dependency inversion through partial application. Ideally handlers
+        -- don't ever require any DB or AWS dependencies. I still test handlers
+        -- with integration tests because interactions with the DB are one of
+        -- my primary sources of bugs. But it helps me focus on the clean.
         sendMail' = SendEmail.sendMail awsEnv resetHost
         awsRun = AWS.runResourceT . AWS.runAWS awsEnv . AWS.within AWS.Frankfurt . AWS.send
-        uploadAttachmentToS3' = Events.Handlers.uploadAttachmentToS3 >>= awsRun
-        layout' = layout routeData
-        send200 =
-          send
-            . Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")]
-            . renderBS
-        send403 =
-          send
-            . Wai.responseLBS status403 [("Content-Type", "text/html; charset=UTF-8")]
-            . renderBS
-            . layout'
-            . LayoutStub "Fehler" Nothing
-            $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-              div_ [class_ "row col-6"] $ do
-                p_ [class_ "alert alert-secondary", role_ "alert"] "Du hast keinen Zugriff auf diese Seite"
-        send404 =
-          send
-            . Wai.responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
-            . renderBS
-            . layout'
-            . LayoutStub "Nicht gefunden" Nothing
-            $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-              div_ [class_ "row col-6"] $ do
-                p_ [class_ "alert alert-secondary", role_ "alert"] "Nicht Gefunden"
+        uploadAttachmentToS3' filepath = Events.Handlers.uploadAttachmentToS3 filepath >>= awsRun
         tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) (ClientSession.encryptIO sessionKey)
+        getAllEvents = Events.DB.getAll dbConn
+
+        -- Some helpers related to rendering content. I could look into
+        -- bringing back Snap or something similar so I don't need to
+        -- reimplement these helpers in a crappy and bug ridden way.
+        headers = [("Content-Type", "text/html; charset=UTF-8")]
+        render code = send . Wai.responseLBS code headers . renderBS
+        send200 = render status200
+        send403 = render status403 . layout' . LayoutStub "Fehler" Nothing $ infoBoxHtml "Du hast keinen Zugriff auf diese Seite"
+        send404 = render status404 . layout' . LayoutStub "Nicht gefunden" Nothing $ infoBoxHtml "Nicht Gefunden"
+
+    -- Now the actual routing starts. We get the paths and pattern match on them.
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
@@ -130,7 +137,7 @@ server
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents dbConn >=> send200 . layout'
+          "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents getAllEvents >=> send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", "neu"] ->
@@ -249,7 +256,7 @@ server
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.login logger tryLogin' appEnv req send
+          "POST" -> Login.login log' tryLogin' appEnv req send
           "GET" -> Login.showLoginForm routeData >>= send200
           _ -> send404
       ["logout"] ->
@@ -302,7 +309,7 @@ main = do
         runResourceT $
           withInternalState
             ( \internalState ->
-                withLogger $ \logger -> do
+                Logging.withLogger $ \logger -> do
                   let port = (3000 :: Int)
                       app' =
                         server
@@ -320,15 +327,14 @@ main = do
 
                   let requestIdMiddleware = addRequestId requestIdVaultKey
                       sessionMiddleware = Session.middleware logger sessionDataVaultKey conn sessionKey
-                      errorHandler err = do
+                      errorHandler send err = do
                         Logging.log logger $ show err
                         send500 send
+                      finalApp req send =
+                        handleAny (errorHandler send) $ (requestIdMiddleware . sessionMiddleware) app' req send
                       warpServer = runSettings . setPort port $ setHost "localhost" defaultSettings
 
-                  warpServer
-                    . logStdout
-                    . staticPolicy (addBase "public")
-                    $ handleAny errorHandler . (requestIdMiddleware . sessionMiddleware) app'
+                  warpServer . logStdout . staticPolicy (addBase "public") $ finalApp
             )
     )
   where

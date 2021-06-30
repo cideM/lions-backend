@@ -1,6 +1,9 @@
 module Session
   ( middleware,
     Session (..),
+    isUserAdmin,
+    getSessionFromAuth,
+    getAuthFromVault,
     SessionDataVaultKey,
     SessionId (..),
     ValidSession (..),
@@ -36,7 +39,7 @@ import User.DB
   ( getCredentials,
     getRolesFromDb,
   )
-import User.Types (Role, UserId (..))
+import User.Types (Role (..), UserId (..))
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
@@ -215,3 +218,21 @@ tryLogin
         saveSession conn newSession
         encryptedSessionId <- clientEncrypt (encodeUtf8 sessionId)
         return $ Right (encryptedSessionId, expires)
+
+getAuthFromVault :: Vault.Key ([Role], UserId) -> Vault.Vault -> Authentication
+getAuthFromVault sessionDataVaultKey vault =
+  case Vault.lookup sessionDataVaultKey vault of
+    Nothing -> IsNotAuthenticated
+    Just (roles, userid) ->
+      IsAuthenticated $
+        if Admin `elem` roles
+          then IsAdmin . AdminUser $ UserSession userid roles
+          else IsUser $ UserSession userid roles
+
+isUserAdmin :: Authenticated -> Bool
+isUserAdmin (Session.IsAdmin _) = True
+isUserAdmin _ = False
+
+getSessionFromAuth :: Authenticated -> UserSession
+getSessionFromAuth (Session.IsAdmin (Session.AdminUser session)) = session
+getSessionFromAuth (Session.IsUser session) = session

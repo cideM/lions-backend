@@ -8,7 +8,6 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
-import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..))
 import Layout (layout)
 import qualified Logging as Logging
@@ -17,10 +16,8 @@ import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Session (Authentication (..))
-import User.DB (getCredentials)
 import User.Types (Role, UserId (..))
 import Wai (parseParams)
-import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
@@ -60,7 +57,7 @@ logout deleteSessions vaultLookup env req send =
 -- POST handler that creates a new session in the DB and sets a cookie with the
 -- encrypted session ID
 login ::
-  Logging.TimedFastLogger ->
+  Logging.Log ->
   (Text -> Text -> IO (Either Text (ByteString, Time.UTCTime))) ->
   Environment ->
   Wai.Request ->

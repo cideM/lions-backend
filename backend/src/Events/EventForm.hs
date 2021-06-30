@@ -13,7 +13,7 @@ import Data.Text (Text)
 import qualified Data.Time as Time
 import Events.Domain (EventCreate (..))
 import Form (FormFieldState (..), notEmpty, processField, validDate)
-import Layout (ariaLabel_, describedBy_)
+import Layout (describedBy_)
 import Lucid
 
 -- TODO: Rename create because it's both edit and create

@@ -5,7 +5,7 @@ module Events.Handlers
     showDeleteEventConfirmation,
     handleDeleteEvent,
     handleCreateEvent,
-    awsUploadFile,
+    uploadAttachmentToS3,
     handleUpdateEvent,
     showEditEventForm,
     replyToEvent,
@@ -15,9 +15,9 @@ where
 import Control.Exception.Safe
 import Control.Monad (when)
 import Control.Monad.Trans.Resource (InternalState)
-import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Foldable (find)
+import qualified Data.Map.Strict as M
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.Ord (Down (..))
@@ -28,7 +28,6 @@ import qualified Database.SQLite.Simple as SQLite
 import Events.DB
   ( deleteEvent,
     deleteReply,
-    getAll,
     getEvent,
     updateEvent,
     upsertReply,
@@ -41,7 +40,6 @@ import GHC.Exts (sortWith)
 import Layout (ActiveNavLink (..), LayoutStub (..), success)
 import Locale (german)
 import Lucid
-import qualified Network.AWS as AWS
 import Network.AWS.Prelude (RqBody (..), toHashed)
 import qualified Network.AWS.S3 as S3
 import Network.HTTP.Types (status303)
@@ -59,28 +57,35 @@ import Network.Wai.Parse
 import qualified Session
 import Text.Read (readEither)
 import User.DB (getUser)
-import User.Types (UserProfile (..))
+import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
 
-showAllEvents ::
-  SQLite.Connection ->
-  Session.Authenticated ->
-  IO LayoutStub
-showAllEvents conn auth = do
-  let (userIsAdmin, Session.UserSession {..}) = case auth of
-        Session.IsAdmin (Session.AdminUser session) -> (True, session)
-        Session.IsUser session -> (False, session)
-  events <- map (addOwnReply userSessionUserId) . sortByDateDesc . Map.toList <$> getAll conn
-  return . LayoutStub "Veranstaltungen" (Just Events) $
-    div_ [class_ "container"] $ do
-      when userIsAdmin $
-        a_ [class_ "mb-1 mb-2 btn btn-sm btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
-      h1_ [class_ "h3 mb-3"] "Veranstaltungen"
-      div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] $
-        mapM_ (div_ [class_ "col"] . Events.Preview.render) events
+toEventList :: UserId -> M.Map EventId Event -> [(EventId, Event, Maybe Reply)]
+toEventList userid = map getOwnReplyFromEvent . sortEvents . M.toList
   where
-    addOwnReply userid (eventid, e@Event {..}) = (eventid, e, find ((==) userid . replyUserId) eventReplies)
-    sortByDateDesc = sortWith (Down . (\(_, Event {..}) -> eventDate))
+    sortEvents = sortWith (Down . eventDate . snd)
+    getOwnReplyFromEvent (eventid, e) =
+      let rs = eventReplies e
+          reply = find ((==) userid . replyUserId) rs
+       in (eventid, e, reply)
+
+-- This displays each event as a little container that you can click to get to
+-- the big event page.
+eventPreviewsHtml :: Bool -> [(EventId, Event, Maybe Reply)] -> Html ()
+eventPreviewsHtml userIsAdmin events =
+  div_ [class_ "container"] $ do
+    when userIsAdmin $
+      a_ [class_ "mb-1 mb-2 btn btn-sm btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
+    h1_ [class_ "h3 mb-3"] "Veranstaltungen"
+    div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] $
+      mapM_ (div_ [class_ "col"] . Events.Preview.render) events
+
+showAllEvents :: IO (M.Map EventId Event) -> Session.Authenticated -> IO LayoutStub
+showAllEvents getAllEvents auth = do
+  let userIsAdmin = Session.isUserAdmin auth
+      Session.UserSession {..} = Session.getSessionFromAuth auth
+  events <- toEventList userSessionUserId <$> getAllEvents
+  return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml userIsAdmin events
 
 replyToEvent ::
   SQLite.Connection ->
@@ -206,18 +211,19 @@ parseBody body =
   -- All files newly added with this particular request
   let newFileNames = filter ("\"\"" /=) . map (decodeUtf8 . fileName . snd) $ snd body
       -- Unchecked checkboxes are not sent with the form, so we keep track of
-      -- all files through hidden input fields
-      allFileNames = map (decodeUtf8 . snd) . filter ((==) "allFiles" . fst) $ fst body
-      allFileNames' = newFileNames ++ allFileNames
+      -- them through hidden input fields
+      previousFilenames = map (decodeUtf8 . snd) . filter ((==) "allFiles" . fst) $ fst body
+      allFileNames = newFileNames ++ previousFilenames
       -- checked checkboxes from current request
       checked = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) $ fst body
-      checkboxes = map (\name -> (name, isJust $ find (name ==) checked)) allFileNames'
+      -- For each file generate a checkbox and optionally mark it was checked.
+      checkboxes = map (\name -> (name, isJust $ find (name ==) checked)) allFileNames
    in checkboxes
 
 handleCreateEvent ::
   (EventCreate -> IO ()) ->
   InternalState ->
-  _ ->
+  (FilePath -> IO S3.PutObjectResponse) ->
   Wai.Request ->
   Session.AdminUser ->
   IO LayoutStub
