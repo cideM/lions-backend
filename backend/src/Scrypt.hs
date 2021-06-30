@@ -49,12 +49,12 @@ firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
            in Right . encodeBase64 $ encryptCTR aes (nullIV :: IV AES) signerKeyDec
 
 verifyPassword ::
-  BS.ByteString -> -- User's salt
   BS.ByteString -> -- Project's base64_signer_key
   BS.ByteString -> -- Project's base64_salt_separator
+  BS.ByteString -> -- User's salt
   BS.ByteString -> -- Existing password from database
   BS.ByteString -> -- Input that we want to verify
   Either Text Bool
-verifyPassword userSalt signerKey saltSep want have = do
+verifyPassword signerKey saltSep userSalt want have = do
   hashed <- encodeUtf8 <$> firebaseHashPw userSalt signerKey saltSep 14 8 have
   return $ want == hashed

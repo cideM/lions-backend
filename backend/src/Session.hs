@@ -5,6 +5,8 @@ module Session
     SessionId (..),
     ValidSession (..),
     createNewSession,
+    deleteSessionsForUser,
+    tryLogin,
     deleteSession,
     getSessionsFromDbByUser,
     saveSession,
@@ -16,9 +18,12 @@ module Session
 where
 
 import Control.Exception.Safe
+import qualified Crypto.BCrypt as BCrypt
+import Data.ByteString (ByteString)
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8)
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
@@ -28,7 +33,8 @@ import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
 import Time (timeDaysFromNow)
 import User.DB
-  ( getRolesFromDb,
+  ( getCredentials,
+    getRolesFromDb,
   )
 import User.Types (Role, UserId (..))
 import qualified Web.ClientSession as ClientSession
@@ -88,6 +94,9 @@ getSessionsFromDbByUser conn (UserId id) =
       (sessions :: [(Text, Time.UTCTime, Int)]) ->
         return $ map (\(key, expires, userid) -> Session (SessionId key) expires (UserId userid)) sessions
 
+deleteSessionsForUser :: SQLite.Connection -> UserId -> IO ()
+deleteSessionsForUser conn (UserId uid) = SQLite.execute conn "delete from sessions where userid = ?" [uid]
+
 saveSession :: SQLite.Connection -> ValidSession -> IO ()
 saveSession conn (ValidSession (Session (SessionId key) expires (UserId uid))) =
   SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (key, expires, uid)
@@ -107,14 +116,14 @@ getSessionIdFromReq sessionKey req =
           Nothing -> Left "empty session cookie"
           Just decrypted -> Right . SessionId $ decodeUtf8 decrypted
 
--- The business logic that powers the middleware below.
-tryLogin ::
+-- Try to authenticate a user based on the session ID from the client cookie.
+tryLoginFromSession ::
   SQLite.Connection ->
   ClientSession.Key ->
   SessionDataVaultKey ->
   Wai.Request ->
   IO (Either Text Wai.Request)
-tryLogin dbConn sessionKey sessionDataVaultKey req = do
+tryLoginFromSession dbConn sessionKey sessionDataVaultKey req = do
   case getSessionIdFromReq sessionKey req of
     Left err -> return $ Left err
     Right sessionId -> do
@@ -144,9 +153,9 @@ middleware ::
   Wai.Application ->
   Wai.Application
 middleware logger sessionDataVaultKey dbConn sessionKey nextApp req send = do
-  tryLogin dbConn sessionKey sessionDataVaultKey req >>= \case
+  tryLoginFromSession dbConn sessionKey sessionDataVaultKey req >>= \case
     Left e -> do
-      Logging.log logger $ "error in tryLogin: " <> show e
+      Logging.log logger $ "error in tryLoginFromSession: " <> show e
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send
@@ -157,3 +166,52 @@ middleware logger sessionDataVaultKey dbConn sessionKey nextApp req send = do
         _ -> do
           send $ Wai.responseBuilder status302 [("Location", "/login")] ""
     Right req' -> nextApp req' send
+
+-- Check if user salt, existing hash and password match
+type VerifyHash = (ByteString -> ByteString -> ByteString -> Either Text Bool)
+
+-- Encrypt a ByteString for storage on the client
+type ClientEncrypt = (ByteString -> IO ByteString)
+
+-- Checks if credentials are valid and then generates a new session, stores it
+-- in the DB and returns it to the caller. This function tries two different
+-- hashing algorithms. One for old password hashes exported from Firebase and
+-- the other is a standard BCrypt algorithm for any new passwords.
+tryLogin ::
+  SQLite.Connection ->
+  VerifyHash ->
+  ClientEncrypt ->
+  Text ->
+  Text ->
+  IO (Either Text (ByteString, Time.UTCTime))
+tryLogin
+  conn
+  verifyPassword
+  clientEncrypt
+  email
+  formPw = do
+    getCredentials conn email >>= \case
+      Nothing -> return $ Left "no user found"
+      Just (userId, userSalt, dbPw) -> do
+        let formPw' = encodeUtf8 formPw
+        let dbPw' = encodeUtf8 dbPw
+        case userSalt of
+          -- Firebase credentials
+          Just us -> do
+            case verifyPassword (encodeUtf8 us) dbPw' formPw' of
+              Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
+              Right ok ->
+                if ok
+                  then onSuccess userId
+                  else (return $ Left "incorrect password")
+          -- BCrypt, new credentials
+          Nothing -> do
+            if not $ BCrypt.validatePassword dbPw' formPw'
+              then return $ Left "incorrect password"
+              else onSuccess userId
+    where
+      onSuccess userId = do
+        newSession@(ValidSession (Session (SessionId sessionId) expires _)) <- createNewSession userId
+        saveSession conn newSession
+        encryptedSessionId <- clientEncrypt (encodeUtf8 sessionId)
+        return $ Right (encryptedSessionId, expires)

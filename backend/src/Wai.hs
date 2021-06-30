@@ -1,4 +1,4 @@
-module Wai (parseQueryParams, parseParams) where
+module Wai (parseQueryParams, parseParams, paramsToMap) where
 
 import Data.Bifunctor (bimap)
 import Data.ByteString (ByteString)

@@ -5,6 +5,7 @@ module Events.Handlers
     showDeleteEventConfirmation,
     handleDeleteEvent,
     handleCreateEvent,
+    awsUploadFile,
     handleUpdateEvent,
     showEditEventForm,
     replyToEvent,
@@ -13,17 +14,19 @@ where
 
 import Control.Exception.Safe
 import Control.Monad (when)
+import Control.Monad.Trans.Resource (InternalState)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Data.Foldable (find)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.Ord (Down (..))
 import qualified Data.Text as Text
-import Data.Text.Encoding (encodeUtf8)
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Events.DB
-  ( createEvent,
-    deleteEvent,
+  ( deleteEvent,
     deleteReply,
     getAll,
     getEvent,
@@ -38,13 +41,26 @@ import GHC.Exts (sortWith)
 import Layout (ActiveNavLink (..), LayoutStub (..), success)
 import Locale (german)
 import Lucid
+import qualified Network.AWS as AWS
+import Network.AWS.Prelude (RqBody (..), toHashed)
+import qualified Network.AWS.S3 as S3
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
+import Network.Wai.Parse
+  ( File,
+    FileInfo (..),
+    Param,
+    ParseRequestBodyOptions,
+    defaultParseRequestBodyOptions,
+    parseRequestBodyEx,
+    setMaxRequestFileSize,
+    tempFileBackEnd,
+  )
 import qualified Session
 import Text.Read (readEither)
 import User.DB (getUser)
 import User.Types (UserProfile (..))
-import Wai (parseParams)
+import Wai (paramsToMap, parseParams)
 
 showAllEvents ::
   SQLite.Connection ->
@@ -171,13 +187,66 @@ showDeleteEventConfirmation conn eid@(EventId eventid) _ = do
               ]
               $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Veranstaltung löschen!"
 
+uploadAttachmentToS3 :: FilePath -> IO S3.PutObject
+uploadAttachmentToS3 filePath = do
+  contents <- BS.readFile filePath
+  let key = S3.ObjectKey $ Text.pack filePath
+  return $ S3.putObject "lions-achern-event-attachments" key $ Hashed $ toHashed contents
+
+-- | File size 100MB
+fileUploadOpts :: ParseRequestBodyOptions
+fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
+
+type FileName = Text.Text
+
+type FileChecked = (FileName, Bool)
+
+parseBody :: ([Param], [File y]) -> [FileChecked]
+parseBody body =
+  -- All files newly added with this particular request
+  let newFileNames = filter ("\"\"" /=) . map (decodeUtf8 . fileName . snd) $ snd body
+      -- Unchecked checkboxes are not sent with the form, so we keep track of
+      -- all files through hidden input fields
+      allFileNames = map (decodeUtf8 . snd) . filter ((==) "allFiles" . fst) $ fst body
+      allFileNames' = newFileNames ++ allFileNames
+      -- checked checkboxes from current request
+      checked = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) $ fst body
+      checkboxes = map (\name -> (name, isJust $ find (name ==) checked)) allFileNames'
+   in checkboxes
+
 handleCreateEvent ::
-  SQLite.Connection ->
+  (EventCreate -> IO ()) ->
+  InternalState ->
+  _ ->
   Wai.Request ->
   Session.AdminUser ->
   IO LayoutStub
-handleCreateEvent conn req _ = do
-  params <- parseParams req
+handleCreateEvent createEvent internalState uploadFile req _ = do
+  -- There's no point in trying to catch an exception arising from a payload
+  -- that's too large. The connection will be closed, so no more bytes are read
+  -- by the server, and the browser will likely just show a connection reset
+  -- browser error. Meaning the user will have no idea what's going on.
+  -- Therefore the limit is set really high. If I want to enforce a lower limit
+  -- but also show nice errors that means always reading the entire request
+  -- payload and then doing a check for its size. For now I just won't enforce
+  -- any file limit other than the hard 100MB.
+  body <- parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
+  -- ( [ ("eventTitleInput", "test"),
+  --     ("eventLocationInput", "dawd"),
+  --     ("eventDateInput", "19.07.2021 19:00"),
+  --     ("eventDescriptionInput", "dwdaw")
+  --   ],
+  --   [ ( "eventAttachmentsInput",
+  --       FileInfo
+  --         { fileName = "bluetooth_adapter_invoice.pdf",
+  --           fileContentType = "application/pdf",
+  --           fileContent = "/var/folders/k5/1rl8klmn4sd910pxy672sznr0000gp/T/webenc25795-0.buf"
+  --         }
+  --     )
+  --   ]
+  --   )
+  let params = paramsToMap $ fst body
+      checkboxes = parseBody body
   let input =
         EventForm.FormInput
           (Map.findWithDefault "" "eventTitleInput" params)
@@ -185,6 +254,7 @@ handleCreateEvent conn req _ = do
           (Map.findWithDefault "" "eventLocationInput" params)
           (Map.findWithDefault "" "eventDescriptionInput" params)
           (isJust $ Map.lookup "eventFamAllowedInput" params)
+          checkboxes
   case EventForm.makeEvent input of
     Left state -> do
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
@@ -192,7 +262,7 @@ handleCreateEvent conn req _ = do
           h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
           EventForm.render "Speichern" "/veranstaltungen/neu" input state
     Right newEvent@EventCreate {..} -> do
-      createEvent conn newEvent
+      createEvent newEvent
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
         success $ "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
 
@@ -212,6 +282,7 @@ showEditEventForm conn eid@(EventId eventid) _ = do
               eventLocation
               eventDescription
               eventFamilyAllowed
+              [] -- TODO
        in return . LayoutStub "Veranstaltung Editieren" (Just Events) $
             div_ [class_ "container p-2"] $ do
               h1_ [class_ "h4 mb-3"] "Veranstaltung editieren"
@@ -234,6 +305,7 @@ handleUpdateEvent conn req eid@(EventId eventid) _ = do
           (Map.findWithDefault "" "eventLocationInput" params)
           (Map.findWithDefault "" "eventDescriptionInput" params)
           (isJust $ Map.lookup "eventFamAllowedInput" params)
+          [] -- TODO
   case EventForm.makeEvent input of
     Left state ->
       return $

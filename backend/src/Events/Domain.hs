@@ -27,13 +27,13 @@ data Reply = Reply
 instance ToJSON Reply where
   toEncoding = genericToEncoding defaultOptions
 
--- TODO: Ok this duplication also sucks... maybe tuples again? :(
 data EventCreate = EventCreate
   { eventCreateTitle :: Text,
     eventCreateDate :: Time.UTCTime,
     eventCreateFamilyAllowed :: Bool,
     eventCreateDescription :: Text,
-    eventCreateLocation :: Text
+    eventCreateLocation :: Text,
+    eventCreateFiles :: [Text]
   }
   deriving (Show, Generic)
 

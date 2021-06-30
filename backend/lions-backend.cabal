@@ -80,6 +80,8 @@ library
     , aeson
     , amazonka
     , amazonka-ses
+    , amazonka-s3
+    , amazonka-core
     , base                   ^>=4.14.1.0
     , base64
     , bcrypt
@@ -88,6 +90,7 @@ library
     , clientsession
     , containers
     , cookie
+    , resourcet
     , crypto-api
     , crypto-cipher-types
     , email-validate
@@ -129,6 +132,7 @@ library
     PasswordReset.ResetEmailForm
     PasswordReset.ChangePasswordForm
     PasswordReset.SendEmail
+    DB
     Scrypt
     Session
     Time
