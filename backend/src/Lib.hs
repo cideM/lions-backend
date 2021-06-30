@@ -33,6 +33,7 @@ import Session (SessionDataVaultKey)
 import qualified Session
 import System.Environment (getEnv)
 import Text.Read (readEither)
+import qualified User.DB
 import User.Types (UserId (..))
 import qualified User.User
 import qualified Userlist
@@ -114,11 +115,18 @@ server
         -- don't ever require any DB or AWS dependencies. I still test handlers
         -- with integration tests because interactions with the DB are one of
         -- my primary sources of bugs. But it helps me focus on the clean.
+        -- TODO: Make this more ergonomic maybe by bundling stuff in a record
         sendMail' = SendEmail.sendMail awsEnv resetHost
         awsRun = AWS.runResourceT . AWS.runAWS awsEnv . AWS.within AWS.Frankfurt . AWS.send
         uploadAttachmentToS3' filepath = Events.Handlers.uploadAttachmentToS3 filepath >>= awsRun
         tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) (ClientSession.encryptIO sessionKey)
         getAllEvents = Events.DB.getAll dbConn
+        getUser = User.DB.getUser dbConn
+        deleteReply = Events.DB.deleteReply dbConn
+        upsertReply = Events.DB.upsertReply dbConn
+        getEvent = Events.DB.getEvent dbConn
+        deleteEvent = Events.DB.deleteEvent dbConn
+        updateEvent = Events.DB.updateEvent dbConn
 
         -- Some helpers related to rendering content. I could look into
         -- bringing back Snap or something similar so I don't need to
@@ -160,7 +168,7 @@ server
             case Wai.requestMethod req of
               "GET" ->
                 authenticatedOnly' $
-                  Events.Handlers.showEvent dbConn (EventId parsed) >=> \case
+                  Events.Handlers.showEvent getEvent (EventId parsed) >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
               _ -> send404
@@ -169,23 +177,25 @@ server
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "POST" -> authenticatedOnly' $ Events.Handlers.replyToEvent dbConn req send (EventId parsed)
+              "POST" ->
+                authenticatedOnly' $
+                  Events.Handlers.replyToEvent getUser deleteReply upsertReply req send (EventId parsed)
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation dbConn (EventId parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent dbConn (EventId parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation getEvent (EventId parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent getEvent deleteEvent (EventId parsed) >=> send200 . layout'
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm dbConn (EventId parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.handleUpdateEvent dbConn req (EventId parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm getEvent (EventId parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Events.Handlers.handleUpdateEvent updateEvent req (EventId parsed) >=> send200 . layout'
               _ -> send404
       ["loeschen", i] ->
         case readEither (Text.unpack i) of

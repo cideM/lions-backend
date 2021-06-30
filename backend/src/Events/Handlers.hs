@@ -21,17 +21,10 @@ import qualified Data.Map.Strict as M
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.Ord (Down (..))
+import qualified Data.String.Interpolate as Interpolate
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
-import qualified Database.SQLite.Simple as SQLite
-import Events.DB
-  ( deleteEvent,
-    deleteReply,
-    getEvent,
-    updateEvent,
-    upsertReply,
-  )
 import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
 import qualified Events.EventForm as EventForm
 import qualified Events.Preview
@@ -45,10 +38,7 @@ import qualified Network.AWS.S3 as S3
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
 import Network.Wai.Parse
-  ( File,
-    FileInfo (..),
-    Param,
-    ParseRequestBodyOptions,
+  ( FileInfo (..),
     defaultParseRequestBodyOptions,
     parseRequestBodyEx,
     setMaxRequestFileSize,
@@ -56,7 +46,6 @@ import Network.Wai.Parse
   )
 import qualified Session
 import Text.Read (readEither)
-import User.DB (getUser)
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
 
@@ -88,53 +77,60 @@ showAllEvents getAllEvents auth = do
   return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml userIsAdmin events
 
 replyToEvent ::
-  SQLite.Connection ->
+  (UserId -> IO (Maybe UserProfile)) ->
+  (EventId -> UserId -> IO ()) ->
+  (EventId -> Reply -> IO ()) ->
   Wai.Request ->
   (Wai.Response -> IO a) ->
   EventId ->
   Session.Authenticated ->
   IO a
-replyToEvent conn req send eventid@(EventId i) auth = do
-  let (_, Session.UserSession {..}) = case auth of
-        Session.IsAdmin (Session.AdminUser session) -> (True, session)
-        Session.IsUser session -> (False, session)
-  UserProfile {..} <-
-    getUser conn userSessionUserId >>= \case
-      Nothing -> throwString $ "no user for userid from session, here's the user id: " <> show userSessionUserId
+replyToEvent getUser deleteReply upsertReply req send eventid@(EventId i) auth = do
+  let Session.UserSession {..} = Session.getSessionFromAuth auth
+
+  UserProfile {userEmail = userEmail} <-
+    getUser userSessionUserId >>= \case
+      Nothing -> throwString [Interpolate.i|"no user for userid from session #{userSessionUserId}"|]
       Just v -> return v
-  params <- parseParams req
-  coming <-
-    maybe (throwString "no 'reply' param") parseComing $
-      Map.lookup "reply" params
-  numberOfGuests <-
-    maybe (throwString "no 'numberOfGuests' param") parseNumGuests $
-      Map.lookup "numberOfGuests" params
+
+  (coming, numberOfGuests) <- parseParams'
+
+  -- This is the core branching in this handler, everything else is just
+  -- necessary edge cases and parsing inputs. The "Nothing" case is for when
+  -- the user doesn't want commit to either coming or not coming, which I model
+  -- as having no reply. The "Just" case is then either yes or no, which
+  -- doesn't matter. What matters is that I now store that repl.
   case coming of
-    Nothing -> deleteReply conn eventid userSessionUserId
-    Just yesno -> upsertReply conn eventid (Reply yesno userEmail userSessionUserId numberOfGuests)
+    Nothing -> deleteReply eventid userSessionUserId
+    Just yesno -> upsertReply eventid (Reply yesno userEmail userSessionUserId numberOfGuests)
+
   send $ Wai.responseLBS status303 [("Location", encodeUtf8 $ "/veranstaltungen/" <> Text.pack (show i))] mempty
   where
+    parseParams' = do
+      params <- parseParams req
+      let replyParam = Map.lookup "reply" params
+          numGuestsParam = Map.lookup "numberOfGuests" params
+      coming <- maybe (throwString "no 'reply' param") parseComing replyParam
+      numberOfGuests <- maybe (throwString "no 'numberOfGuests' param") parseNumGuests numGuestsParam
+      return (coming, numberOfGuests)
+
     parseComing "coming" = return $ Just True
     parseComing "notcoming" = return $ Just False
     parseComing "noreply" = return Nothing
-    parseComing s = throwString . Text.unpack $ "unknown 'coming' value: " <> s
+    parseComing s = throwString [Interpolate.i|unknown coming value '#{s :: Text.Text}'|]
 
     parseNumGuests "" = return 0
     parseNumGuests s =
       case readEither (Text.unpack s) of
-        Left e -> throwString . Text.unpack $ "couldn't parse '" <> s <> "' number of guests as number: " <> Text.pack (show e)
+        Left e -> throwString [Interpolate.i|couldn't parse '#{s}' as number: #{e}|]
         Right i' -> return i'
 
-showEvent ::
-  SQLite.Connection ->
-  EventId ->
-  Session.Authenticated ->
-  IO (Maybe LayoutStub)
-showEvent conn eventid auth = do
+showEvent :: (EventId -> IO (Maybe Event)) -> EventId -> Session.Authenticated -> IO (Maybe LayoutStub)
+showEvent getEvent eventid auth = do
   let (userIsAdmin, Session.UserSession {..}) = case auth of
         Session.IsAdmin (Session.AdminUser session) -> (True, session)
         Session.IsUser session -> (False, session)
-  maybeevent <- getEvent conn eventid
+  maybeevent <- getEvent eventid
   case maybeevent of
     Nothing -> return Nothing
     Just e@Event {..} -> do
@@ -153,31 +149,28 @@ showCreateEvent _ = do
       EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
 
 handleDeleteEvent ::
-  SQLite.Connection ->
+  (EventId -> IO (Maybe Event)) ->
+  (EventId -> IO ()) ->
   EventId ->
   Session.AdminUser ->
   IO LayoutStub
-handleDeleteEvent conn eventid _ = do
-  maybeEvent <- getEvent conn eventid
+handleDeleteEvent getEvent deleteEvent eventid _ = do
+  maybeEvent <- getEvent eventid
   case maybeEvent of
     Nothing -> return . LayoutStub "Fehler" (Just Events) $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just event -> do
-      deleteEvent conn eventid
+      deleteEvent eventid
       return $
         LayoutStub "Veranstaltung" (Just Events) $
           success $ "Veranstaltung " <> eventTitle event <> " erfolgreich gelöscht"
 
-showDeleteEventConfirmation ::
-  SQLite.Connection ->
-  EventId ->
-  Session.AdminUser ->
-  IO LayoutStub
-showDeleteEventConfirmation conn eid@(EventId eventid) _ = do
+showDeleteEventConfirmation :: (EventId -> IO (Maybe Event)) -> EventId -> Session.AdminUser -> IO LayoutStub
+showDeleteEventConfirmation getEvent eid@(EventId eventid) _ = do
   -- TODO: Duplicated
-  getEvent conn eid >>= \case
+  getEvent eid >>= \case
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
       return . LayoutStub "Veranstaltung Löschen" (Just Events) $
@@ -198,28 +191,6 @@ uploadAttachmentToS3 filePath = do
   let key = S3.ObjectKey $ Text.pack filePath
   return $ S3.putObject "lions-achern-event-attachments" key $ Hashed $ toHashed contents
 
--- | File size 100MB
-fileUploadOpts :: ParseRequestBodyOptions
-fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
-
-type FileName = Text.Text
-
-type FileChecked = (FileName, Bool)
-
-parseBody :: ([Param], [File y]) -> [FileChecked]
-parseBody body =
-  -- All files newly added with this particular request
-  let newFileNames = filter ("\"\"" /=) . map (decodeUtf8 . fileName . snd) $ snd body
-      -- Unchecked checkboxes are not sent with the form, so we keep track of
-      -- them through hidden input fields
-      previousFilenames = map (decodeUtf8 . snd) . filter ((==) "allFiles" . fst) $ fst body
-      allFileNames = newFileNames ++ previousFilenames
-      -- checked checkboxes from current request
-      checked = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) $ fst body
-      -- For each file generate a checkbox and optionally mark it was checked.
-      checkboxes = map (\name -> (name, isJust $ find (name ==) checked)) allFileNames
-   in checkboxes
-
 handleCreateEvent ::
   (EventCreate -> IO ()) ->
   InternalState ->
@@ -237,6 +208,8 @@ handleCreateEvent createEvent internalState uploadFile req _ = do
   -- payload and then doing a check for its size. For now I just won't enforce
   -- any file limit other than the hard 100MB.
   body <- parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
+
+  -- Here's what the body will look like
   -- ( [ ("eventTitleInput", "test"),
   --     ("eventLocationInput", "dawd"),
   --     ("eventDateInput", "19.07.2021 19:00"),
@@ -252,15 +225,17 @@ handleCreateEvent createEvent internalState uploadFile req _ = do
   --   ]
   --   )
   let params = paramsToMap $ fst body
-      checkboxes = parseBody body
-  let input =
+      checkboxes = parseFileUploadBody body
+      fromParams key = Map.findWithDefault "" key params
+      input =
         EventForm.FormInput
-          (Map.findWithDefault "" "eventTitleInput" params)
-          (Map.findWithDefault "" "eventDateInput" params)
-          (Map.findWithDefault "" "eventLocationInput" params)
-          (Map.findWithDefault "" "eventDescriptionInput" params)
+          (fromParams "eventTitleInput")
+          (fromParams "eventDateInput")
+          (fromParams "eventLocationInput")
+          (fromParams "eventDescriptionInput")
           (isJust $ Map.lookup "eventFamAllowedInput" params)
           checkboxes
+
   case EventForm.makeEvent input of
     Left state -> do
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
@@ -271,14 +246,30 @@ handleCreateEvent createEvent internalState uploadFile req _ = do
       createEvent newEvent
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
         success $ "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
+  where
+    -- File size 100MB
+    fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
+
+    parseFileUploadBody body =
+      -- All files newly added with this particular request
+      let newFileNames = filter ("\"\"" /=) . map (decodeUtf8 . fileName . snd) $ snd body
+          -- Unchecked checkboxes are not sent with the form, so we keep track of
+          -- them through hidden input fields
+          previousFilenames = map (decodeUtf8 . snd) . filter ((==) "allFiles" . fst) $ fst body
+          allFileNames = newFileNames ++ previousFilenames
+          -- checked checkboxes from current request
+          checked = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) $ fst body
+          -- For each file generate a checkbox and optionally mark it was checked.
+          checkboxes = map (\name -> (name, isJust $ find (name ==) checked)) allFileNames
+       in checkboxes
 
 showEditEventForm ::
-  SQLite.Connection ->
+  (EventId -> IO (Maybe Event)) ->
   EventId ->
   Session.AdminUser ->
   IO LayoutStub
-showEditEventForm conn eid@(EventId eventid) _ = do
-  getEvent conn eid >>= \case
+showEditEventForm getEvent eid@(EventId eventid) _ = do
+  getEvent eid >>= \case
     Nothing -> throwString $ "edit event but no event for id: " <> show eventid
     Just Event {..} ->
       let input =
@@ -297,19 +288,20 @@ showEditEventForm conn eid@(EventId eventid) _ = do
     renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
 
 handleUpdateEvent ::
-  SQLite.Connection ->
+  (EventId -> EventCreate -> IO ()) ->
   Wai.Request ->
   EventId ->
   Session.AdminUser ->
   IO LayoutStub
-handleUpdateEvent conn req eid@(EventId eventid) _ = do
+handleUpdateEvent updateEvent req eid@(EventId eventid) _ = do
   params <- parseParams req
-  let input =
+  let fromParams key = Map.findWithDefault "" key params
+      input =
         EventForm.FormInput
-          (Map.findWithDefault "" "eventTitleInput" params)
-          (Map.findWithDefault "" "eventDateInput" params)
-          (Map.findWithDefault "" "eventLocationInput" params)
-          (Map.findWithDefault "" "eventDescriptionInput" params)
+          (fromParams "eventTitleInput")
+          (fromParams "eventDateInput")
+          (fromParams "eventLocationInput")
+          (fromParams "eventDescriptionInput")
           (isJust $ Map.lookup "eventFamAllowedInput" params)
           [] -- TODO
   case EventForm.makeEvent input of
@@ -323,7 +315,7 @@ handleUpdateEvent conn req eid@(EventId eventid) _ = do
               input
               state
     Right event@EventCreate {..} -> do
-      updateEvent conn eid event
+      updateEvent eid event
       return $
         LayoutStub "Veranstaltung Editieren" (Just Events) $
           success $ "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"
