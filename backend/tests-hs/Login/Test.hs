@@ -12,6 +12,7 @@ import Login.Login (login)
 import Network.HTTP.Types (status302)
 import Network.HTTP.Types.Header
 import Network.Wai.Test
+import qualified Logging
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Session

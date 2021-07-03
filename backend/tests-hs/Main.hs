@@ -1,4 +1,5 @@
 import qualified Events.DB.Test
+import qualified Events.Handlers.Test
 import qualified Session.Test
 import qualified Login.Test
 import qualified PasswordReset.Test
@@ -16,5 +17,6 @@ tests =
       PasswordReset.Test.tests,
       Login.Test.tests,
       Session.Test.tests,
-      Events.DB.Test.tests
+      Events.DB.Test.tests,
+      Events.Handlers.Test.tests
     ]

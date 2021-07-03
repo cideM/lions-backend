@@ -149,16 +149,16 @@ tryLoginFromSession dbConn sessionKey sessionDataVaultKey req = do
 -- the Vault associated with this particular request so that downstream code
 -- can access it.
 middleware ::
-  Logging.TimedFastLogger ->
+  Logging.Log ->
   SessionDataVaultKey ->
   SQLite.Connection ->
   ClientSession.Key ->
   Wai.Application ->
   Wai.Application
-middleware logger sessionDataVaultKey dbConn sessionKey nextApp req send = do
+middleware log sessionDataVaultKey dbConn sessionKey nextApp req send = do
   tryLoginFromSession dbConn sessionKey sessionDataVaultKey req >>= \case
     Left e -> do
-      Logging.log logger $ "error in tryLoginFromSession: " <> show e
+      log $ Text.pack $ "error in tryLoginFromSession: " <> show e
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send

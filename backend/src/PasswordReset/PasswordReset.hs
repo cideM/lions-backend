@@ -208,8 +208,8 @@ changePasswordForToken dbConn token pw pwMatch = do
         Just pw' -> return . Hashed $ decodeUtf8 pw'
 
 -- POST handler that actually changes the user's password in the database.
-handleChangePw :: Logging.TimedFastLogger -> SQLite.Connection -> Wai.Request -> IO LayoutStub
-handleChangePw logger conn req = do
+handleChangePw :: Logging.Log -> SQLite.Connection -> Wai.Request -> IO LayoutStub
+handleChangePw log conn req = do
   params <- parseParams req
   case Map.lookup "token" params of
     Nothing -> return . passwordChangeLayout . warning $ changePwNoToken
@@ -218,7 +218,7 @@ handleChangePw logger conn req = do
           pwMatch = (Map.findWithDefault "" "inputPasswordMatch" params)
       changePasswordForToken conn tok pw pwMatch >>= \case
         Left e -> do
-          Logging.log logger $ show e
+          log $ T.pack $ show e
           return $ renderTryResetError e
         Right _ -> return . passwordChangeLayout $ success "Password erfolgreich geändert"
 

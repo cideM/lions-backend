@@ -99,6 +99,7 @@ module "s3_user" {
   s3_resources = [
     "${aws_s3_bucket.litestream-replica-1.arn}/*",
     "${aws_s3_bucket.litestream-replica-1.arn}",
+    "${aws_s3_bucket.event-attachments.arn}/*",
     "${aws_s3_bucket.event-attachments.arn}"
    ]
 }

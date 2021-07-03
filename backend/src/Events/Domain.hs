@@ -12,6 +12,7 @@ import Data.Text (Text)
 import qualified Data.Time as Time
 import GHC.Generics
 import User.Types (UserEmail (..), UserId (..))
+import qualified Network.Wai.Parse
 
 -- Now that I'm writing tests that involve this data type I find it a bit weird
 -- that it doesn't have the event ID. Strictly speaking a reply is meaningless

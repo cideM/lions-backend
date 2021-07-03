@@ -55,6 +55,7 @@ server ::
   ClientSession.Key ->
   RequestIdVaultKey ->
   AWS.Env ->
+  AWS.Env ->
   Int ->
   Environment ->
   SessionDataVaultKey ->
@@ -70,6 +71,7 @@ server
   sessionKey
   requestIdVaultKey
   awsEnv
+  s3Env
   port
   appEnv
   sessionDataVaultKey
@@ -117,9 +119,11 @@ server
         -- my primary sources of bugs. But it helps me focus on the clean.
         -- TODO: Make this more ergonomic maybe by bundling stuff in a record
         sendMail' = SendEmail.sendMail awsEnv resetHost
-        awsRun = AWS.runResourceT . AWS.runAWS awsEnv . AWS.within AWS.Frankfurt . AWS.send
-        uploadAttachmentToS3' filepath = Events.Handlers.uploadAttachmentToS3 filepath >>= awsRun
-        tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) (ClientSession.encryptIO sessionKey)
+        awsS3Run = AWS.runResourceT . AWS.runAWS s3Env . AWS.within AWS.Frankfurt . AWS.send
+        uploadAttachmentToS3' name filepath = Events.Handlers.uploadAttachmentToS3 name filepath >>= awsS3Run
+        clientEncrypt = ClientSession.encryptIO sessionKey
+        clientDecrypt = ClientSession.decrypt sessionKey
+        tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) clientEncrypt
         getAllEvents = Events.DB.getAll dbConn
         getUser = User.DB.getUser dbConn
         deleteReply = Events.DB.deleteReply dbConn
@@ -154,6 +158,8 @@ server
           "POST" ->
             adminOnly' $
               Events.Handlers.handleCreateEvent
+                clientEncrypt
+                clientDecrypt
                 (Events.DB.createEvent dbConn)
                 internalState
                 uploadAttachmentToS3'
@@ -276,7 +282,7 @@ server
       ["passwort", "aendern"] ->
         case Wai.requestMethod req of
           "GET" -> PasswordReset.showChangePwForm req >>= send200 . layout'
-          "POST" -> PasswordReset.handleChangePw logger dbConn req >>= send200 . layout'
+          "POST" -> PasswordReset.handleChangePw log' dbConn req >>= send200 . layout'
           _ -> send404
       ["passwort", "link"] ->
         case Wai.requestMethod req of
@@ -302,6 +308,8 @@ main = do
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
+  s3AwsAccessKey <- getEnv "LITESTREAM_ACCESS_KEY_ID"
+  s3AwsSecretAccessKey <- getEnv "LITESTREAM_SECRET_ACCESS_KEY"
   signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
 
@@ -312,9 +320,14 @@ main = do
   DB.withConnection
     sqlitePath
     ( \conn -> do
+        -- TODO: Remove cloudposse S3 user and create a role instead and that
+        -- have a single user for S3 that gets Email and S3 roles
         let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
             sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
+            aKeyS3 = AWS.AccessKey (encodeUtf8 (Text.pack s3AwsAccessKey))
+            sKeyS3 = AWS.SecretKey (encodeUtf8 (Text.pack s3AwsSecretAccessKey))
         awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
+        s3Env <- AWS.newEnv (AWS.FromKeys aKeyS3 sKeyS3)
 
         runResourceT $
           withInternalState
@@ -328,6 +341,7 @@ main = do
                           sessionKey
                           requestIdVaultKey
                           awsEnv
+                          s3Env
                           port
                           appEnv
                           sessionDataVaultKey
@@ -336,7 +350,7 @@ main = do
                           internalState
 
                   let requestIdMiddleware = addRequestId requestIdVaultKey
-                      sessionMiddleware = Session.middleware logger sessionDataVaultKey conn sessionKey
+                      sessionMiddleware = Session.middleware (Logging.log logger) sessionDataVaultKey conn sessionKey
                       errorHandler send err = do
                         Logging.log logger $ show err
                         send500 send

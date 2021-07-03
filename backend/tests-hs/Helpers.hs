@@ -22,6 +22,7 @@ import Layout (LayoutStub(..))
 import Network.HTTP.Types (hContentType, status200)
 import qualified Network.Wai as Wai
 import Network.Wai.Test
+import qualified Logging
 import System.FilePattern.Directory
 import System.Log.FastLogger
   ( LogType' (..),
@@ -65,7 +66,6 @@ withFormRequest body handler =
       session = srequest $ SRequest req body
    in (runSession session $ \r send -> handler r send)
 
-withoutLogging :: (TimedFastLogger -> IO a) -> IO a
-withoutLogging action = do
-  formattedTime <- newTimeCache simpleTimeFormat
-  withTimedFastLogger formattedTime LogNone action
+withoutLogging :: (Logging.Log -> IO ()) -> IO ()
+withoutLogging = return . const ()
+
