@@ -1,1 +1,1 @@
-drop table event_attachements
+drop table event_attachments

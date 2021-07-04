@@ -3,10 +3,11 @@ module Events.Handlers
     showCreateEvent,
     showEvent,
     showDeleteEventConfirmation,
+    removeAllAttachments,
     handleDeleteEvent,
-    getNewCheckboxes,
     handleCreateEvent,
     saveAttachment,
+    removeAttachment,
     handleUpdateEvent,
     showEditEventForm,
     replyToEvent,
@@ -16,8 +17,8 @@ where
 import Control.Exception.Safe
 import Control.Monad (forM_, when)
 import Control.Monad.Trans.Resource (InternalState)
+import qualified Data.ByteString.Char8  as C8
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
 import Data.Foldable (find)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Strict as Map
@@ -28,7 +29,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
-import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
+import Events.Domain (Event (..), EventAttachment (..), EventCreate (..), EventId (..), Reply (..))
 import qualified Events.EventForm as EventForm
 import qualified Events.Preview
 import qualified Events.SingleEvent
@@ -36,8 +37,6 @@ import GHC.Exts (sortWith)
 import Layout (ActiveNavLink (..), LayoutStub (..), success)
 import Locale (german)
 import Lucid
-import Network.AWS.Prelude (RqBody (..), toHashed)
-import qualified Network.AWS.S3 as S3
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
 import Network.Wai.Parse
@@ -45,6 +44,7 @@ import Network.Wai.Parse
     Param,
     defaultParseRequestBodyOptions,
     parseRequestBodyEx,
+    ParseRequestBodyOptions,
     setMaxRequestFileSize,
     tempFileBackEnd,
   )
@@ -155,10 +155,11 @@ showCreateEvent _ = do
 handleDeleteEvent ::
   (EventId -> IO (Maybe Event)) ->
   (EventId -> IO ()) ->
+  (EventId -> IO ()) ->
   EventId ->
   Session.AdminUser ->
   IO LayoutStub
-handleDeleteEvent getEvent deleteEvent eventid _ = do
+handleDeleteEvent getEvent removeAll deleteEvent eventid _ = do
   maybeEvent <- getEvent eventid
   case maybeEvent of
     Nothing -> return . LayoutStub "Fehler" (Just Events) $
@@ -166,6 +167,7 @@ handleDeleteEvent getEvent deleteEvent eventid _ = do
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just event -> do
+      removeAll eventid
       deleteEvent eventid
       return $
         LayoutStub "Veranstaltung" (Just Events) $
@@ -189,90 +191,95 @@ showDeleteEventConfirmation getEvent eid@(EventId eventid) _ = do
               ]
               $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Veranstaltung löschen!"
 
-saveAttachment :: FilePath -> FilePath -> FilePath -> IO ()
-saveAttachment destinationDir source destinationFileName =
-  let dest = destinationDir </> destinationFileName
-   in System.Directory.copyFile source dest
+saveAttachment :: FilePath -> EventId -> FilePath -> FilePath -> IO ()
+saveAttachment destinationDir (EventId eid) source destinationFileName = do
+  let destDir = destinationDir </> [Interpolate.i|#{eid}|]
+  System.Directory.createDirectoryIfMissing True destDir
 
-getNewCheckboxes ::
-  (ByteString -> IO ByteString) ->
+  let dest = destDir </> destinationFileName
+
+  System.Directory.copyFile source dest
+
+removeAllAttachments :: FilePath -> EventId -> IO ()
+removeAllAttachments destinationDir (EventId eid) =
+  System.Directory.removeDirectoryRecursive $ destinationDir </> show eid
+
+removeAttachment :: FilePath -> EventId -> FilePath -> IO ()
+removeAttachment destinationDir (EventId eid) filename = 
+  System.Directory.removeFile $ destinationDir </> show eid </> filename
+
+parseDecryptedString :: ByteString -> (Text, Text, Text)
+parseDecryptedString s =
+  let [filename, filetype, filepath] = Text.split (':' ==) $ decodeUtf8 s
+   in (filename, filetype, filepath)
+
+getEncryptedFileInfo ::
   (ByteString -> Maybe ByteString) ->
   ([Param], [(ByteString, FileInfo FilePath)]) ->
-  IO (Either Text.Text [(Text.Text, Text, ByteString, Bool)])
-getNewCheckboxes encrypt decrypt body = do
-  -- All files newly added with this particular request. There appears to
-  -- be some bug, not sure if it's the browser or the server, where I get a
-  -- file that has an empty string as a name. Hence the weird filter call.
-  let newFilesFiltered = filter ((/=) "\"\"" . fileName) . map snd $ snd body
+  Either Text.Text [(FileInfo FilePath)]
+getEncryptedFileInfo decrypt body =
+  let encryptedHiddenInputs = map snd . filter ((==) "allFiles" . fst) $ fst body
+   in case traverse decrypt encryptedHiddenInputs of
+        Nothing -> Left "couldn't decrypt hidden inputs"
+        Just decrypted ->
+          let parsed = map parseDecryptedString decrypted
+              fileinfos = map (\(name, filetype, path) -> FileInfo (encodeUtf8 name) (encodeUtf8 filetype) (Text.unpack path)) parsed
+           in Right fileinfos
 
-  -- Keep track of the human readable file name as a checkbox label later.
-  (newFilesProcessed :: [(Text, Text, ByteString)]) <-
-    -- Each file info is turned into a string separated by colons and
-    -- then encrypted so it can be safely sent to the client later.  But
-    -- we return a tuple where the first element is the label mentioned
-    -- above.
-    traverse
-      ( \FileInfo {..} -> do
-          encrypted <- encrypt [Interpolate.i|#{fileName}:#{fileContentType}:#{fileContent}|]
-          return (decodeUtf8 fileName, Text.pack fileContent, encrypted)
-      )
-      newFilesFiltered
+getNewFileInfo :: ([Param], [(ByteString, FileInfo FilePath)]) -> [(FileInfo FilePath)]
+getNewFileInfo = filter ((/=) "\"\"" . fileName) . map snd . snd
 
-  -- Unchecked checkboxes are not sent with the form, so we keep track
-  -- of them through hidden input fields, which all have the name
-  -- "allFiles". The value of these input fields is a string consisting
-  -- of three parts: file name, file type and file location on the
-  -- server. All are concatenated with colons **and encrypted** so we
-  -- don't expose internals to the client. We do this because we only
-  -- know about the storage location of any upload when it's uploaded
-  -- initially. But the file paths have nothing to do with the file
-  -- names, so we can't retroactively identify temp files belonging to
-  -- any form.
-  let encryptedHiddenInputs =
-        map snd
-          . filter ((==) "allFiles" . fst)
-          $ fst body
+encryptFileInfo ::
+  (ByteString -> IO ByteString) ->
+  [(FileInfo FilePath)] ->
+  IO [ByteString]
+encryptFileInfo encrypt =
+  traverse (\FileInfo {..} -> encrypt [Interpolate.i|#{fileName}:#{fileContentType}:#{fileContent}|])
 
-  -- We need to turn the encrypted strings from the previous request into
-  -- checkboxes with human readable labels. That's why we need to decrypt them
-  -- so we can at least get the first value in the colon delimited list.
-  case traverse processEncrypted encryptedHiddenInputs of
-    Nothing -> return $ Left "couldn't decrypt hidden inputs"
-    Just decrypted -> do
-      -- Extract the name from each encrypted string and create a tuple of
-      -- (label, encrypted), just like we did with the new files
-      let -- Join old files and new files, always in the form of tuples
-          allFileNames = newFilesProcessed ++ decrypted
+getCheckedFromBody :: ([Param], [(ByteString, FileInfo FilePath)]) -> [Text]
+getCheckedFromBody = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) . fst
 
-          -- checked checkboxes from current request
-          checked = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) $ fst body
+data FileActions = FileActions
+  { fileActionsKeep :: [EventAttachment],
+    fileActionsDelete :: [EventAttachment],
+    fileActionsDontUpload :: [FileInfo FilePath],
+    fileActionsUpload :: [FileInfo FilePath]
+  }
+  deriving (Show)
 
-          -- every new file starts out as checked
-          newFileNames = map (\(name, _, _) -> name) newFilesProcessed
+getFileActions ::
+  (ByteString -> IO ByteString) ->
+  (ByteString -> Maybe ByteString) ->
+  [EventAttachment] ->
+  ([Param], [(ByteString, FileInfo FilePath)]) ->
+  IO (FileActions, [ByteString])
+getFileActions encrypt decrypt alreadySaved body = do
+  pastFileInfos <- case getEncryptedFileInfo decrypt body of
+    Left e -> throwString $ Text.unpack e
+    Right v -> return v
 
-          allChecked = checked ++ newFileNames
+  let newFileInfos = getNewFileInfo body
+      checked = getCheckedFromBody body
+      keep = filter (flip elem checked . eventAttachmentFileName) alreadySaved
+      savedButDelete = filter (flip notElem checked . eventAttachmentFileName) alreadySaved
+      notSavedAndDelete = filter (flip notElem checked . decodeUtf8 . fileName) pastFileInfos
+      upload = newFileInfos ++ (filter (flip elem checked . decodeUtf8 . fileName) pastFileInfos)
 
-      -- For each file generate a checkbox and optionally mark it as checked.
-      return
-        . Right
-        $ map (\(name, filepath, encrypted) -> (name, filepath, encrypted, name `elem` allChecked)) allFileNames
-  where
-    parseDecryptedString :: ByteString -> (Text, Text, Text)
-    parseDecryptedString s =
-      let [filename, filetype, filepath] = Text.split (':' ==) $ decodeUtf8 s
-       in (filename, filetype, filepath)
+  encryptedFileInfos <- encryptFileInfo encrypt $ pastFileInfos ++ newFileInfos
 
-    processEncrypted :: ByteString -> Maybe (Text, Text, ByteString)
-    processEncrypted s = do
-      (name, _, filepath) <- parseDecryptedString <$> decrypt s
-      return (name, filepath, s)
+  let actions = FileActions keep savedButDelete notSavedAndDelete upload
+
+  return (actions, encryptedFileInfos)
+
+fileUploadOpts :: ParseRequestBodyOptions
+fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
 
 handleCreateEvent ::
   (ByteString -> IO ByteString) ->
   (ByteString -> Maybe ByteString) ->
-  (EventCreate -> IO ()) ->
+  (EventCreate -> IO EventId) ->
   InternalState ->
-  (FilePath -> FilePath -> IO ()) ->
+  (EventId -> FilePath -> FilePath -> IO ()) ->
   Wai.Request ->
   Session.AdminUser ->
   IO LayoutStub
@@ -290,12 +297,12 @@ handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
   let params = paramsToMap $ fst body
       fromParams key = Map.findWithDefault "" key params
 
-  checkboxes <-
-    getNewCheckboxes encrypt decrypt body >>= \case
-      Left e -> throwString $ Text.unpack e
-      Right v -> return v
+  (FileActions {..}, encryptedFileInfos) <- getFileActions encrypt decrypt [] body
 
-  let input =
+  let notSavedAndDeleteCheckbox = map (\FileInfo {..} -> (decodeUtf8 fileName, False)) fileActionsDontUpload
+      uploadCheckbox = zip (map (decodeUtf8 . fileName) fileActionsUpload) (repeat True)
+      checkboxes = notSavedAndDeleteCheckbox ++ uploadCheckbox
+      input =
         EventForm.FormInput
           (fromParams "eventTitleInput")
           (fromParams "eventDateInput")
@@ -303,13 +310,8 @@ handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
           (fromParams "eventDescriptionInput")
           (isJust $ Map.lookup "eventFamAllowedInput" params)
           checkboxes
+          encryptedFileInfos
 
-  -- We get the params and turn that into FormInput. This MUST INCLUDE the encrypted paths
-  -- If it's the first submission, the file paths must be generated from the File part of body
-  -- If it's not the first submission those paths will come from the hidden input fields
-  -- Do fileName:filePath:fileType so I only deal with a single
-  -- I already do this for checkboxes so all I got to do is amend checkboxes
-  -- Then I can iterate over the decrypted strings in "Right" and upload
   case EventForm.makeEvent input of
     Left state -> do
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
@@ -317,18 +319,17 @@ handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
           h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
           EventForm.render "Speichern" "/veranstaltungen/neu" input state
     Right newEvent@EventCreate {..} -> do
-      createEvent newEvent
-      forM_ checkboxes $ \c@(_, filepath, _, _) -> do
-        saveFile' c
-        System.Directory.removeFile (Text.unpack filepath)
+      eid <- createEvent newEvent
+
+      forM_ fileActionsUpload $ \FileInfo {..} -> do
+        saveFile eid fileContent (C8.unpack fileName)
+        System.Directory.removeFile fileContent
+
+      forM_ fileActionsDontUpload $ \FileInfo {..} -> do
+        System.Directory.removeFile fileContent
 
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
         success $ "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
-  where
-    saveFile' (name, filepath, _, checked) =
-      when checked $ saveFile (Text.unpack filepath) (Text.unpack name)
-    -- File size 100MB
-    fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
 
 showEditEventForm ::
   (EventId -> IO (Maybe Event)) ->
@@ -346,7 +347,8 @@ showEditEventForm getEvent eid@(EventId eventid) _ = do
               eventLocation
               eventDescription
               eventFamilyAllowed
-              [] -- TODO
+              (zip (map eventAttachmentFileName eventAttachments) (repeat True))
+              []
        in return . LayoutStub "Veranstaltung Editieren" (Just Events) $
             div_ [class_ "container p-2"] $ do
               h1_ [class_ "h4 mb-3"] "Veranstaltung editieren"
@@ -356,33 +358,73 @@ showEditEventForm getEvent eid@(EventId eventid) _ = do
 
 handleUpdateEvent ::
   (EventId -> EventCreate -> IO ()) ->
+  (EventId -> IO (Maybe Event)) ->
+  (ByteString -> IO ByteString) ->
+  (ByteString -> Maybe ByteString) ->
+  (EventId -> FilePath -> IO ()) ->
+  (EventId -> FilePath -> FilePath -> IO ()) ->
+  InternalState ->
   Wai.Request ->
   EventId ->
   Session.AdminUser ->
   IO LayoutStub
-handleUpdateEvent updateEvent req eid@(EventId eventid) _ = do
-  params <- parseParams req
-  let fromParams key = Map.findWithDefault "" key params
-      input =
-        EventForm.FormInput
-          (fromParams "eventTitleInput")
-          (fromParams "eventDateInput")
-          (fromParams "eventLocationInput")
-          (fromParams "eventDescriptionInput")
-          (isJust $ Map.lookup "eventFamAllowedInput" params)
-          [] -- TODO
-  case EventForm.makeEvent input of
-    Left state ->
-      return $
-        LayoutStub "Veranstaltung Editieren" (Just Events) $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            EventForm.render
-              "Speichern"
-              (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
-              input
-              state
-    Right event@EventCreate {..} -> do
-      updateEvent eid event
-      return $
-        LayoutStub "Veranstaltung Editieren" (Just Events) $
-          success $ "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"
+handleUpdateEvent
+  updateEvent
+  getEvent
+  encrypt
+  decrypt
+  removeFile
+  saveFile
+  internalState
+  req
+  eid@(EventId eventid)
+  _ = do
+    body <- parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
+
+    getEvent eid >>= \case
+      Nothing -> throwString $ "edit event but no event for id: " <> show eventid
+      Just Event {..} -> do
+        (FileActions {..}, encryptedFileInfos) <- getFileActions encrypt decrypt eventAttachments body
+
+        let params = paramsToMap $ fst body
+            fromParams key = Map.findWithDefault "" key params
+            savedButDeleteCheckbox = zip (map eventAttachmentFileName fileActionsDelete) (repeat False)
+            keepCheckbox = zip (map eventAttachmentFileName fileActionsKeep) (repeat True)
+            notSavedAndDeleteCheckbox = map (\FileInfo {..} -> (decodeUtf8 fileName, False)) fileActionsDontUpload
+            uploadCheckbox = zip (map (decodeUtf8 . fileName) fileActionsUpload) (repeat True)
+            checkboxes = keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox ++ uploadCheckbox
+            input =
+              EventForm.FormInput
+                (fromParams "eventTitleInput")
+                (fromParams "eventDateInput")
+                (fromParams "eventLocationInput")
+                (fromParams "eventDescriptionInput")
+                (isJust $ Map.lookup "eventFamAllowedInput" params)
+                checkboxes
+                encryptedFileInfos
+
+        case EventForm.makeEvent input of
+          Left state ->
+            return $
+              LayoutStub "Veranstaltung Editieren" (Just Events) $
+                div_ [class_ "container p-3 d-flex justify-content-center"] $
+                  EventForm.render
+                    "Speichern"
+                    (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
+                    input
+                    state
+          Right event@EventCreate {..} -> do
+            forM_ fileActionsUpload $ \FileInfo {..} -> do
+              saveFile eid fileContent (C8.unpack fileName)
+              System.Directory.removeFile fileContent
+
+            forM_ fileActionsDelete $ \EventAttachment {..} -> do
+              removeFile eid (Text.unpack eventAttachmentFileName)
+
+            forM_ fileActionsDontUpload $ \FileInfo {..} -> do
+              System.Directory.removeFile fileContent
+
+            updateEvent eid event
+            return $
+              LayoutStub "Veranstaltung Editieren" (Just Events) $
+                success $ "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"

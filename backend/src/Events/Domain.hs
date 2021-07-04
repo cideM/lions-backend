@@ -2,17 +2,19 @@ module Events.Domain
   ( Reply (..),
     Event (..),
     EventCreate (..),
+    EventAttachment (..),
     EventId (..),
   )
 where
 
-import Data.Aeson (ToJSON, defaultOptions, genericToEncoding, toEncoding)
+import Data.Aeson (FromJSON, ToJSON, defaultOptions, genericToEncoding, toEncoding)
+import qualified Data.Aeson as Aeson
+import qualified Data.Char as Char
 import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Time as Time
 import GHC.Generics
 import User.Types (UserEmail (..), UserId (..))
-import qualified Network.Wai.Parse
 
 -- Now that I'm writing tests that involve this data type I find it a bit weird
 -- that it doesn't have the event ID. Strictly speaking a reply is meaningless
@@ -41,6 +43,18 @@ data EventCreate = EventCreate
 instance ToJSON EventCreate where
   toEncoding = genericToEncoding defaultOptions
 
+data EventAttachment = EventAttachment {eventAttachmentFileName :: Text} deriving (Show, Generic, Eq)
+
+lower1 :: String -> String
+lower1 (c : cs) = Char.toLower c : cs
+lower1 [] = []
+
+instance FromJSON EventAttachment where
+  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 15}
+
+instance ToJSON EventAttachment where
+  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 15}
+
 data Event = Event
   { eventTitle :: Text,
     eventDate :: Time.UTCTime,
@@ -48,7 +62,7 @@ data Event = Event
     eventDescription :: Text,
     eventLocation :: Text,
     eventReplies :: [Reply],
-    eventAttachments :: [Text]
+    eventAttachments :: [EventAttachment]
   }
   deriving (Show, Eq, Generic)
 

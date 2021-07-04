@@ -7,7 +7,6 @@ import qualified DB
 import qualified Data.ByteString as BS
 import qualified Data.String.Interpolate as Interpolate
 import qualified Data.Text as Text
-import qualified System.Directory
 import Data.Text.Encoding (encodeUtf8)
 import Data.UUID (UUID)
 import Data.UUID.V4 (nextRandom)
@@ -32,6 +31,7 @@ import qualified PasswordReset.SendEmail as SendEmail
 import Scrypt (verifyPassword)
 import Session (SessionDataVaultKey)
 import qualified Session
+import qualified System.Directory
 import System.Environment (getEnv)
 import Text.Read (readEither)
 import qualified User.DB
@@ -121,6 +121,8 @@ server
         -- TODO: Make this more ergonomic maybe by bundling stuff in a record
         sendMail' = SendEmail.sendMail awsEnv resetHost
         saveAttachment' = Events.Handlers.saveAttachment storageDir
+        removeAllAttachments' = Events.Handlers.removeAllAttachments storageDir
+        removeAttachment' = Events.Handlers.removeAttachment storageDir
         clientEncrypt = ClientSession.encryptIO sessionKey
         clientDecrypt = ClientSession.decrypt sessionKey
         tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) clientEncrypt
@@ -193,7 +195,7 @@ server
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
               "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation getEvent (EventId parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent getEvent deleteEvent (EventId parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent getEvent deleteEvent removeAllAttachments' (EventId parsed) >=> send200 . layout'
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
@@ -201,7 +203,19 @@ server
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
               "GET" -> adminOnly' $ Events.Handlers.showEditEventForm getEvent (EventId parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.handleUpdateEvent updateEvent req (EventId parsed) >=> send200 . layout'
+              "POST" ->
+                adminOnly' $
+                  Events.Handlers.handleUpdateEvent
+                    updateEvent
+                    getEvent
+                    clientEncrypt
+                    clientDecrypt
+                    removeAttachment'
+                    saveAttachment'
+                    internalState
+                    req
+                    (EventId parsed)
+                    >=> send200 . layout'
               _ -> send404
       ["loeschen", i] ->
         case readEither (Text.unpack i) of

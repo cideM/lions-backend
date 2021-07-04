@@ -13,6 +13,7 @@ where
 
 import Control.Exception.Safe
 import Control.Monad (forM_)
+import qualified Data.Aeson as Aeson
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.String.Interpolate (i)
@@ -23,7 +24,7 @@ import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
-import Events.Domain (Event (..), EventCreate (..), EventId (..), Reply (..))
+import Events.Domain (Event (..), EventAttachment (..), EventCreate (..), EventId (..), Reply (..))
 import Text.Email.Validate (emailAddress)
 import User.Types (UserEmail (..), UserId (..))
 import Prelude hiding (id)
@@ -58,7 +59,7 @@ instance FromRow GetEventRow where
         <*> SQLite.field
         <*> SQLite.field
 
-createEvent :: SQLite.Connection -> EventCreate -> IO ()
+createEvent :: SQLite.Connection -> EventCreate -> IO EventId
 createEvent conn EventCreate {..} = do
   SQLite.execute
     conn
@@ -73,8 +74,9 @@ createEvent conn EventCreate {..} = do
           |]
     (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation)
   id <- SQLite.lastInsertRowId conn
-  forM_ eventCreateFiles $ \file ->
-    SQLite.execute conn [sql|insert into event_attachments (eventid, name) values (?,?)|] (id, file)
+  forM_ eventCreateFiles $ \filename ->
+    SQLite.execute conn [sql|insert into event_attachments (eventid, filename) values (?,?)|] (id, filename)
+  return . EventId $ fromIntegral id
 
 -- | Converts a single row to an event. The idea is that you can just map over
 -- rows and then merge them all into one event
@@ -82,15 +84,18 @@ createEventFromDb :: GetEventRow -> Either Text (EventId, Event)
 createEventFromDb GetEventRow {..} =
   -- These properties we just pass through, only thing that needs special
   -- handling is the reply
-  let attachments = filter (\t -> Text.length t > 0) $ Text.split (',' ==) _eventAttachments
-      makeEvent = \replies -> Event _eventTitle _eventDate _eventFamilyAllowed _eventDescription _eventLocation replies attachments
-   in case getReplyFromRow of
-        Nothing -> Right $ (EventId _eventId, makeEvent [])
-        Just (uid, coming, email, numguests) ->
-          case emailAddress (encodeUtf8 email) of
-            Nothing -> Left $ "couldn't parse email " <> email
-            Just parsedEmail ->
-              Right $ (EventId _eventId, makeEvent [Reply coming (UserEmail parsedEmail) (UserId uid) numguests])
+  case Aeson.eitherDecodeStrict (encodeUtf8 _eventAttachments) of
+    Left e -> Left $ [i|error decoding JSON: #{e}|]
+    Right (attachments :: [EventAttachment]) -> do
+      let attachments' = filter (\EventAttachment {..} -> Text.length eventAttachmentFileName > 0) attachments
+          makeEvent = \replies -> Event _eventTitle _eventDate _eventFamilyAllowed _eventDescription _eventLocation replies attachments'
+       in case getReplyFromRow of
+            Nothing -> Right $ (EventId _eventId, makeEvent [])
+            Just (uid, coming, email, numguests) ->
+              case emailAddress (encodeUtf8 email) of
+                Nothing -> Left $ "couldn't parse email " <> email
+                Just parsedEmail ->
+                  Right $ (EventId _eventId, makeEvent [Reply coming (UserEmail parsedEmail) (UserId uid) numguests])
   where
     -- Unfortunately I currently get four separate maybe fields from the SQL
     -- query when in fact they're all related. So it's all or nothing, they're
@@ -108,8 +113,8 @@ createAndAggregateEventsFromDb :: [GetEventRow] -> Either Text (Map EventId Even
 createAndAggregateEventsFromDb rows = M.fromListWith (<>) <$> traverse createEventFromDb rows
 
 getEvent :: SQLite.Connection -> EventId -> IO (Maybe Event)
-getEvent conn eid@(EventId eventid) = do
-  (rows :: [GetEventRow]) <-
+getEvent conn (EventId eventid) = do
+  ([row] :: [GetEventRow]) <-
     SQLite.query
       conn
       [sql|
@@ -123,7 +128,7 @@ getEvent conn eid@(EventId eventid) = do
                coming,
                guests,
                users.email as email,
-               coalesce(group_concat(event_attachments.name),'') as attachments
+               json_group_array(json_object('fileName',coalesce(event_attachments.filename, ''))) as attachments
         from events
         left join event_attachments on events.id = event_attachments.eventid
         left join event_replies on events.id = event_replies.eventid
@@ -131,12 +136,9 @@ getEvent conn eid@(EventId eventid) = do
         where events.id = ?
       |]
       [eventid]
-  case createAndAggregateEventsFromDb rows of
+  case createEventFromDb row of
     Left e -> throwString $ [i|couldn't parse event with id #{eventid} from DB: #{e}|]
-    Right ok ->
-      case M.lookup eid ok of
-        Nothing -> throwString "parsed GetEventRow but no map entry"
-        Just v -> return $ Just v
+    Right ok -> return $ Just $ snd ok
 
 -- Gets all events from the DB and aggregates them by event ID by merging all
 -- user replies for a given event and making them unique on the odd chance that
@@ -158,7 +160,7 @@ getAll conn = do
                coming,
                guests,
                users.email as email,
-               '' as attachments
+               '[]' as attachments
         from events
         left join event_replies on events.id = eventid
         left join users on userid = users.id
@@ -174,10 +176,12 @@ deleteReply conn (EventId eventid) (UserId userid) =
 deleteEvent :: SQLite.Connection -> EventId -> IO ()
 deleteEvent conn (EventId eventid) = do
   SQLite.execute conn "delete from event_replies where eventid = ?" [eventid]
+  SQLite.execute conn "delete from event_attachments where eventid = ?" [eventid]
   SQLite.execute conn "delete from events where id = ?" [eventid]
 
 updateEvent :: SQLite.Connection -> EventId -> EventCreate -> IO ()
-updateEvent conn (EventId eventid) EventCreate {..} =
+updateEvent conn (EventId eventid) EventCreate {..} = do
+  SQLite.execute conn [sql|delete from event_attachments where eventid = ?|] [eventid]
   SQLite.execute
     conn
     [sql|
@@ -191,6 +195,8 @@ updateEvent conn (EventId eventid) EventCreate {..} =
         where id = ?
       |]
     (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation, eventid)
+  forM_ eventCreateFiles $ \filename ->
+    SQLite.execute conn [sql|insert into event_attachments (eventid, filename) values (?,?)|] (eventid, filename)
 
 -- Inserts a new reply or updates the existing one.
 upsertReply :: SQLite.Connection -> EventId -> Reply -> IO ()

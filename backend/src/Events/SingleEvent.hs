@@ -6,7 +6,7 @@ import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import Events.Domain (Event (..), EventId (..), Reply (..))
+import Events.Domain (Event (..), EventAttachment (..), EventId (..), Reply (..))
 import Layout (ariaLabel_)
 import Locale (german)
 import Lucid
@@ -47,7 +47,12 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
               when (length eventAttachments > 0) $ do
                 p_ [class_ "m-0"] "Angehängte Dateien: "
                 ul_ [] $ do
-                  forM_ eventAttachments (\f -> li_ [] $ a_ [href_ [i|/#{f}|]] $ toHtml f)
+                  forM_
+                    eventAttachments
+                    ( \EventAttachment {..} ->
+                        li_ [] $
+                          a_ [href_ [i|/#{eventId}/#{eventAttachmentFileName}|]] $ toHtml eventAttachmentFileName
+                    )
             section_ [class_ "justify-content-center col-lg-4"] $ do
               div_ [class_ "card"] $ do
                 div_ [class_ "card-header"] $ do

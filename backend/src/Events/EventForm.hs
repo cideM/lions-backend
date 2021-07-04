@@ -23,9 +23,7 @@ data FormState = FormState
   { createEventStateTitle :: FormFieldState Text,
     createEventStateDate :: FormFieldState Time.UTCTime,
     createEventStateLocation :: FormFieldState Text,
-    createEventStateDescription :: FormFieldState Text,
-    -- See explanation below
-    createEventStateFiles :: FormFieldState [(Text, Text, ByteString, Bool)]
+    createEventStateDescription :: FormFieldState Text
   }
   deriving (Show)
 
@@ -35,13 +33,8 @@ data FormInput = FormInput
     createEventInputLocation :: Text,
     createEventInputDescription :: Text,
     createEventInputFamilyAllowed :: Bool,
-    -- The checkboxes which also keep track of all uploaded files for this form
-    -- request session. The first "Text" is the human readable label (file
-    -- name), the second Text is the file path on disk, and the third "Text" is
-    -- an encrypted, colon-separated string consisting of file name, file type
-    -- and location on disk on the server.  The "Bool" is whether the checkbox
-    -- is checked or not.
-    createEventInputFilesChecked :: [(Text, Text, ByteString, Bool)]
+    createEventInputCheckboxes :: [(Text, Bool)],
+    createEventInputFilesHidden :: [ByteString]
   }
   deriving (Show)
 
@@ -53,11 +46,12 @@ emptyForm =
       createEventInputLocation = "",
       createEventInputDescription = "",
       createEventInputFamilyAllowed = False,
-      createEventInputFilesChecked = []
+      createEventInputCheckboxes = [],
+      createEventInputFilesHidden = []
     }
 
 emptyState :: FormState
-emptyState = FormState NotValidated NotValidated NotValidated NotValidated NotValidated
+emptyState = FormState NotValidated NotValidated NotValidated NotValidated
 
 makeEvent :: FormInput -> Either FormState EventCreate
 makeEvent FormInput {..} =
@@ -65,10 +59,9 @@ makeEvent FormInput {..} =
     (notEmpty createEventInputTitle)
     (validDate createEventInputDate)
     (notEmpty createEventInputLocation)
-    (notEmpty createEventInputDescription)
-    (Valid createEventInputFilesChecked) of
-    FormState (Valid title) (Valid date) (Valid location) (Valid description) (Valid files) ->
-      let filesToKeep = [name | (name, _, _, checked) <- createEventInputFilesChecked, checked]
+    (notEmpty createEventInputDescription) of
+    FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
+      let filesToKeep = [name | (name, checked) <- createEventInputCheckboxes, checked]
        in Right $
             EventCreate
               title
@@ -140,17 +133,14 @@ render btnLabel action FormInput {..} FormState {..} = do
         $ toHtml createEventInputDescription
       maybe mempty (div_ [id_ "eventDescriptionFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-6"] $ do
-      let (className, errMsg) = processField createEventStateFiles
       label_ [for_ "eventAttachmentsInput", class_ "form-label"] "Dateien"
       input_
         [ type_ "file",
           multiple_ "multiple",
+          class_ "form-control",
           id_ "eventAttachmentsInput",
-          name_ "eventAttachmentsInput",
-          class_ className,
-          describedBy_ "eventAttachmentsFeedback"
+          name_ "eventAttachmentsInput"
         ]
-      maybe mempty (div_ [id_ "eventAttachmentsFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-6"] $
       div_ [class_ "form-check"] $ do
         input_
@@ -163,9 +153,9 @@ render btnLabel action FormInput {..} FormState {..} = do
           )
         label_ [class_ "form-check-label", for_ "eventFamAllowedInput"] "Mit Familie?"
     div_ [class_ "col-md-12"] $
-      when (length createEventInputFilesChecked > 0) $ do
+      when (length createEventInputCheckboxes > 0) $ do
         mapM_
-          ( \(name, _, _, checked) ->
+          ( \(name, checked) ->
               div_ [class_ "form-check"] $ do
                 input_ $
                   [ type_ "checkbox",
@@ -177,15 +167,15 @@ render btnLabel action FormInput {..} FormState {..} = do
                     ++ [checked_ | checked]
                 label_ [for_ name, class_ "form-check-label"] $ toHtml name
           )
-          createEventInputFilesChecked
+          createEventInputCheckboxes
         mapM_
-          ( \(_, _, value, _) ->
+          ( \value ->
               input_ $
                 [ type_ "hidden",
                   name_ "allFiles",
                   value_ $ decodeUtf8 value
                 ]
           )
-          createEventInputFilesChecked
+          createEventInputFilesHidden
     div_ [class_ "col-md-4"] $
       button_ [class_ "btn btn-primary", type_ "submit"] $ toHtml btnLabel
