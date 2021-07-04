@@ -1,6 +1,5 @@
 { pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream, bootstrapSrc }:
 let
-
   lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
     #!${pkgs.fish}/bin/fish
     for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
@@ -95,8 +94,11 @@ pkgs.mkShell {
       # hate NPM and Javascript. https://github.com/uhop/node-re2/issues/107
       # pkgs.nodePackages.firebase-tools
       pkgs.terraform_0_15
+      pkgs.nodejs
       pkgs.cli53
       pkgs.nodePackages.sass
+      pkgs.nodePackages.node2nix
+      pkgs.nodePackages.postcss-cli
       pkgs.packer
       pkgs.awscli2
       deploy-rs

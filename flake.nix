@@ -68,7 +68,7 @@
               libraryHaskellDepends = drv.libraryHaskellDepends ++ haskellScriptDeps;
             })).env;
 
-            clientStuff = import ./client/default.nix { inherit bootstrap-icons pkgs backend; bootstrap = bootstrapsrc; };
+            clientStuff = import ./client/default.nix { inherit bootstrap-icons pkgs backend system; bootstrap = bootstrapsrc; };
 
             production = pkgs.stdenv.mkDerivation {
               name = "lions-website";

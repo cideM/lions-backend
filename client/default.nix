@@ -1,5 +1,7 @@
-{ pkgs, bootstrap, bootstrap-icons, backend }:
+{ pkgs, bootstrap, system, bootstrap-icons, backend }:
 let
+  nodeDependencies = (pkgs.callPackage ./nodePackages.nix { inherit pkgs system; }).shell.nodeDependencies;
+
   bootstrapSrc = pkgs.stdenv.mkDerivation {
     name = "bootstrap-scss-source";
     src = bootstrap;
@@ -27,9 +29,13 @@ let
     src = builtins.path { name = "lions-scss"; path = ./sass; };
     dontUnpack = true;
     buildPhase = ''
+      ln -s ${nodeDependencies}/lib/node_modules ./node_modules
+      export PATH="${nodeDependencies}/bin:$PATH"
       ${pkgs.nodePackages.sass}/bin/sass --load-path=${bootstrapSrc} $src/styles.scss style.css
+      mkdir build
+      postcss style.css --use autoprefixer -d build/
       mkdir $out
-      cp style.css $out/style.css
+      cp build/style.css $out/style.css
     '';
     dontInstall = true;
   };
