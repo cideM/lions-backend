@@ -19,6 +19,7 @@ with lib;
       serviceConfig = {
         Environment = [
           "LIONS_SQLITE_PATH=%S/lions-server/db"
+          "LIONS_STORAGE_DIR=%S/lions-server/storage/"
           "LIONS_ENV=production"
           "LIONS_SESSION_KEY_FILE=%S/lions-server/sessionkey.aes"
         ];

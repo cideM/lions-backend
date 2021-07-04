@@ -1,4 +1,4 @@
-{ pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream }:
+{ pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream, bootstrapSrc }:
 let
 
   lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
@@ -9,6 +9,20 @@ let
   lions-ghcid = pkgs.writeScriptBin "lions-ghcid" ''
     #!/bin/sh
     ghcid --no-height-limit --clear --reverse
+  '';
+
+  # If needed can also just forward arguments to sass here
+  # TODO: Properly handle permissions for out path.
+  # The things that "nix build" creates are put in the Nix store and then a
+  # symlink to the folder in the store is created. That means I can't have Nix
+  # be in charge of "public" while also optionally letting "sass --watch" write
+  # to the store. I can modify dev.hs though so create the public folder, build
+  # the Nix stuff into "result" and then symlink everything inside "result/*"
+  # into public. That way "sass" (or any process running under my user) should
+  # be able to write into "public/"
+  lions-sass = pkgs.writeScriptBin "lions-sass" ''
+    #!/bin/sh
+    ${pkgs.nodePackages.sass}/bin/sass --watch --load-path=${bootstrapSrc} ./client/sass/styles.scss public/style.css
   '';
 
   # Need --impure so I can use getEnv in nix build
@@ -22,10 +36,6 @@ let
 
   lions-vm-db = pkgs.writeShellScriptBin "lions-vm-db" ''
     scp -P 2221 $LIONS_SQLITE_PATH root@localhost:/var/lib/lions-server/db
-  '';
-
-  lions-db-replicate = pkgs.writeShellScriptBin "lions-db-replicate" ''
-    litestream replicate $LIONS_SQLITE_PATH s3://lions-achern-litestream-replica-1/dev-db
   '';
 
   spago2nix' = import spago2nix { inherit pkgs; };
@@ -76,7 +86,6 @@ pkgs.mkShell {
       lions-vm
       lions-ghcid
       lions-dummy
-      lions-db-replicate
       lions-vm-db
 
       # Infra
@@ -87,6 +96,7 @@ pkgs.mkShell {
       # pkgs.nodePackages.firebase-tools
       pkgs.terraform_0_15
       pkgs.cli53
+      pkgs.nodePackages.sass
       pkgs.packer
       pkgs.awscli2
       deploy-rs

@@ -7,6 +7,7 @@ import qualified DB
 import qualified Data.ByteString as BS
 import qualified Data.String.Interpolate as Interpolate
 import qualified Data.Text as Text
+import qualified System.Directory
 import Data.Text.Encoding (encodeUtf8)
 import Data.UUID (UUID)
 import Data.UUID.V4 (nextRandom)
@@ -55,13 +56,13 @@ server ::
   ClientSession.Key ->
   RequestIdVaultKey ->
   AWS.Env ->
-  AWS.Env ->
   Int ->
   Environment ->
   SessionDataVaultKey ->
   BS.ByteString -> -- Project's base64_signer_key
   BS.ByteString -> -- Project's base64_salt_separator
   InternalState ->
+  FilePath ->
   Wai.Request ->
   (Wai.Response -> IO Wai.ResponseReceived) ->
   IO Wai.ResponseReceived
@@ -71,13 +72,13 @@ server
   sessionKey
   requestIdVaultKey
   awsEnv
-  s3Env
   port
   appEnv
   sessionDataVaultKey
   signerKey
   saltSep
   internalState
+  storageDir
   req
   send = do
     let vault = Wai.vault req
@@ -119,8 +120,7 @@ server
         -- my primary sources of bugs. But it helps me focus on the clean.
         -- TODO: Make this more ergonomic maybe by bundling stuff in a record
         sendMail' = SendEmail.sendMail awsEnv resetHost
-        awsS3Run = AWS.runResourceT . AWS.runAWS s3Env . AWS.within AWS.Frankfurt . AWS.send
-        uploadAttachmentToS3' name filepath = Events.Handlers.uploadAttachmentToS3 name filepath >>= awsS3Run
+        saveAttachment' = Events.Handlers.saveAttachment storageDir
         clientEncrypt = ClientSession.encryptIO sessionKey
         clientDecrypt = ClientSession.decrypt sessionKey
         tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) clientEncrypt
@@ -162,7 +162,7 @@ server
                 clientDecrypt
                 (Events.DB.createEvent dbConn)
                 internalState
-                uploadAttachmentToS3'
+                saveAttachment'
                 req
                 >=> send200 . layout'
           -- TODO: Send unsupported method 405
@@ -302,16 +302,16 @@ addRequestId requestIdVaultKey next req send = do
 
 main :: IO ()
 main = do
-  -- Read configuration from the environment
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
   appEnv <- getEnv "LIONS_ENV" >>= parseEnv
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
-  s3AwsAccessKey <- getEnv "LITESTREAM_ACCESS_KEY_ID"
-  s3AwsSecretAccessKey <- getEnv "LITESTREAM_SECRET_ACCESS_KEY"
   signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
+  storageDir <- getEnv "LIONS_STORAGE_DIR"
+
+  System.Directory.createDirectoryIfMissing True storageDir
 
   sessionKey <- ClientSession.getKey sessionKeyFile
   sessionDataVaultKey <- Vault.newKey
@@ -320,14 +320,9 @@ main = do
   DB.withConnection
     sqlitePath
     ( \conn -> do
-        -- TODO: Remove cloudposse S3 user and create a role instead and that
-        -- have a single user for S3 that gets Email and S3 roles
         let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
             sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
-            aKeyS3 = AWS.AccessKey (encodeUtf8 (Text.pack s3AwsAccessKey))
-            sKeyS3 = AWS.SecretKey (encodeUtf8 (Text.pack s3AwsSecretAccessKey))
         awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
-        s3Env <- AWS.newEnv (AWS.FromKeys aKeyS3 sKeyS3)
 
         runResourceT $
           withInternalState
@@ -341,24 +336,28 @@ main = do
                           sessionKey
                           requestIdVaultKey
                           awsEnv
-                          s3Env
                           port
                           appEnv
                           sessionDataVaultKey
                           signerKey
                           saltSep
                           internalState
+                          storageDir
 
                   let requestIdMiddleware = addRequestId requestIdVaultKey
                       sessionMiddleware = Session.middleware (Logging.log logger) sessionDataVaultKey conn sessionKey
+                      assetMiddleware = staticPolicy (addBase "public")
+                      -- Must come after sessionMiddleware because these files shouldn't be public
+                      storageStaticMiddleware = staticPolicy (addBase storageDir)
+                      allMiddlewares = assetMiddleware . requestIdMiddleware . sessionMiddleware . storageStaticMiddleware
                       errorHandler send err = do
                         Logging.log logger $ show err
                         send500 send
                       finalApp req send =
-                        handleAny (errorHandler send) $ (requestIdMiddleware . sessionMiddleware) app' req send
+                        handleAny (errorHandler send) $ allMiddlewares app' req send
                       warpServer = runSettings . setPort port $ setHost "localhost" defaultSettings
 
-                  warpServer . logStdout . staticPolicy (addBase "public") $ finalApp
+                  warpServer $ logStdout finalApp
             )
     )
   where

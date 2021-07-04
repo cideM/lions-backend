@@ -108,6 +108,8 @@ library
     , uri-encode
     , uuid
     , vault
+    , directory
+    , filepath
     , wai
     , wai-extra
     , wai-middleware-static

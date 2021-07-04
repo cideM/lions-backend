@@ -15,7 +15,7 @@ import Web.HTML.HTMLElement (toElement)
 import Data.Traversable (for_, traverse)
 import Web.DOM.Element as Element
 import Web.DOM.NodeList (toArray)
-import Data.Maybe (maybe)
+import Data.Maybe (maybe, Maybe(..))
 import Web.HTML.HTMLInputElement as InputElement
 import Web.DOM.ParentNode (QuerySelector(..), querySelector, querySelectorAll)
 import Web.DOM.Node (Node, toEventTarget)
@@ -44,7 +44,6 @@ getEmailState root = do
     checkboxAsEl <- maybe (throw "couldn't convert checkbox to element") pure $ Element.fromNode checkbox
     checkbox' <- maybe (throw "couldn't convert checkbox to input element") pure $ InputElement.fromNode checkbox
     isChecked <- InputElement.checked checkbox'
-    checked <- Element.getAttribute "checked" $ checkboxAsEl
     email <- Element.getAttribute "data-email" checkboxAsEl >>= maybe (throw "no data-email attr") pure
     pure { email: email, checked: isChecked }
 
@@ -111,7 +110,7 @@ onClickCheckbox :: Element.Element -> Element.Element -> Element.Element -> Even
 onClickCheckbox root toggleButton mailToButton =
   const
     $ do
-        { state: state, uncheckedEmails: no, checkedEmails: yes } <- getEmailState root
+        { state: state, checkedEmails: yes } <- getEmailState root
         case state of
           AllSelected -> do
             buttonOff toggleButton
@@ -122,14 +121,16 @@ onClickCheckbox root toggleButton mailToButton =
 initializeUserEmailFeature :: Element.Element -> Effect Unit
 initializeUserEmailFeature root = do
   listItems <- getCheckboxes root
-  mailToButton <- qsOrThrow "mail to button not found" "#email-button" $ Element.toParentNode root
-  toggleButton <- qsOrThrow "toggle mail to button not found" "#toggle-email-button" $ Element.toParentNode root
-  toggleListener <- ET.eventListener $ onClickToggleButton root toggleButton mailToButton
-  _ <- ET.addEventListener (Event.EventType "click") toggleListener false (Element.toEventTarget toggleButton)
-  checkboxListener <- ET.eventListener $ onClickCheckbox root toggleButton mailToButton
-  for_ listItems (ET.addEventListener (Event.EventType "click") checkboxListener false <<< toEventTarget)
-  state <- getEmailState root
-  pure unit
+  mailToButton <- qs "#email-button" $ Element.toParentNode root
+  case mailToButton of
+    Nothing -> pure unit
+    Just mailToButton' -> do
+      toggleButton <- qsOrThrow "toggle mail to button not found" "#toggle-email-button" $ Element.toParentNode root
+      toggleListener <- ET.eventListener $ onClickToggleButton root toggleButton mailToButton'
+      _ <- ET.addEventListener (Event.EventType "click") toggleListener false (Element.toEventTarget toggleButton)
+      checkboxListener <- ET.eventListener $ onClickCheckbox root toggleButton mailToButton'
+      for_ listItems (ET.addEventListener (Event.EventType "click") checkboxListener false <<< toEventTarget)
+      pure unit
   where
   qs = querySelector <<< QuerySelector
 

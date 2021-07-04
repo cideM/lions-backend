@@ -1,11 +1,11 @@
 { mkDerivation, aeson, amazonka, amazonka-core, amazonka-s3
 , amazonka-ses, base, base64, bcrypt, bytestring, cipher-aes
 , clientsession, containers, cookie, crypto-api
-, crypto-cipher-types, email-validate, fast-logger, filepattern
-, http-types, lens, lib, lucid, resourcet, safe-exceptions, scrypt
-, sqlite-simple, string-interpolate, tasty, tasty-hunit, text, time
-, uri-encode, uuid, vault, wai, wai-extra, wai-middleware-static
-, wai-session, warp
+, crypto-cipher-types, directory, email-validate, fast-logger
+, filepattern, http-types, lens, lib, lucid, resourcet
+, safe-exceptions, scrypt, sqlite-simple, string-interpolate, tasty
+, tasty-hunit, text, time, uri-encode, uuid, vault, wai, wai-extra
+, wai-middleware-static, wai-session, warp
 }:
 mkDerivation {
   pname = "lions-backend";
@@ -16,7 +16,7 @@ mkDerivation {
   libraryHaskellDepends = [
     aeson amazonka amazonka-core amazonka-s3 amazonka-ses base base64
     bcrypt bytestring cipher-aes clientsession containers cookie
-    crypto-api crypto-cipher-types email-validate fast-logger
+    crypto-api crypto-cipher-types directory email-validate fast-logger
     http-types lens lucid resourcet safe-exceptions scrypt
     sqlite-simple string-interpolate text time uri-encode uuid vault
     wai wai-extra wai-middleware-static wai-session warp

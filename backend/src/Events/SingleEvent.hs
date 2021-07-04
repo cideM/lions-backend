@@ -1,8 +1,9 @@
 module Events.SingleEvent (render, ShowAdminTools (..)) where
 
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Data.Function ((&))
 import Data.Maybe (isNothing)
+import Data.String.Interpolate (i)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import Events.Domain (Event (..), EventId (..), Reply (..))
@@ -21,29 +22,33 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
       guests = eventReplies & filter replyComing & map replyGuests & sum
    in do
         div_ [class_ "container"] $ do
-          div_ [class_ "row gy-5 gx-lg-4 mb-5"] $ do
-            section_ [class_ "justify-content-center col-lg-9"] $ do
-              div_ [class_ "mb-2"] $ do
+          div_ [class_ "row gy-3 gx-lg-4 mb-5"] $ do
+            when showAdminTools $ do
+              div_ [class_ "col-12 d-flex flex-wrap"] $ do
+                a_
+                  [ class_ "btn btn-sm btn-danger me-4",
+                    role_ "button",
+                    href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/loeschen"
+                  ]
+                  "Löschen"
+                a_
+                  [ class_ "btn btn-sm btn-secondary",
+                    role_ "button",
+                    href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/editieren"
+                  ]
+                  "Editieren"
+            section_ [class_ "justify-content-center col-lg-8"] $ do
+              div_ [class_ "mb-1 text-muted"] $ do
                 span_ [class_ "me-2"] $ toHtml date
                 when eventFamilyAllowed $ span_ [class_ "badge bg-success"] "Mit Familie"
-              h1_ [class_ "fs-3 mb-2 text-break"] $ toHtml eventTitle
-              p_ [class_ "my-3"] $ toHtml eventDescription
               p_ [class_ "mb-1 text-muted"] $ toHtml $ "Ort: " <> eventLocation
-              when showAdminTools $ do
-                div_ [class_ "mt-2 d-flex flex-wrap"] $ do
-                  a_
-                    [ class_ "btn btn-sm btn-danger me-4",
-                      role_ "button",
-                      href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/loeschen"
-                    ]
-                    "Löschen"
-                  a_
-                    [ class_ "btn btn-sm btn-secondary",
-                      role_ "button",
-                      href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/editieren"
-                    ]
-                    "Editieren"
-            section_ [class_ "justify-content-center col-lg-3"] $ do
+              h1_ [class_ "mb-2 h3"] $ toHtml eventTitle
+              p_ [class_ "my-3"] $ toHtml eventDescription
+              when (length eventAttachments > 0) $ do
+                p_ [class_ "m-0"] "Angehängte Dateien: "
+                ul_ [] $ do
+                  forM_ eventAttachments (\f -> li_ [] $ a_ [href_ [i|/#{f}|]] $ toHtml f)
+            section_ [class_ "justify-content-center col-lg-4"] $ do
               div_ [class_ "card"] $ do
                 div_ [class_ "card-header"] $ do
                   span_ "Deine Antwort"

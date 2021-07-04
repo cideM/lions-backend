@@ -47,7 +47,8 @@ data Event = Event
     eventFamilyAllowed :: Bool,
     eventDescription :: Text,
     eventLocation :: Text,
-    eventReplies :: [Reply]
+    eventReplies :: [Reply],
+    eventAttachments :: [Text]
   }
   deriving (Show, Eq, Generic)
 

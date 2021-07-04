@@ -24,6 +24,18 @@
         "url": "https://github.com/twbs/icons/releases/download/v1.5.0/bootstrap-icons-1.5.0.zip"
       }
     },
+    "bootstrapsrc": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-6K07i6pEMrgGyWul1Pa3spfe2x2nASB6up1fM6wtR9Y=",
+        "type": "tarball",
+        "url": "https://github.com/twbs/bootstrap/archive/v5.0.2.zip"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/twbs/bootstrap/archive/v5.0.2.zip"
+      }
+    },
     "deploy-rs": {
       "inputs": {
         "flake-compat": "flake-compat",
@@ -182,6 +194,7 @@
       "inputs": {
         "bootstrap": "bootstrap",
         "bootstrap-icons": "bootstrap-icons",
+        "bootstrapsrc": "bootstrapsrc",
         "deploy-rs": "deploy-rs",
         "flake-utils": "flake-utils",
         "litestream-src": "litestream-src",

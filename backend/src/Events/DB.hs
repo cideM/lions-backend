@@ -12,10 +12,12 @@ module Events.DB
 where
 
 import Control.Exception.Safe
+import Control.Monad (forM_)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Data.String.Interpolate (i)
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
@@ -36,7 +38,8 @@ data GetEventRow = GetEventRow
     _eventReplyUserId :: Maybe Int,
     _eventReplyComing :: Maybe Bool,
     _eventReplyNumGuests :: Maybe Int,
-    _eventReplyEmail :: Maybe Text
+    _eventReplyEmail :: Maybe Text,
+    _eventAttachments :: Text
   }
   deriving (Show)
 
@@ -53,21 +56,25 @@ instance FromRow GetEventRow where
         <*> SQLite.field
         <*> SQLite.field
         <*> SQLite.field
+        <*> SQLite.field
 
 createEvent :: SQLite.Connection -> EventCreate -> IO ()
 createEvent conn EventCreate {..} = do
   SQLite.execute
     conn
     [sql|
-        insert into events (
-          title,
-          date,
-          family_allowed,
-          description,
-          location
-        ) values (?,?,?,?,?)
-      |]
+            insert into events (
+              title,
+              date,
+              family_allowed,
+              description,
+              location
+            ) values (?,?,?,?,?)
+          |]
     (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation)
+  id <- SQLite.lastInsertRowId conn
+  forM_ eventCreateFiles $ \file ->
+    SQLite.execute conn [sql|insert into event_attachments (eventid, name) values (?,?)|] (id, file)
 
 -- | Converts a single row to an event. The idea is that you can just map over
 -- rows and then merge them all into one event
@@ -75,14 +82,15 @@ createEventFromDb :: GetEventRow -> Either Text (EventId, Event)
 createEventFromDb GetEventRow {..} =
   -- These properties we just pass through, only thing that needs special
   -- handling is the reply
-  let event = Event _eventTitle _eventDate _eventFamilyAllowed _eventDescription _eventLocation
+  let attachments = filter (\t -> Text.length t > 0) $ Text.split (',' ==) _eventAttachments
+      makeEvent = \replies -> Event _eventTitle _eventDate _eventFamilyAllowed _eventDescription _eventLocation replies attachments
    in case getReplyFromRow of
-        Nothing -> Right $ (EventId _eventId, event [])
+        Nothing -> Right $ (EventId _eventId, makeEvent [])
         Just (uid, coming, email, numguests) ->
           case emailAddress (encodeUtf8 email) of
             Nothing -> Left $ "couldn't parse email " <> email
             Just parsedEmail ->
-              Right $ (EventId _eventId, event [Reply coming (UserEmail parsedEmail) (UserId uid) numguests])
+              Right $ (EventId _eventId, makeEvent [Reply coming (UserEmail parsedEmail) (UserId uid) numguests])
   where
     -- Unfortunately I currently get four separate maybe fields from the SQL
     -- query when in fact they're all related. So it's all or nothing, they're
@@ -114,9 +122,11 @@ getEvent conn eid@(EventId eventid) = do
                userid,
                coming,
                guests,
-               users.email as email
+               users.email as email,
+               coalesce(group_concat(event_attachments.name),'') as attachments
         from events
-        left join event_replies on events.id = eventid
+        left join event_attachments on events.id = event_attachments.eventid
+        left join event_replies on events.id = event_replies.eventid
         left join users on userid = users.id
         where events.id = ?
       |]
@@ -147,7 +157,8 @@ getAll conn = do
                userid,
                coming,
                guests,
-               users.email as email
+               users.email as email,
+               '' as attachments
         from events
         left join event_replies on events.id = eventid
         left join users on userid = users.id

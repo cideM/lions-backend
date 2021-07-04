@@ -1,15 +1,37 @@
 { pkgs, bootstrap, bootstrap-icons, backend }:
 let
-  css = pkgs.stdenv.mkDerivation {
-    name = "lions-css";
+  bootstrapSrc = pkgs.stdenv.mkDerivation {
+    name = "bootstrap-scss-source";
     src = bootstrap;
     unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
     dontBuild = true;
     installPhase = ''
       mkdir $out
-      cp css/bootstrap.min.css* $out/
-      cp js/bootstrap.bundle.min.js* $out/
+      cp -r scss/* $out/
     '';
+  };
+
+  bootstrapJs = pkgs.stdenv.mkDerivation {
+    name = "bootstrap-js-bundle";
+    src = bootstrap;
+    unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
+    dontBuild = true;
+    installPhase = ''
+      mkdir $out
+      cp dist/js/bootstrap.bundle.min.js* $out/
+    '';
+  };
+
+  styles = pkgs.stdenv.mkDerivation {
+    name = "lions-styles";
+    src = builtins.path { name = "lions-scss"; path = ./sass; };
+    dontUnpack = true;
+    buildPhase = ''
+      ${pkgs.nodePackages.sass}/bin/sass --load-path=${bootstrapSrc} $src/styles.scss style.css
+      mkdir $out
+      cp style.css $out/style.css
+    '';
+    dontInstall = true;
   };
 
   icons = pkgs.stdenv.mkDerivation {
@@ -31,7 +53,8 @@ let
     installPhase = ''
       mkdir $out
       cp $src/* $out/
-      cp ${css}/* $out/
+      cp ${styles}/* $out/
+      cp ${bootstrapJs}/* $out/
       mkdir $out/icons
       cp ${icons}/* $out/icons
     '';
@@ -81,5 +104,5 @@ let
 
 in
 {
-  inherit css assets icons clientside allAssets;
+  inherit bootstrapSrc styles assets icons clientside allAssets;
 }

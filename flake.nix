@@ -15,6 +15,10 @@
       url = "https://github.com/twbs/bootstrap/releases/download/v5.0.1/bootstrap-5.0.1-dist.zip";
       flake = false;
     };
+    bootstrapsrc = {
+      url = "https://github.com/twbs/bootstrap/archive/v5.0.2.zip";
+      flake = false;
+    };
     bootstrap-icons = {
       url = "https://github.com/twbs/icons/releases/download/v1.5.0/bootstrap-icons-1.5.0.zip";
       flake = false;
@@ -28,6 +32,7 @@
     , spago2nix
     , bootstrap-icons
     , bootstrap
+    , bootstrapsrc
     , nixpkgs
     , flake-utils
     , nixpkgs-20-09
@@ -63,7 +68,7 @@
               libraryHaskellDepends = drv.libraryHaskellDepends ++ haskellScriptDeps;
             })).env;
 
-            clientStuff = import ./client/default.nix { inherit bootstrap-icons bootstrap pkgs backend; };
+            clientStuff = import ./client/default.nix { inherit bootstrap-icons pkgs backend; bootstrap = bootstrapsrc; };
 
             production = pkgs.stdenv.mkDerivation {
               name = "lions-website";
@@ -155,6 +160,7 @@
 
             devShell = import ./shell.nix {
               inherit pkgs spago2nix projectEnv litestream;
+              bootstrapSrc = clientStuff.bootstrapSrc;
               sopsHook = sops-nix.packages.${system}.sops-pgp-hook;
               deploy-rs = deploy-rs.packages.${system}.deploy-rs;
             };

@@ -48,7 +48,7 @@ layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = 
             content_ "width=device-width, initial-scale=1, maximum-scale=1",
             charset_ "utf-8"
           ]
-        link_ [rel_ "stylesheet", type_ "text/css", href_ "/bootstrap.min.css"]
+        link_ [rel_ "stylesheet", type_ "text/css", href_ "/style.css"]
         -- https://github.com/chrisdone/lucid/issues/30
         body_ $ do
           nav_ [class_ "navbar navbar-expand-md navbar-light bg-light"] $

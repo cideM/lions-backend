@@ -6,7 +6,7 @@ module Events.Handlers
     handleDeleteEvent,
     getNewCheckboxes,
     handleCreateEvent,
-    uploadAttachmentToS3,
+    saveAttachment,
     handleUpdateEvent,
     showEditEventForm,
     replyToEvent,
@@ -14,7 +14,7 @@ module Events.Handlers
 where
 
 import Control.Exception.Safe
-import Control.Monad (when, forM_)
+import Control.Monad (forM_, when)
 import Control.Monad.Trans.Resource (InternalState)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -49,6 +49,8 @@ import Network.Wai.Parse
     tempFileBackEnd,
   )
 import qualified Session
+import qualified System.Directory
+import System.FilePath ((</>))
 import Text.Read (readEither)
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
@@ -131,11 +133,9 @@ replyToEvent getUser deleteReply upsertReply req send eventid@(EventId i) auth =
 
 showEvent :: (EventId -> IO (Maybe Event)) -> EventId -> Session.Authenticated -> IO (Maybe LayoutStub)
 showEvent getEvent eventid auth = do
-  let (userIsAdmin, Session.UserSession {..}) = case auth of
-        Session.IsAdmin (Session.AdminUser session) -> (True, session)
-        Session.IsUser session -> (False, session)
-  maybeevent <- getEvent eventid
-  case maybeevent of
+  let userIsAdmin = Session.isUserAdmin auth
+      Session.UserSession {..} = Session.getSessionFromAuth auth
+  getEvent eventid >>= \case
     Nothing -> return Nothing
     Just e@Event {..} -> do
       let ownReply = find ((==) userSessionUserId . replyUserId) eventReplies
@@ -189,11 +189,10 @@ showDeleteEventConfirmation getEvent eid@(EventId eventid) _ = do
               ]
               $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Veranstaltung löschen!"
 
-uploadAttachmentToS3 :: Text -> FilePath -> IO S3.PutObject
-uploadAttachmentToS3 name filePath = do
-  contents <- BS.readFile filePath
-  let key = S3.ObjectKey name
-  return $ S3.putObject "lions-achern-event-attachments" key $ Hashed $ toHashed contents
+saveAttachment :: FilePath -> FilePath -> FilePath -> IO ()
+saveAttachment destinationDir source destinationFileName =
+  let dest = destinationDir </> destinationFileName
+   in System.Directory.copyFile source dest
 
 getNewCheckboxes ::
   (ByteString -> IO ByteString) ->
@@ -273,11 +272,11 @@ handleCreateEvent ::
   (ByteString -> Maybe ByteString) ->
   (EventCreate -> IO ()) ->
   InternalState ->
-  (Text -> FilePath -> IO S3.PutObjectResponse) ->
+  (FilePath -> FilePath -> IO ()) ->
   Wai.Request ->
   Session.AdminUser ->
   IO LayoutStub
-handleCreateEvent encrypt decrypt createEvent internalState uploadFile req _ = do
+handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
   -- There's no point in trying to catch an exception arising from a payload
   -- that's too large. The connection will be closed, so no more bytes are read
   -- by the server, and the browser will likely just show a connection reset
@@ -319,10 +318,15 @@ handleCreateEvent encrypt decrypt createEvent internalState uploadFile req _ = d
           EventForm.render "Speichern" "/veranstaltungen/neu" input state
     Right newEvent@EventCreate {..} -> do
       createEvent newEvent
-      forM_ checkboxes (\(name, filepath, _, _) -> uploadFile name $ Text.unpack filepath)
+      forM_ checkboxes $ \c@(_, filepath, _, _) -> do
+        saveFile' c
+        System.Directory.removeFile (Text.unpack filepath)
+
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
         success $ "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
   where
+    saveFile' (name, filepath, _, checked) =
+      when checked $ saveFile (Text.unpack filepath) (Text.unpack name)
     -- File size 100MB
     fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
 

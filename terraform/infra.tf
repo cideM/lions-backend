@@ -99,8 +99,6 @@ module "s3_user" {
   s3_resources = [
     "${aws_s3_bucket.litestream-replica-1.arn}/*",
     "${aws_s3_bucket.litestream-replica-1.arn}",
-    "${aws_s3_bucket.event-attachments.arn}/*",
-    "${aws_s3_bucket.event-attachments.arn}"
    ]
 }
 
@@ -112,18 +110,6 @@ output "litestream_user_access_key_id" {
 output "litestream_user_access_key_secret" {
   value = module.s3_user.secret_access_key
   sensitive = true
-}
-
-resource "aws_s3_bucket" "event-attachments" {
-    bucket = "lions-achern-event-attachments"
-
-    versioning {
-      enabled = true
-    }
-
-    lifecycle {
-      prevent_destroy = true
-    }
 }
 
 resource "aws_s3_bucket" "litestream-replica-1" {
@@ -198,11 +184,6 @@ output "email_user_secret" {
 
 resource "aws_iam_user" "admin" {
   name = "Admin"
-}
-
-resource "aws_iam_user_policy_attachment" "admin_attachment" {
-  user = aws_iam_user.admin.name
-  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
 resource "aws_s3_bucket" "log_bucket" {
