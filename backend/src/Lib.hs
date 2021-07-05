@@ -113,6 +113,7 @@ server
         -- with integration tests because interactions with the DB are one of
         -- my primary sources of bugs. But it helps me focus on the clean.
         -- TODO: Make this more ergonomic maybe by bundling stuff in a record
+        Events.DB.EventDb {..} = Events.DB.newEventDb dbConn
         sendMail' = SendEmail.sendMail awsEnv resetHost
         saveAttachment' = Events.Handlers.saveAttachment storageDir
         removeAllAttachments' = Events.Handlers.removeAllAttachments storageDir
@@ -120,13 +121,7 @@ server
         clientEncrypt = ClientSession.encryptIO sessionKey
         clientDecrypt = ClientSession.decrypt sessionKey
         tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) clientEncrypt
-        getAllEvents = Events.DB.getAll dbConn
         getUser = User.DB.getUser dbConn
-        deleteReply = Events.DB.deleteReply dbConn
-        upsertReply = Events.DB.upsertReply dbConn
-        getEvent = Events.DB.getEvent dbConn
-        deleteEvent = Events.DB.deleteEvent dbConn
-        updateEvent = Events.DB.updateEvent dbConn
 
         -- Some helpers related to rendering content. I could look into
         -- bringing back Snap or something similar so I don't need to
@@ -145,7 +140,7 @@ server
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents getAllEvents >=> send200 . layout'
+          "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents eventDbAll >=> send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", "neu"] ->
@@ -156,7 +151,7 @@ server
               Events.Handlers.handleCreateEvent
                 clientEncrypt
                 clientDecrypt
-                (Events.DB.createEvent dbConn)
+                eventDbCreate
                 internalState
                 saveAttachment'
                 req
@@ -170,7 +165,7 @@ server
             case Wai.requestMethod req of
               "GET" ->
                 authenticatedOnly' $
-                  Events.Handlers.showEvent getEvent (EventId parsed) >=> \case
+                  Events.Handlers.showEvent eventDbGet (EventId parsed) >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
               _ -> send404
@@ -181,27 +176,27 @@ server
             case Wai.requestMethod req of
               "POST" ->
                 authenticatedOnly' $
-                  Events.Handlers.replyToEvent getUser deleteReply upsertReply req send (EventId parsed)
+                  Events.Handlers.replyToEvent getUser eventDbDeleteReply eventDbUpsertReply req send (EventId parsed)
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation getEvent (EventId parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent getEvent deleteEvent removeAllAttachments' (EventId parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation eventDbGet (EventId parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent eventDbGet eventDbDelete removeAllAttachments' (EventId parsed) >=> send200 . layout'
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm getEvent (EventId parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm eventDbGet (EventId parsed) >=> send200 . layout'
               "POST" ->
                 adminOnly' $
                   Events.Handlers.handleUpdateEvent
-                    updateEvent
-                    getEvent
+                    eventDbUpdate
+                    eventDbGet
                     clientEncrypt
                     clientDecrypt
                     removeAttachment'

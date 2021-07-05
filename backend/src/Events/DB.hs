@@ -1,12 +1,4 @@
-module Events.DB
-  ( getEvent,
-    getAll,
-    deleteReply,
-    createEvent,
-    updateEvent,
-    upsertReply,
-    deleteEvent,
-  )
+module Events.DB (EventDb (..), newEventDb)
 where
 
 import Control.Arrow (left)
@@ -22,6 +14,30 @@ import Database.SQLite.Simple.QQ (sql)
 import Events.Domain (Event (..), EventAttachment (..), EventCreate (..), EventId (..), Reply (..))
 import User.Types (UserId (..))
 import Prelude hiding (id)
+
+type EventRow = (Int, Text, Time.UTCTime, Bool, Text, Text, Text, Text)
+
+data EventDb = EventDb
+  { eventDbCreate :: EventCreate -> IO EventId,
+    eventDbGet :: EventId -> IO (Maybe Event),
+    eventDbAll :: IO [(EventId, Event)],
+    eventDbDeleteReply :: EventId -> UserId -> IO (),
+    eventDbDelete :: EventId -> IO (),
+    eventDbUpdate :: EventId -> EventCreate -> IO (),
+    eventDbUpsertReply :: EventId -> Reply -> IO ()
+  }
+
+newEventDb :: SQLite.Connection -> EventDb
+newEventDb conn =
+  EventDb
+    { eventDbCreate = createEvent conn,
+      eventDbGet = getEvent conn,
+      eventDbAll = getAll conn,
+      eventDbDeleteReply = deleteReply conn,
+      eventDbDelete = deleteEvent conn,
+      eventDbUpdate = updateEvent conn,
+      eventDbUpsertReply = upsertReply conn
+    }
 
 createEvent :: SQLite.Connection -> EventCreate -> IO EventId
 createEvent conn EventCreate {..} = do
@@ -47,8 +63,6 @@ createEventFromDb (id, title, date, family, desc, loc, replies, attachments) = d
   (attachments' :: [EventAttachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
   (replies' :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
   return (EventId id, Event title date family desc loc replies' attachments')
-
-type EventRow = (Int, Text, Time.UTCTime, Bool, Text, Text, Text, Text)
 
 getEvent :: SQLite.Connection -> EventId -> IO (Maybe Event)
 getEvent conn (EventId eventid) = do
@@ -85,7 +99,6 @@ getEvent conn (EventId eventid) = do
     Left e -> throwString $ [i|couldn't parse event with id #{eventid} from DB: #{e}|]
     Right ok -> return $ Just $ snd ok
 
--- TODO: Should have a type only for event preview maybe
 getAll :: SQLite.Connection -> IO [(EventId, Event)]
 getAll conn = do
   (rows :: [EventRow]) <-
@@ -145,7 +158,6 @@ updateEvent conn (EventId eventid) EventCreate {..} = do
   forM_ eventCreateFiles $ \filename ->
     SQLite.execute conn [sql|insert into event_attachments (eventid, filename) values (?,?)|] (eventid, filename)
 
--- Inserts a new reply or updates the existing one.
 upsertReply :: SQLite.Connection -> EventId -> Reply -> IO ()
 upsertReply conn (EventId eventid) (Reply coming _ (UserId userid) guests) =
   SQLite.execute
