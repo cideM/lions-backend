@@ -5,6 +5,8 @@ module Events.Handlers
     showDeleteEventConfirmation,
     removeAllAttachments,
     handleDeleteEvent,
+    FileActions(..),
+    getFileActions,
     handleCreateEvent,
     saveAttachment,
     removeAttachment,
@@ -245,7 +247,7 @@ data FileActions = FileActions
     fileActionsDontUpload :: [FileInfo FilePath],
     fileActionsUpload :: [FileInfo FilePath]
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 getFileActions ::
   (ByteString -> IO ByteString) ->

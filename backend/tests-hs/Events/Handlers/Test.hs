@@ -1,6 +1,7 @@
 module Events.Handlers.Test where
 
-import Events.Handlers (getNewCheckboxes)
+import Events.Domain (EventAttachment (..))
+import Events.Handlers (FileActions (..), getFileActions)
 import Network.Wai.Parse
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -8,33 +9,97 @@ import Test.Tasty.HUnit
 tests :: TestTree
 tests =
   testGroup
-    "getNewCheckboxes"
+    "getFileActions"
     [ testCase "unchecked previous files" $ do
         let inputParams = [("allFiles", "foo:bar:bax")]
             inputFileParams = []
 
-        actual <- getNewCheckboxes return Just (inputParams, inputFileParams)
-        print actual
-        actual @?= Right [("foo", "foo:bar:bax", False)],
+        (actions, encrypted) <- getFileActions return Just [] (inputParams, inputFileParams)
+
+        actions
+          @?= ( FileActions
+                  { fileActionsKeep = [],
+                    fileActionsDelete = [],
+                    fileActionsDontUpload = [FileInfo "foo" "bar" "bax"],
+                    fileActionsUpload = []
+                  }
+              )
+        encrypted @?= ["foo:bar:bax"],
       testCase "new files" $ do
         let inputParams = [("allFiles", "foo:bar:bax")]
             inputFileParams = [("eventAttachmentsInput", FileInfo "new" "pdf" "some/path")]
 
-        actual <- getNewCheckboxes return Just (inputParams, inputFileParams)
-        print actual
-        actual @?= Right [("new", "new:pdf:some/path", True), ("foo", "foo:bar:bax", False)],
+        (actions, encrypted) <- getFileActions return Just [] (inputParams, inputFileParams)
+
+        actions
+          @?= ( FileActions
+                  { fileActionsKeep = [],
+                    fileActionsDelete = [],
+                    fileActionsDontUpload = [FileInfo "foo" "bar" "bax"],
+                    fileActionsUpload = [FileInfo "new" "pdf" "some/path"]
+                  }
+              )
+        encrypted @?= ["foo:bar:bax", "new:pdf:some/path"],
       testCase "previous checked" $ do
-        let inputParams = [("allFiles", "foo:bar:bax"),("newFileCheckbox", "foo")]
+        let inputParams = [("allFiles", "foo:bar:bax"), ("newFileCheckbox", "foo")]
             inputFileParams = [("eventAttachmentsInput", FileInfo "new" "pdf" "some/path")]
 
-        actual <- getNewCheckboxes return Just (inputParams, inputFileParams)
-        print actual
-        actual @?= Right [("new", "new:pdf:some/path", True), ("foo", "foo:bar:bax", True)],
+        (actions, encrypted) <- getFileActions return Just [] (inputParams, inputFileParams)
+
+        actions
+          @?= ( FileActions
+                  { fileActionsKeep = [],
+                    fileActionsDelete = [],
+                    fileActionsDontUpload = [],
+                    fileActionsUpload = [FileInfo "new" "pdf" "some/path", FileInfo "foo" "bar" "bax"]
+                  }
+              )
+        encrypted @?= ["foo:bar:bax", "new:pdf:some/path"],
       testCase "previous checked, no files" $ do
-        let inputParams = [("allFiles", "foo:bar:bax"),("allFiles", "some:other:file"),("newFileCheckbox", "foo")]
+        let inputParams = [("allFiles", "foo:bar:bax"), ("allFiles", "some:other:file"), ("newFileCheckbox", "foo")]
             inputFileParams = []
 
-        actual <- getNewCheckboxes return Just (inputParams, inputFileParams)
-        print actual
-        actual @?= Right [("foo", "foo:bar:bax", True),("some", "some:other:file", False)]
+        (actions, encrypted) <- getFileActions return Just [] (inputParams, inputFileParams)
+
+        actions
+          @?= ( FileActions
+                  { fileActionsKeep = [],
+                    fileActionsDelete = [],
+                    fileActionsDontUpload = [FileInfo "some" "other" "file"],
+                    fileActionsUpload = [FileInfo "foo" "bar" "bax"]
+                  }
+              )
+        encrypted @?= ["foo:bar:bax", "some:other:file"],
+      testCase "with already uploaded not checked" $ do
+        let inputParams = []
+            inputFileParams = []
+            alreadyUploaded = [EventAttachment "foobar"]
+
+        (actions, encrypted) <- getFileActions return Just alreadyUploaded (inputParams, inputFileParams)
+
+        actions
+          @?= ( FileActions
+                  { fileActionsKeep = [],
+                    fileActionsDelete = alreadyUploaded,
+                    fileActionsDontUpload = [],
+                    fileActionsUpload = []
+                  }
+              )
+        encrypted @?= [],
+      testCase "with already uploaded, checked" $ do
+        let inputParams = [("newFileCheckbox", "foobar")]
+            inputFileParams = []
+            alreadyUploaded = [EventAttachment "foobar"]
+
+        (actions, encrypted) <- getFileActions return Just alreadyUploaded (inputParams, inputFileParams)
+
+        actions
+          @?= ( FileActions
+                  { fileActionsKeep = alreadyUploaded,
+                    fileActionsDelete = [],
+                    fileActionsDontUpload = [],
+                    fileActionsUpload = []
+                  }
+              )
+        encrypted @?= []
     ]
