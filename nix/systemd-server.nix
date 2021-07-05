@@ -1,7 +1,8 @@
-{ config, lib, ... }:
+{ config, pkgs, lib, ... }:
 with lib;
 let
   migrateScript = pkgs.writeScript "lions-migrations" ''
+    #!${pkgs.runtimeShell}
     ${pkgs.go-migrate}/bin/migrate -path ./backend/migrations -database "sqlite3://$LIONS_SQLITE_PATH" up
   '';
 in

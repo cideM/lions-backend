@@ -97,6 +97,8 @@
                             echo "${(builtins.getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY")}" > /run/secrets/aws_ses_secret_access_key
                             echo "${(builtins.getEnv "LIONS_SCRYPT_SIGNER_KEY")}" > /run/secrets/signerkey
                             echo "${(builtins.getEnv "LIONS_SCRYPT_SALT_SEP")}" > /run/secrets/saltsep
+                            echo "${(builtins.getEnv "LITESTREAM_ACCESS_KEY_ID")}" > /run/secrets/litestream_aws_key
+                            echo "${(builtins.getEnv "LITESTREAM_SECRET_ACCESS_KEY")}" > /run/secrets/litestream_aws_secret
                           '';
                           wantedBy = [ "multi-user.target" ];
                         };
@@ -123,7 +125,7 @@
 
             defaultPackage = packages.server;
 
-            apps.server = flake-utils.lib.mkApp { drv = packages.server; exePath = "/bin/migrate-and-serve"; };
+            apps.server = flake-utils.lib.mkApp { drv = packages.server; exePath = "server"; };
 
             defaultApp = apps.server;
 

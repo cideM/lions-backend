@@ -20,6 +20,8 @@
     services.openssh.enable = true;
     services.openssh.permitRootLogin = "yes";
 
+    virtualisation.graphics = false;
+
     services.caddy = {
       enable = true;
       config = ''

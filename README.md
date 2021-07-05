@@ -88,3 +88,19 @@ that output is useful, so prefer the above snippet.
 $ cd backend
 $ fd -e hs | entr -c cabal v2-test
 ```
+
+### QEMU
+
+You can run the systemd services without SOPS to get an idea if the deployment
+setup actually works. On NixOS it's easy because you can just `nix build
+.#packages.x86_64-linux.vm` followed by `sh ./scripts/qemu.sh`
+
+On MacOS you need to use Docker, so use `./scripts/build_qemu`.
+
+You can't currently send CTRL-C to the QEMU running inside Docker. Whatever.
+
+Login is `root` and an empty password.
+
+```shell
+$ ./scripts/build_qemu
+```
