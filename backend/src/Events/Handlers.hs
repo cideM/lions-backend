@@ -5,7 +5,7 @@ module Events.Handlers
     showDeleteEventConfirmation,
     removeAllAttachments,
     handleDeleteEvent,
-    FileActions(..),
+    FileActions (..),
     getFileActions,
     handleCreateEvent,
     saveAttachment,
@@ -19,10 +19,9 @@ where
 import Control.Exception.Safe
 import Control.Monad (forM_, when)
 import Control.Monad.Trans.Resource (InternalState)
-import qualified Data.ByteString.Char8  as C8
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as C8
 import Data.Foldable (find)
-import qualified Data.Map.Strict as M
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import Data.Ord (Down (..))
@@ -44,9 +43,9 @@ import qualified Network.Wai as Wai
 import Network.Wai.Parse
   ( FileInfo (..),
     Param,
+    ParseRequestBodyOptions,
     defaultParseRequestBodyOptions,
     parseRequestBodyEx,
-    ParseRequestBodyOptions,
     setMaxRequestFileSize,
     tempFileBackEnd,
   )
@@ -57,8 +56,8 @@ import Text.Read (readEither)
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
 
-toEventList :: UserId -> M.Map EventId Event -> [(EventId, Event, Maybe Reply)]
-toEventList userid = map getOwnReplyFromEvent . sortEvents . M.toList
+toEventList :: UserId -> [(EventId, Event)] -> [(EventId, Event, Maybe Reply)]
+toEventList userid = map getOwnReplyFromEvent . sortEvents
   where
     sortEvents = sortWith (Down . eventDate . snd)
     getOwnReplyFromEvent (eventid, e) =
@@ -77,7 +76,7 @@ eventPreviewsHtml userIsAdmin events =
     div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] $
       mapM_ (div_ [class_ "col"] . Events.Preview.render) events
 
-showAllEvents :: IO (M.Map EventId Event) -> Session.Authenticated -> IO LayoutStub
+showAllEvents :: IO [(EventId, Event)] -> Session.Authenticated -> IO LayoutStub
 showAllEvents getAllEvents auth = do
   let userIsAdmin = Session.isUserAdmin auth
       Session.UserSession {..} = Session.getSessionFromAuth auth
@@ -110,28 +109,33 @@ replyToEvent getUser deleteReply upsertReply req send eventid@(EventId i) auth =
   -- doesn't matter. What matters is that I now store that repl.
   case coming of
     Nothing -> deleteReply eventid userSessionUserId
-    Just yesno -> upsertReply eventid (Reply yesno userEmail userSessionUserId numberOfGuests)
+    Just yesno -> upsertReply eventid $ (Reply yesno userEmail userSessionUserId numberOfGuests)
 
   send $ Wai.responseLBS status303 [("Location", encodeUtf8 $ "/veranstaltungen/" <> Text.pack (show i))] mempty
   where
+    parseParams' :: IO (Maybe Bool, Int)
     parseParams' = do
       params <- parseParams req
-      let replyParam = Map.lookup "reply" params
-          numGuestsParam = Map.lookup "numberOfGuests" params
-      coming <- maybe (throwString "no 'reply' param") parseComing replyParam
-      numberOfGuests <- maybe (throwString "no 'numberOfGuests' param") parseNumGuests numGuestsParam
-      return (coming, numberOfGuests)
+      let replyParam = Map.findWithDefault "" "reply" params
+          numGuestsParam = Map.findWithDefault "" "numberOfGuests" params
+      case parseComing replyParam of
+        Left e -> throwString $ Text.unpack e
+        Right coming -> case parseNumGuests numGuestsParam of
+          Left e -> throwString $ Text.unpack e
+          Right numGuests -> return (coming, numGuests)
 
-    parseComing "coming" = return $ Just True
-    parseComing "notcoming" = return $ Just False
-    parseComing "noreply" = return Nothing
-    parseComing s = throwString [Interpolate.i|unknown coming value '#{s :: Text.Text}'|]
+    parseComing :: Text -> Either Text (Maybe Bool)
+    parseComing "coming" = Right $ Just True
+    parseComing "notcoming" = Right $ Just False
+    parseComing "noreply" = Right Nothing
+    parseComing s = Left [Interpolate.i|unknown coming value '#{s :: Text.Text}'|]
 
-    parseNumGuests "" = return 0
+    parseNumGuests :: Text -> Either Text Int
+    parseNumGuests "" = Right 0
     parseNumGuests s =
       case readEither (Text.unpack s) of
-        Left e -> throwString [Interpolate.i|couldn't parse '#{s}' as number: #{e}|]
-        Right i' -> return i'
+        Left e -> Left [Interpolate.i|couldn't parse '#{s}' as number: #{e}|]
+        Right i' -> Right i'
 
 showEvent :: (EventId -> IO (Maybe Event)) -> EventId -> Session.Authenticated -> IO (Maybe LayoutStub)
 showEvent getEvent eventid auth = do
@@ -207,7 +211,7 @@ removeAllAttachments destinationDir (EventId eid) =
   System.Directory.removeDirectoryRecursive $ destinationDir </> show eid
 
 removeAttachment :: FilePath -> EventId -> FilePath -> IO ()
-removeAttachment destinationDir (EventId eid) filename = 
+removeAttachment destinationDir (EventId eid) filename =
   System.Directory.removeFile $ destinationDir </> show eid </> filename
 
 parseDecryptedString :: ByteString -> (Text, Text, Text)

@@ -3,14 +3,13 @@ module Events.DB
     getAll,
     deleteReply,
     createEvent,
-    GetEventRow (..),
-    createAndAggregateEventsFromDb,
     updateEvent,
     upsertReply,
     deleteEvent,
   )
 where
 
+import Control.Arrow (left)
 import Control.Exception.Safe
 import Control.Monad (forM_)
 import qualified Data.Aeson as Aeson
@@ -28,36 +27,6 @@ import Events.Domain (Event (..), EventAttachment (..), EventCreate (..), EventI
 import Text.Email.Validate (emailAddress)
 import User.Types (UserEmail (..), UserId (..))
 import Prelude hiding (id)
-
-data GetEventRow = GetEventRow
-  { _eventId :: Int,
-    _eventTitle :: Text,
-    _eventDate :: Time.UTCTime,
-    _eventFamilyAllowed :: Bool,
-    _eventDescription :: Text,
-    _eventLocation :: Text,
-    _eventReplyUserId :: Maybe Int,
-    _eventReplyComing :: Maybe Bool,
-    _eventReplyNumGuests :: Maybe Int,
-    _eventReplyEmail :: Maybe Text,
-    _eventAttachments :: Text
-  }
-  deriving (Show)
-
-instance FromRow GetEventRow where
-  fromRow =
-    GetEventRow
-      <$> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
 
 createEvent :: SQLite.Connection -> EventCreate -> IO EventId
 createEvent conn EventCreate {..} = do
@@ -78,43 +47,17 @@ createEvent conn EventCreate {..} = do
     SQLite.execute conn [sql|insert into event_attachments (eventid, filename) values (?,?)|] (id, filename)
   return . EventId $ fromIntegral id
 
--- | Converts a single row to an event. The idea is that you can just map over
--- rows and then merge them all into one event
-createEventFromDb :: GetEventRow -> Either Text (EventId, Event)
-createEventFromDb GetEventRow {..} =
-  -- These properties we just pass through, only thing that needs special
-  -- handling is the reply
-  case Aeson.eitherDecodeStrict (encodeUtf8 _eventAttachments) of
-    Left e -> Left $ [i|error decoding JSON: #{e}|]
-    Right (attachments :: [EventAttachment]) -> do
-      let attachments' = filter (\EventAttachment {..} -> Text.length eventAttachmentFileName > 0) attachments
-          makeEvent = \replies -> Event _eventTitle _eventDate _eventFamilyAllowed _eventDescription _eventLocation replies attachments'
-       in case getReplyFromRow of
-            Nothing -> Right $ (EventId _eventId, makeEvent [])
-            Just (uid, coming, email, numguests) ->
-              case emailAddress (encodeUtf8 email) of
-                Nothing -> Left $ "couldn't parse email " <> email
-                Just parsedEmail ->
-                  Right $ (EventId _eventId, makeEvent [Reply coming (UserEmail parsedEmail) (UserId uid) numguests])
-  where
-    -- Unfortunately I currently get four separate maybe fields from the SQL
-    -- query when in fact they're all related. So it's all or nothing, they're
-    -- all Just or all Nothing. Not sure if it's worth refactoring.
-    getReplyFromRow = do
-      (,,,)
-        <$> _eventReplyUserId
-        <*> _eventReplyComing
-        <*> _eventReplyEmail
-        <*> _eventReplyNumGuests
+createEventFromDb :: EventRow -> Either Text (EventId, Event)
+createEventFromDb (id, title, date, family, desc, loc, replies, attachments) = do
+  (attachments :: [EventAttachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
+  (replies :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
+  return (EventId id, Event title date family desc loc replies attachments)
 
--- Just a little wrapper around the above createEventFromDb function so I can
--- unit test this because it does have quite a lot of logic now.
-createAndAggregateEventsFromDb :: [GetEventRow] -> Either Text (Map EventId Event)
-createAndAggregateEventsFromDb rows = M.fromListWith (<>) <$> traverse createEventFromDb rows
+type EventRow = (Int, Text, Time.UTCTime, Bool, Text, Text, Text, Text)
 
 getEvent :: SQLite.Connection -> EventId -> IO (Maybe Event)
 getEvent conn (EventId eventid) = do
-  ([row] :: [GetEventRow]) <-
+  ([row] :: [EventRow]) <-
     SQLite.query
       conn
       [sql|
@@ -124,14 +67,21 @@ getEvent conn (EventId eventid) = do
                family_allowed,
                description,
                location,
-               userid,
-               coming,
-               guests,
-               users.email as email,
-               json_group_array(json_object('fileName',coalesce(event_attachments.filename, ''))) as attachments
+               (case (count(rep.coming))
+                 when 0 then "[]"
+                 else json_group_array(
+                        json_object('userId',rep.userid,
+                                    'coming',json(case rep.coming when 1 then "true" else "false" end),
+                                    'guests',rep.guests,
+                                    'userEmail', users.email))
+               end) as replies,
+               (case (count(event_attachments.filename))
+                  when 0 then "[]"
+                  else json_group_array(json_object('fileName',event_attachments.filename))
+               end) as attachments
         from events
         left join event_attachments on events.id = event_attachments.eventid
-        left join event_replies on events.id = event_replies.eventid
+        left join event_replies rep on events.id = rep.eventid
         left join users on userid = users.id
         where events.id = ?
       |]
@@ -140,13 +90,10 @@ getEvent conn (EventId eventid) = do
     Left e -> throwString $ [i|couldn't parse event with id #{eventid} from DB: #{e}|]
     Right ok -> return $ Just $ snd ok
 
--- Gets all events from the DB and aggregates them by event ID by merging all
--- user replies for a given event and making them unique on the odd chance that
--- some SQL query error results in multiple rows with the same result. I don't
--- have the patience to test that case right now through property testing.
-getAll :: SQLite.Connection -> IO (Map EventId Event)
+-- TODO: Should have a type only for event preview maybe
+getAll :: SQLite.Connection -> IO [(EventId, Event)]
 getAll conn = do
-  (rows :: [GetEventRow]) <-
+  (rows :: [EventRow]) <-
     SQLite.query_
       conn
       [sql|
@@ -156,16 +103,21 @@ getAll conn = do
                family_allowed,
                description,
                location,
-               userid,
-               coming,
-               guests,
-               users.email as email,
+               (case (count(rep.coming))
+                 when 0 then "[]"
+                 else json_group_array(
+                        json_object('userId',rep.userid,
+                                    'coming',json(case rep.coming when 1 then "true" else "false" end),
+                                    'guests',rep.guests,
+                                    'userEmail', users.email))
+               end) as replies,
                '[]' as attachments
         from events
-        left join event_replies on events.id = eventid
+        left join event_replies rep on events.id = rep.eventid
         left join users on userid = users.id
+        group by events.id
       |]
-  case createAndAggregateEventsFromDb rows of
+  case traverse createEventFromDb rows of
     Left e -> throwString $ "couldn't parse events from DB: " <> show e
     Right parsed -> return parsed
 

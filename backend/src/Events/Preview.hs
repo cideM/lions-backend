@@ -10,14 +10,12 @@ import Events.Domain (Event (..), EventId (..), Reply (..))
 import Locale (german)
 import Lucid
 
--- TODO: Why the tuples?
 render :: (EventId, Event, Maybe Reply) -> Html ()
 render (EventId eventid, Event {..}, ownReply) = do
   let formatted = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
       coming = eventReplies & filter replyComing & length
       notComing = eventReplies & filter (not . replyComing) & length
       guests = eventReplies & filter replyComing & map replyGuests & sum
-  -- Remove duplication in the actual event card which is same in preview and single view
   div_ [class_ "card"] $ do
     div_ [class_ "card-header"] $ do
       span_ [class_ "me-2"] $ toHtml formatted

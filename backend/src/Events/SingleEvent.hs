@@ -110,7 +110,7 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Reply {replyEmail = UserEmail email, replyUserId = UserId userid, ..} -> do
+                      ( \Reply {replyUserEmail = UserEmail email, replyUserId = UserId userid, ..} -> do
                           tr_ $ do
                             td_ [] $ toHtml $ showEmail email
                             td_ [] $ toHtml $ show replyGuests
@@ -128,7 +128,7 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Reply {replyEmail = UserEmail email, replyUserId = UserId userid} -> do
+                      ( \Reply {replyUserEmail = UserEmail email, replyUserId = UserId userid} -> do
                           tr_ $ do
                             td_ [] $ toHtml $ showEmail email
                             td_ [class_ "d-flex justify-content-end"] $

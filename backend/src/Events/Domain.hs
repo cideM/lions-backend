@@ -21,14 +21,17 @@ import User.Types (UserEmail (..), UserId (..))
 -- without its event ID. TODO: Reconsider if this should carry its ID around!
 data Reply = Reply
   { replyComing :: Bool,
-    replyEmail :: UserEmail,
+    replyUserEmail :: UserEmail,
     replyUserId :: UserId,
     replyGuests :: Int
   }
   deriving (Show, Generic, Eq)
 
+instance FromJSON Reply where
+  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 5}
+
 instance ToJSON Reply where
-  toEncoding = genericToEncoding defaultOptions
+  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 5}
 
 data EventCreate = EventCreate
   { eventCreateTitle :: Text,
