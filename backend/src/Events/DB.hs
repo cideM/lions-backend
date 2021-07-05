@@ -1,4 +1,4 @@
-module Events.DB (EventDb (..), newEventDb)
+module Events.DB (EventDb (..), newEventDb, createEvent)
 where
 
 import Control.Arrow (left)
@@ -119,10 +119,14 @@ getAll conn = do
                                     'guests',rep.guests,
                                     'userEmail', users.email))
                end) as replies,
-               '[]' as attachments
+               (case (count(event_attachments.filename))
+                  when 0 then "[]"
+                  else json_group_array(json_object('fileName',event_attachments.filename))
+               end) as attachments
         from events
         left join event_replies rep on events.id = rep.eventid
         left join users on userid = users.id
+        left join event_attachments on events.id = event_attachments.eventid
         group by events.id
       |]
   case traverse createEventFromDb rows of

@@ -8,8 +8,9 @@ import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
+import Database.SQLite.Simple.QQ (sql)
 import Events.DB
-import Events.Domain
+import qualified Events.Types as Events
 import Helpers (as200, withDB, withFormRequest, withQueryString, withoutLogging)
 import Network.AWS.SES.SendEmail
 import Network.HTTP.Types.Status (status200)
@@ -17,7 +18,7 @@ import Network.URI.Encode (decode)
 import Network.Wai.Test
 import Test.Tasty
 import Test.Tasty.HUnit
-import Text.Email.Validate (emailAddress)
+import qualified Text.Email.Validate as Email
 import User.Types
 
 tests :: TestTree
@@ -27,46 +28,44 @@ db :: TestTree
 db =
   testGroup
     "DB"
-    [ testGroup
-        "createAndAggregateEventsFromDb"
-        [ testCase "correctly aggregates event replies" $ do
-            now <- Time.getCurrentTime
-            emailFoo <- case emailAddress "foo@bar.com" of
-              Nothing -> assertFailure "couldn't parse email in test prep"
-              Just v -> return v
-            emailBar <- case emailAddress "bar@bar.com" of
-              Nothing -> assertFailure "couldn't parse email in test prep"
-              Just v -> return v
-            let rows =
-                  [ GetEventRow 1 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "foo@bar.com") "[{ \"fileName\": \"foo\"}]",
-                    GetEventRow 1 "Event One" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "bar@bar.com")  "[{ \"fileName\": \"foo\"}]",
-                    GetEventRow 2 "Event Two" now True "Some Event" "Location" (Just 1) (Just True) (Just 5) (Just "bar@bar.com") "[]"
-                  ]
-                expected =
-                  [ ( EventId 1,
-                      Event
-                        "Event One"
-                        now
-                        True
-                        "Some Event"
-                        "Location"
-                        [ Reply True (UserEmail emailBar) (UserId 1) 5,
-                          Reply True (UserEmail emailFoo) (UserId 1) 5
-                        ]
-                        [EventAttachment "foo"]
-                    ),
-                    ( EventId 2,
-                      Event
-                        "Event Two"
-                        now
-                        True
-                        "Some Event"
-                        "Location"
-                        [Reply True (UserEmail emailBar) (UserId 1) 5]
-                        []
-                    )
-                  ]
+    [ testCase "getAll" $ do
+        withDB $ \conn -> do
+          let EventDb {..} = newEventDb conn
+          SQLite.execute_ conn "insert into users (password_digest, email) values ('foo', 'foo@bar.com')"
+          SQLite.execute_
+            conn
+            [sql|
+            insert into events (title, date, family_allowed, description, location)
+            values ('some event', '2021-07-10 14:00:00', 1, 'some desc', 'some loc')|]
+          SQLite.execute_
+            conn
+            [sql|
+            insert into event_replies (userid, eventid, coming, guests)
+            values (1, 1, 1, 2)|]
+          SQLite.execute_
+            conn
+            [sql|
+            insert into event_attachments (eventid, filename)
+            values (1, 'some file')|]
 
-            createAndAggregateEventsFromDb rows @?= Right (M.fromList expected)
-        ]
+          actual <- eventDbAll
+
+          (date :: Time.UTCTime) <- case Time.parseTimeM True Time.defaultTimeLocale "%Y-%m-%d %T" "2021-07-10 14:00:00" of
+            Nothing -> fail "couldn't parse time"
+            Just v -> return v
+
+          let email = Email.unsafeEmailAddress "foo" "bar.com"
+
+          actual
+            @?= [ ( Events.Id 1,
+                    Events.Event
+                      "some event"
+                      date
+                      True
+                      "some desc"
+                      "some loc"
+                      [Events.Reply True (UserEmail email) (UserId 1) 2]
+                      [Events.Attachment "some file"]
+                  )
+                ]
     ]

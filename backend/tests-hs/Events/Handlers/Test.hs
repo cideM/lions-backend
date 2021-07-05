@@ -1,6 +1,6 @@
 module Events.Handlers.Test where
 
-import Events.Domain (EventAttachment (..))
+import qualified Events.Types as Events
 import Events.Handlers (FileActions (..), getFileActions)
 import Network.Wai.Parse
 import Test.Tasty
@@ -73,7 +73,7 @@ tests =
       testCase "with already uploaded not checked" $ do
         let inputParams = []
             inputFileParams = []
-            alreadyUploaded = [EventAttachment "foobar"]
+            alreadyUploaded = [Events.Attachment "foobar"]
 
         (actions, encrypted) <- getFileActions return Just alreadyUploaded (inputParams, inputFileParams)
 
@@ -89,7 +89,7 @@ tests =
       testCase "with already uploaded, checked" $ do
         let inputParams = [("newFileCheckbox", "foobar")]
             inputFileParams = []
-            alreadyUploaded = [EventAttachment "foobar"]
+            alreadyUploaded = [Events.Attachment "foobar"]
 
         (actions, encrypted) <- getFileActions return Just alreadyUploaded (inputParams, inputFileParams)
 
