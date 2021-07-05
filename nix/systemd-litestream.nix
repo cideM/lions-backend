@@ -27,6 +27,7 @@ with lib;
         ProtectSystem = "strict";
         ProtectHome = "yes";
         PrivateDevices = "yes";
+        PartOf = "lions-server.service";
         DynamicUser = "yes";
         User = "lions-server";
         PrivateTmp = "yes";

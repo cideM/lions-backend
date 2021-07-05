@@ -91,6 +91,7 @@
               let
                 wrapped = pkgs.writeScriptBin "migrate-and-serve" ''
                   #!${pkgs.bash}/bin/bash
+                  set -e -o
                   if [ -z ''${LIONS_SQLITE_PATH+x} ]; then
                     echo "LIONS_SQLITE_PATH not set"
                     exit 1

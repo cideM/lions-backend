@@ -13,6 +13,7 @@
 
   environment.systemPackages = with pkgs; [
     sqlite-interactive
+    go-migrate
   ];
 
   users.users.admin = {
