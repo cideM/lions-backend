@@ -29,7 +29,7 @@ import Time (timeDaysFromNow)
 import User.DB (getCredentials, hasUser)
 import User.Types (UserId (..))
 import Wai (parseParams, parseQueryParams)
-import Prelude hiding (id)
+import Prelude hiding (id,log)
 
 newtype TokenId = TokenId Int
   deriving (Show, Eq)

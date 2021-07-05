@@ -42,7 +42,7 @@ import User.DB
 import User.Types (Role (..), UserId (..))
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
-import Prelude hiding (id)
+import Prelude hiding (id, log)
 
 data UserSession = UserSession
   { userSessionUserId :: UserId,

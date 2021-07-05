@@ -19,6 +19,8 @@ queryStringToMap = Map.fromList . map (bimap decodeUtf8 decodeUtf8) . foldl' f [
     f xs (a, Just b) = (a, b) : xs
     f xs _ = xs
 
+-- This function will overwrite values with the same key which is definitely a
+-- feature in HTML forms. Keep that in mind.
 parseParams :: Wai.Request -> IO (Map Text Text)
 parseParams req = do
   body <- parseRequestBodyEx defaultParseRequestBodyOptions lbsBackEnd req

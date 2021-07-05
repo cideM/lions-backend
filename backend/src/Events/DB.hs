@@ -13,19 +13,14 @@ import Control.Arrow (left)
 import Control.Exception.Safe
 import Control.Monad (forM_)
 import qualified Data.Aeson as Aeson
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
 import Data.String.Interpolate (i)
 import Data.Text (Text)
-import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
 import Events.Domain (Event (..), EventAttachment (..), EventCreate (..), EventId (..), Reply (..))
-import Text.Email.Validate (emailAddress)
-import User.Types (UserEmail (..), UserId (..))
+import User.Types (UserId (..))
 import Prelude hiding (id)
 
 createEvent :: SQLite.Connection -> EventCreate -> IO EventId
@@ -49,9 +44,9 @@ createEvent conn EventCreate {..} = do
 
 createEventFromDb :: EventRow -> Either Text (EventId, Event)
 createEventFromDb (id, title, date, family, desc, loc, replies, attachments) = do
-  (attachments :: [EventAttachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
-  (replies :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
-  return (EventId id, Event title date family desc loc replies attachments)
+  (attachments' :: [EventAttachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
+  (replies' :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
+  return (EventId id, Event title date family desc loc replies' attachments')
 
 type EventRow = (Int, Text, Time.UTCTime, Bool, Text, Text, Text, Text)
 

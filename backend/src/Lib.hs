@@ -16,7 +16,7 @@ import Env (Environment (..), parseEnv)
 import qualified Events.DB
 import Events.Domain (EventId (..))
 import qualified Events.Handlers
-import Layout (LayoutStub (..), layout)
+import Layout (LayoutStub (..), layout, warning)
 import qualified Logging
 import qualified Login.Login as Login
 import Lucid
@@ -43,12 +43,6 @@ import qualified Web.ClientSession as ClientSession
 import WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage
 import Prelude hiding (id)
-
-infoBoxHtml :: Text.Text -> Html ()
-infoBoxHtml msg =
-  div_ [class_ "container p-3 d-flex justify-content-center"] $
-    div_ [class_ "row col-6"] $ do
-      p_ [class_ "alert alert-secondary", role_ "alert"] $ toHtml msg
 
 server ::
   Logging.TimedFastLogger ->
@@ -140,8 +134,8 @@ server
         headers = [("Content-Type", "text/html; charset=UTF-8")]
         render code = send . Wai.responseLBS code headers . renderBS
         send200 = render status200
-        send403 = render status403 . layout' . LayoutStub "Fehler" Nothing $ infoBoxHtml "Du hast keinen Zugriff auf diese Seite"
-        send404 = render status404 . layout' . LayoutStub "Nicht gefunden" Nothing $ infoBoxHtml "Nicht Gefunden"
+        send403 = render status403 . layout' . LayoutStub "Fehler" Nothing $ warning "Du hast keinen Zugriff auf diese Seite"
+        send404 = render status404 . layout' . LayoutStub "Nicht gefunden" Nothing $ warning "Nicht Gefunden"
 
     -- Now the actual routing starts. We get the paths and pattern match on them.
     case Wai.pathInfo req of
