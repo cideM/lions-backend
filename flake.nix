@@ -70,7 +70,7 @@
 
             clientStuff = import ./client/default.nix { inherit bootstrap-icons pkgs backend system; bootstrap = bootstrapsrc; };
 
-            production = pkgs.stdenv.mkDerivation {
+            lionsServer = pkgs.stdenv.mkDerivation {
               name = "lions-website";
               dontUnpack = true;
               dontBuild = true;
@@ -81,38 +81,6 @@
                 cp ${backend}/bin/run-lions-backend $out/server
               '';
             };
-
-            migrationsDir = builtins.path {
-              name = "lions-migrations";
-              path = ./backend/migrations;
-            };
-
-            lions-server =
-              let
-                wrapped = pkgs.writeScriptBin "migrate-and-serve" ''
-                  #!${pkgs.bash}/bin/bash
-                  set -e -o
-                  if [ -z ''${LIONS_SQLITE_PATH+x} ]; then
-                    echo "LIONS_SQLITE_PATH not set"
-                    exit 1
-                  fi
-                  echo "running migrations"
-                  ${pkgs.go-migrate}/bin/migrate -path ${migrationsDir} -database "sqlite3://$LIONS_SQLITE_PATH" up
-                  echo "starting server"
-                  ${production}/server
-                '';
-              in
-              # We want the script that runs the migrations and starts the server to
-                # reside in the same folder in /nix/store so it's easier to handle the
-                # working directory for systemd
-              pkgs.symlinkJoin {
-                name = "lions-server";
-                paths = [
-                  wrapped
-                  production
-                ];
-              };
-
 
             vm = (import "${nixpkgs}/nixos" {
               system = "x86_64-linux";
@@ -138,7 +106,7 @@
                   ];
 
                   config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
-                  config.serverExe = "${allSystems.packages.x86_64-linux.server}/bin/migrate-and-serve";
+                  config.serverExe = "${allSystems.packages.x86_64-linux.server}/server";
                 };
             });
           in
@@ -146,7 +114,7 @@
             packages = flake-utils.lib.flattenTree
               ({
                 litestream = litestream;
-                server = lions-server;
+                server = lionsServer;
                 allAssets = clientStuff.allAssets;
                 clientside = clientStuff.clientside;
               } // (nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {

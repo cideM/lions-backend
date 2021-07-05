@@ -1,5 +1,10 @@
 { config, lib, ... }:
 with lib;
+let
+  migrateScript = pkgs.writeScript "lions-migrations" ''
+    ${pkgs.go-migrate}/bin/migrate -path ./backend/migrations -database "sqlite3://$LIONS_SQLITE_PATH" up
+  '';
+in
 {
   options = {
     serverExe = mkOption {
@@ -12,8 +17,29 @@ with lib;
   };
 
   config = {
-    systemd.services.server = {
+    systemd.services.migrations = {
+      wantedBy = [ "multi-user.target" ];
 
+      serviceConfig = {
+        Environment = [
+          "LIONS_SQLITE_PATH=%S/lions-server/db"
+        ];
+        ProtectSystem = "strict";
+        Group = "lions";
+        User = "lions-server";
+        ProtectHome = "yes";
+        PrivateDevices = "yes";
+        Conflicts = "litestream.service";
+        Before = "server.service";
+        PrivateTmp = "yes";
+        StateDirectory = "lions-server";
+        WorkingDirectory = "${config.serverWorkingDir}";
+        Restart = "on-failure";
+        ExecStart = migrateScript;
+      };
+    };
+
+    systemd.services.server = {
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
@@ -34,7 +60,6 @@ with lib;
           "saltsep:/run/secrets/saltsep"
         ];
         PrivateDevices = "yes";
-        DynamicUser = "yes";
         PrivateTmp = "yes";
         StateDirectory = "lions-server";
         WorkingDirectory = "${config.serverWorkingDir}";
