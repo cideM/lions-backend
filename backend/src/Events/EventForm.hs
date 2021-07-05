@@ -13,7 +13,7 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
-import Events.Domain (EventCreate (..))
+import qualified Events.Types as Events
 import Form (FormFieldState (..), notEmpty, processField, validDate)
 import Layout (describedBy_)
 import Lucid
@@ -53,7 +53,7 @@ emptyForm =
 emptyState :: FormState
 emptyState = FormState NotValidated NotValidated NotValidated NotValidated
 
-makeEvent :: FormInput -> Either FormState EventCreate
+makeEvent :: FormInput -> Either FormState Events.Create
 makeEvent FormInput {..} =
   case FormState
     (notEmpty createEventInputTitle)
@@ -63,7 +63,7 @@ makeEvent FormInput {..} =
     FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
       let filesToKeep = [name | (name, checked) <- createEventInputCheckboxes, checked]
        in Right $
-            EventCreate
+            Events.Create
               title
               date
               createEventInputFamilyAllowed

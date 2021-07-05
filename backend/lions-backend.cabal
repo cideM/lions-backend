@@ -120,7 +120,7 @@ library
     Lib
     Env
     Events.DB
-    Events.Domain
+    Events.Types
     Events.Preview
     Events.EventForm
     Events.Handlers

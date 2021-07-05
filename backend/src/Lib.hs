@@ -14,7 +14,7 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..), parseEnv)
 import qualified Events.DB
-import Events.Domain (EventId (..))
+import qualified Events.Types as Events
 import qualified Events.Handlers
 import Layout (LayoutStub (..), layout, warning)
 import qualified Logging
@@ -165,7 +165,7 @@ server
             case Wai.requestMethod req of
               "GET" ->
                 authenticatedOnly' $
-                  Events.Handlers.showEvent eventDbGet (EventId parsed) >=> \case
+                  Events.Handlers.showEvent eventDbGet (Events.Id parsed) >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
               _ -> send404
@@ -176,22 +176,22 @@ server
             case Wai.requestMethod req of
               "POST" ->
                 authenticatedOnly' $
-                  Events.Handlers.replyToEvent getUser eventDbDeleteReply eventDbUpsertReply req send (EventId parsed)
+                  Events.Handlers.replyToEvent getUser eventDbDeleteReply eventDbUpsertReply req send (Events.Id parsed)
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation eventDbGet (EventId parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent eventDbGet eventDbDelete removeAllAttachments' (EventId parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation eventDbGet (Events.Id parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent eventDbGet eventDbDelete removeAllAttachments' (Events.Id parsed) >=> send200 . layout'
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm eventDbGet (EventId parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm eventDbGet (Events.Id parsed) >=> send200 . layout'
               "POST" ->
                 adminOnly' $
                   Events.Handlers.handleUpdateEvent
@@ -203,7 +203,7 @@ server
                     saveAttachment'
                     internalState
                     req
-                    (EventId parsed)
+                    (Events.Id parsed)
                     >=> send200 . layout'
               _ -> send404
       ["loeschen", i] ->

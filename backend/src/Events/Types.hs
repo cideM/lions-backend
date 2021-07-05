@@ -1,16 +1,15 @@
-module Events.Domain
+module Events.Types
   ( Reply (..),
     Event (..),
-    EventCreate (..),
-    EventAttachment (..),
-    EventId (..),
+    Create (..),
+    Attachment (..),
+    Id (..),
   )
 where
 
 import Data.Aeson (FromJSON, ToJSON, defaultOptions, genericToEncoding, toEncoding)
 import qualified Data.Aeson as Aeson
 import qualified Data.Char as Char
-import Data.List (nub)
 import Data.Text (Text)
 import qualified Data.Time as Time
 import GHC.Generics
@@ -33,30 +32,30 @@ instance FromJSON Reply where
 instance ToJSON Reply where
   toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 5}
 
-data EventCreate = EventCreate
-  { eventCreateTitle :: Text,
-    eventCreateDate :: Time.UTCTime,
-    eventCreateFamilyAllowed :: Bool,
-    eventCreateDescription :: Text,
-    eventCreateLocation :: Text,
-    eventCreateFiles :: [Text]
+data Create = Create
+  { createTitle :: Text,
+    createDate :: Time.UTCTime,
+    createFamilyAllowed :: Bool,
+    createDescription :: Text,
+    createLocation :: Text,
+    createFiles :: [Text]
   }
   deriving (Show, Generic)
 
-instance ToJSON EventCreate where
+instance ToJSON Create where
   toEncoding = genericToEncoding defaultOptions
 
-data EventAttachment = EventAttachment {eventAttachmentFileName :: Text} deriving (Show, Generic, Eq)
+data Attachment = Attachment {attachmentFileName :: Text} deriving (Show, Generic, Eq)
 
 lower1 :: String -> String
 lower1 (c : cs) = Char.toLower c : cs
 lower1 [] = []
 
-instance FromJSON EventAttachment where
-  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 15}
+instance FromJSON Attachment where
+  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
 
-instance ToJSON EventAttachment where
-  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 15}
+instance ToJSON Attachment where
+  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
 
 data Event = Event
   { eventTitle :: Text,
@@ -65,20 +64,14 @@ data Event = Event
     eventDescription :: Text,
     eventLocation :: Text,
     eventReplies :: [Reply],
-    eventAttachments :: [EventAttachment]
+    eventAttachments :: [Attachment]
   }
   deriving (Show, Eq, Generic)
-
-instance Semigroup Event where
-  e1 <> e2 =
-    e1
-      { eventReplies = nub $ eventReplies e1 ++ eventReplies e2
-      }
 
 instance ToJSON Event where
   toEncoding = genericToEncoding defaultOptions
 
-newtype EventId = EventId Int
+newtype Id = Id Int
   deriving (Show)
   deriving (Ord) via Int
   deriving (Eq) via Int

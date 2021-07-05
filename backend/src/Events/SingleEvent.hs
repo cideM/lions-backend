@@ -6,7 +6,7 @@ import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import Events.Domain (Event (..), EventAttachment (..), EventId (..), Reply (..))
+import qualified Events.Types as Events
 import Layout (ariaLabel_)
 import Locale (german)
 import Lucid
@@ -14,12 +14,12 @@ import User.Types (UserEmail (..), UserId (..), showEmail)
 
 newtype ShowAdminTools = ShowAdminTools Bool deriving (Show)
 
-render :: ShowAdminTools -> Maybe Reply -> EventId -> Event -> Html ()
-render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
+render :: ShowAdminTools -> Maybe Events.Reply -> Events.Id -> Events.Event -> Html ()
+render (ShowAdminTools showAdminTools) ownReply (Events.Id eventId) Events.Event {..} =
   let date = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
-      coming = eventReplies & filter replyComing & length
-      notComing = eventReplies & filter (not . replyComing) & length
-      guests = eventReplies & filter replyComing & map replyGuests & sum
+      coming = eventReplies & filter Events.replyComing & length
+      notComing = eventReplies & filter (not . Events.replyComing) & length
+      guests = eventReplies & filter Events.replyComing & map Events.replyGuests & sum
    in do
         div_ [class_ "container"] $ do
           div_ [class_ "row gy-3 gx-lg-4 mb-5"] $ do
@@ -49,9 +49,9 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
                 ul_ [] $ do
                   forM_
                     eventAttachments
-                    ( \EventAttachment {..} ->
+                    ( \Events.Attachment {..} ->
                         li_ [] $
-                          a_ [href_ [i|/#{eventId}/#{eventAttachmentFileName}|]] $ toHtml eventAttachmentFileName
+                          a_ [href_ [i|/#{eventId}/#{attachmentFileName}|]] $ toHtml attachmentFileName
                     )
             section_ [class_ "justify-content-center col-lg-4"] $ do
               div_ [class_ "card"] $ do
@@ -110,14 +110,14 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Reply {replyUserEmail = UserEmail email, replyUserId = UserId userid, ..} -> do
+                      ( \Events.Reply {Events.replyUserEmail = UserEmail email, Events.replyUserId = UserId userid, ..} -> do
                           tr_ $ do
                             td_ [] $ toHtml $ showEmail email
                             td_ [] $ toHtml $ show replyGuests
                             td_ [class_ "d-flex justify-content-end"] $
                               a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
                       )
-                      (eventReplies & filter replyComing)
+                      (eventReplies & filter Events.replyComing)
             div_ [class_ "col"] $ do
               when (notComing > 0) $ do
                 h2_ [class_ "h4"] "Absagen"
@@ -128,15 +128,15 @@ render (ShowAdminTools showAdminTools) ownReply (EventId eventId) Event {..} =
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Reply {replyUserEmail = UserEmail email, replyUserId = UserId userid} -> do
+                      ( \Events.Reply {Events.replyUserEmail = UserEmail email, Events.replyUserId = UserId userid} -> do
                           tr_ $ do
                             td_ [] $ toHtml $ showEmail email
                             td_ [class_ "d-flex justify-content-end"] $
                               a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
                       )
-                      (eventReplies & filter (not . replyComing))
+                      (eventReplies & filter (not . Events.replyComing))
   where
     replyGuests' = case replyComing' of
-      Just True -> maybe mempty (Text.pack . show . replyGuests) ownReply
+      Just True -> maybe mempty (Text.pack . show . Events.replyGuests) ownReply
       _ -> mempty
-    replyComing' = fmap replyComing ownReply
+    replyComing' = fmap Events.replyComing ownReply

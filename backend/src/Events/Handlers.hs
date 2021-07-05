@@ -30,7 +30,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
-import Events.Domain (Event (..), EventAttachment (..), EventCreate (..), EventId (..), Reply (..))
+import qualified Events.Types as Events
 import qualified Events.EventForm as EventForm
 import qualified Events.Preview
 import qualified Events.SingleEvent
@@ -56,18 +56,18 @@ import Text.Read (readEither)
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
 
-toEventList :: UserId -> [(EventId, Event)] -> [(EventId, Event, Maybe Reply)]
+toEventList :: UserId -> [(Events.Id, Events.Event)] -> [(Events.Id, Events.Event, Maybe Events.Reply)]
 toEventList userid = map getOwnReplyFromEvent . sortEvents
   where
-    sortEvents = sortWith (Down . eventDate . snd)
+    sortEvents = sortWith (Down . Events.eventDate . snd)
     getOwnReplyFromEvent (eventid, e) =
-      let rs = eventReplies e
-          reply = find ((==) userid . replyUserId) rs
+      let rs = Events.eventReplies e
+          reply = find ((==) userid . Events.replyUserId) rs
        in (eventid, e, reply)
 
 -- This displays each event as a little container that you can click to get to
 -- the big event page.
-eventPreviewsHtml :: Bool -> [(EventId, Event, Maybe Reply)] -> Html ()
+eventPreviewsHtml :: Bool -> [(Events.Id, Events.Event, Maybe Events.Reply)] -> Html ()
 eventPreviewsHtml userIsAdmin events =
   div_ [class_ "container"] $ do
     when userIsAdmin $
@@ -76,7 +76,7 @@ eventPreviewsHtml userIsAdmin events =
     div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] $
       mapM_ (div_ [class_ "col"] . Events.Preview.render) events
 
-showAllEvents :: IO [(EventId, Event)] -> Session.Authenticated -> IO LayoutStub
+showAllEvents :: IO [(Events.Id, Events.Event)] -> Session.Authenticated -> IO LayoutStub
 showAllEvents getAllEvents auth = do
   let userIsAdmin = Session.isUserAdmin auth
       Session.UserSession {..} = Session.getSessionFromAuth auth
@@ -85,14 +85,14 @@ showAllEvents getAllEvents auth = do
 
 replyToEvent ::
   (UserId -> IO (Maybe UserProfile)) ->
-  (EventId -> UserId -> IO ()) ->
-  (EventId -> Reply -> IO ()) ->
+  (Events.Id -> UserId -> IO ()) ->
+  (Events.Id -> Events.Reply -> IO ()) ->
   Wai.Request ->
   (Wai.Response -> IO a) ->
-  EventId ->
+  Events.Id ->
   Session.Authenticated ->
   IO a
-replyToEvent getUser deleteReply upsertReply req send eventid@(EventId i) auth = do
+replyToEvent getUser deleteReply upsertReply req send eventid@(Events.Id i) auth = do
   let Session.UserSession {..} = Session.getSessionFromAuth auth
 
   UserProfile {userEmail = userEmail} <-
@@ -109,7 +109,7 @@ replyToEvent getUser deleteReply upsertReply req send eventid@(EventId i) auth =
   -- doesn't matter. What matters is that I now store that repl.
   case coming of
     Nothing -> deleteReply eventid userSessionUserId
-    Just yesno -> upsertReply eventid $ (Reply yesno userEmail userSessionUserId numberOfGuests)
+    Just yesno -> upsertReply eventid $ (Events.Reply yesno userEmail userSessionUserId numberOfGuests)
 
   send $ Wai.responseLBS status303 [("Location", encodeUtf8 $ "/veranstaltungen/" <> Text.pack (show i))] mempty
   where
@@ -137,14 +137,14 @@ replyToEvent getUser deleteReply upsertReply req send eventid@(EventId i) auth =
         Left e -> Left [Interpolate.i|couldn't parse '#{s}' as number: #{e}|]
         Right i' -> Right i'
 
-showEvent :: (EventId -> IO (Maybe Event)) -> EventId -> Session.Authenticated -> IO (Maybe LayoutStub)
+showEvent :: (Events.Id -> IO (Maybe Events.Event)) -> Events.Id -> Session.Authenticated -> IO (Maybe LayoutStub)
 showEvent getEvent eventid auth = do
   let userIsAdmin = Session.isUserAdmin auth
       Session.UserSession {..} = Session.getSessionFromAuth auth
   getEvent eventid >>= \case
     Nothing -> return Nothing
-    Just e@Event {..} -> do
-      let ownReply = find ((==) userSessionUserId . replyUserId) eventReplies
+    Just e@Events.Event {..} -> do
+      let ownReply = find ((==) userSessionUserId . Events.replyUserId) eventReplies
       return . Just
         . LayoutStub
           eventTitle
@@ -159,10 +159,10 @@ showCreateEvent _ = do
       EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
 
 handleDeleteEvent ::
-  (EventId -> IO (Maybe Event)) ->
-  (EventId -> IO ()) ->
-  (EventId -> IO ()) ->
-  EventId ->
+  (Events.Id -> IO (Maybe Events.Event)) ->
+  (Events.Id -> IO ()) ->
+  (Events.Id -> IO ()) ->
+  Events.Id ->
   Session.AdminUser ->
   IO LayoutStub
 handleDeleteEvent getEvent removeAll deleteEvent eventid _ = do
@@ -177,10 +177,10 @@ handleDeleteEvent getEvent removeAll deleteEvent eventid _ = do
       deleteEvent eventid
       return $
         LayoutStub "Veranstaltung" (Just Events) $
-          success $ "Veranstaltung " <> eventTitle event <> " erfolgreich gelöscht"
+          success $ "Veranstaltung " <> Events.eventTitle event <> " erfolgreich gelöscht"
 
-showDeleteEventConfirmation :: (EventId -> IO (Maybe Event)) -> EventId -> Session.AdminUser -> IO LayoutStub
-showDeleteEventConfirmation getEvent eid@(EventId eventid) _ = do
+showDeleteEventConfirmation :: (Events.Id -> IO (Maybe Events.Event)) -> Events.Id -> Session.AdminUser -> IO LayoutStub
+showDeleteEventConfirmation getEvent eid@(Events.Id eventid) _ = do
   -- TODO: Duplicated
   getEvent eid >>= \case
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
@@ -189,7 +189,7 @@ showDeleteEventConfirmation getEvent eid@(EventId eventid) _ = do
         div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
-              toHtml ("Veranstaltung " <> eventTitle event <> " wirklich löschen?")
+              toHtml ("Veranstaltung " <> Events.eventTitle event <> " wirklich löschen?")
             form_
               [ action_ . Text.pack $ "/veranstaltungen/" <> show eventid <> "/loeschen",
                 method_ "post",
@@ -197,8 +197,8 @@ showDeleteEventConfirmation getEvent eid@(EventId eventid) _ = do
               ]
               $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Veranstaltung löschen!"
 
-saveAttachment :: FilePath -> EventId -> FilePath -> FilePath -> IO ()
-saveAttachment destinationDir (EventId eid) source destinationFileName = do
+saveAttachment :: FilePath -> Events.Id -> FilePath -> FilePath -> IO ()
+saveAttachment destinationDir (Events.Id eid) source destinationFileName = do
   let destDir = destinationDir </> [Interpolate.i|#{eid}|]
   System.Directory.createDirectoryIfMissing True destDir
 
@@ -206,12 +206,12 @@ saveAttachment destinationDir (EventId eid) source destinationFileName = do
 
   System.Directory.copyFile source dest
 
-removeAllAttachments :: FilePath -> EventId -> IO ()
-removeAllAttachments destinationDir (EventId eid) =
+removeAllAttachments :: FilePath -> Events.Id -> IO ()
+removeAllAttachments destinationDir (Events.Id eid) =
   System.Directory.removeDirectoryRecursive $ destinationDir </> show eid
 
-removeAttachment :: FilePath -> EventId -> FilePath -> IO ()
-removeAttachment destinationDir (EventId eid) filename =
+removeAttachment :: FilePath -> Events.Id -> FilePath -> IO ()
+removeAttachment destinationDir (Events.Id eid) filename =
   System.Directory.removeFile $ destinationDir </> show eid </> filename
 
 parseDecryptedString :: ByteString -> (Text, Text, Text)
@@ -246,8 +246,8 @@ getCheckedFromBody :: ([Param], [(ByteString, FileInfo FilePath)]) -> [Text]
 getCheckedFromBody = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) . fst
 
 data FileActions = FileActions
-  { fileActionsKeep :: [EventAttachment],
-    fileActionsDelete :: [EventAttachment],
+  { fileActionsKeep :: [Events.Attachment],
+    fileActionsDelete :: [Events.Attachment],
     fileActionsDontUpload :: [FileInfo FilePath],
     fileActionsUpload :: [FileInfo FilePath]
   }
@@ -256,7 +256,7 @@ data FileActions = FileActions
 getFileActions ::
   (ByteString -> IO ByteString) ->
   (ByteString -> Maybe ByteString) ->
-  [EventAttachment] ->
+  [Events.Attachment] ->
   ([Param], [(ByteString, FileInfo FilePath)]) ->
   IO (FileActions, [ByteString])
 getFileActions encrypt decrypt alreadySaved body = do
@@ -266,8 +266,8 @@ getFileActions encrypt decrypt alreadySaved body = do
 
   let newFileInfos = getNewFileInfo body
       checked = getCheckedFromBody body
-      keep = filter (flip elem checked . eventAttachmentFileName) alreadySaved
-      savedButDelete = filter (flip notElem checked . eventAttachmentFileName) alreadySaved
+      keep = filter (flip elem checked . Events.attachmentFileName) alreadySaved
+      savedButDelete = filter (flip notElem checked . Events.attachmentFileName) alreadySaved
       notSavedAndDelete = filter (flip notElem checked . decodeUtf8 . fileName) pastFileInfos
       upload = newFileInfos ++ (filter (flip elem checked . decodeUtf8 . fileName) pastFileInfos)
 
@@ -283,9 +283,9 @@ fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
 handleCreateEvent ::
   (ByteString -> IO ByteString) ->
   (ByteString -> Maybe ByteString) ->
-  (EventCreate -> IO EventId) ->
+  (Events.Create -> IO Events.Id) ->
   InternalState ->
-  (EventId -> FilePath -> FilePath -> IO ()) ->
+  (Events.Id -> FilePath -> FilePath -> IO ()) ->
   Wai.Request ->
   Session.AdminUser ->
   IO LayoutStub
@@ -324,7 +324,7 @@ handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
         div_ [class_ "container p-2"] $ do
           h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
           EventForm.render "Speichern" "/veranstaltungen/neu" input state
-    Right newEvent@EventCreate {..} -> do
+    Right newEvent@Events.Create {..} -> do
       eid <- createEvent newEvent
 
       forM_ fileActionsUpload $ \FileInfo {..} -> do
@@ -335,17 +335,17 @@ handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
         System.Directory.removeFile fileContent
 
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
-        success $ "Neue Veranstaltung " <> eventCreateTitle <> " erfolgreich erstellt!"
+        success $ "Neue Veranstaltung " <> createTitle <> " erfolgreich erstellt!"
 
 showEditEventForm ::
-  (EventId -> IO (Maybe Event)) ->
-  EventId ->
+  (Events.Id -> IO (Maybe Events.Event)) ->
+  Events.Id ->
   Session.AdminUser ->
   IO LayoutStub
-showEditEventForm getEvent eid@(EventId eventid) _ = do
+showEditEventForm getEvent eid@(Events.Id eventid) _ = do
   getEvent eid >>= \case
     Nothing -> throwString $ "edit event but no event for id: " <> show eventid
-    Just Event {..} ->
+    Just Events.Event {..} ->
       let input =
             EventForm.FormInput
               eventTitle
@@ -353,7 +353,7 @@ showEditEventForm getEvent eid@(EventId eventid) _ = do
               eventLocation
               eventDescription
               eventFamilyAllowed
-              (zip (map eventAttachmentFileName eventAttachments) (repeat True))
+              (zip (map Events.attachmentFileName eventAttachments) (repeat True))
               []
        in return . LayoutStub "Veranstaltung Editieren" (Just Events) $
             div_ [class_ "container p-2"] $ do
@@ -363,15 +363,15 @@ showEditEventForm getEvent eid@(EventId eventid) _ = do
     renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
 
 handleUpdateEvent ::
-  (EventId -> EventCreate -> IO ()) ->
-  (EventId -> IO (Maybe Event)) ->
+  (Events.Id -> Events.Create -> IO ()) ->
+  (Events.Id -> IO (Maybe Events.Event)) ->
   (ByteString -> IO ByteString) ->
   (ByteString -> Maybe ByteString) ->
-  (EventId -> FilePath -> IO ()) ->
-  (EventId -> FilePath -> FilePath -> IO ()) ->
+  (Events.Id -> FilePath -> IO ()) ->
+  (Events.Id -> FilePath -> FilePath -> IO ()) ->
   InternalState ->
   Wai.Request ->
-  EventId ->
+  Events.Id ->
   Session.AdminUser ->
   IO LayoutStub
 handleUpdateEvent
@@ -383,19 +383,19 @@ handleUpdateEvent
   saveFile
   internalState
   req
-  eid@(EventId eventid)
+  eid@(Events.Id eventid)
   _ = do
     body <- parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
 
     getEvent eid >>= \case
       Nothing -> throwString $ "edit event but no event for id: " <> show eventid
-      Just Event {..} -> do
+      Just Events.Event {..} -> do
         (FileActions {..}, encryptedFileInfos) <- getFileActions encrypt decrypt eventAttachments body
 
         let params = paramsToMap $ fst body
             fromParams key = Map.findWithDefault "" key params
-            savedButDeleteCheckbox = zip (map eventAttachmentFileName fileActionsDelete) (repeat False)
-            keepCheckbox = zip (map eventAttachmentFileName fileActionsKeep) (repeat True)
+            savedButDeleteCheckbox = zip (map Events.attachmentFileName fileActionsDelete) (repeat False)
+            keepCheckbox = zip (map Events.attachmentFileName fileActionsKeep) (repeat True)
             notSavedAndDeleteCheckbox = map (\FileInfo {..} -> (decodeUtf8 fileName, False)) fileActionsDontUpload
             uploadCheckbox = zip (map (decodeUtf8 . fileName) fileActionsUpload) (repeat True)
             checkboxes = keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox ++ uploadCheckbox
@@ -419,13 +419,13 @@ handleUpdateEvent
                     (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
                     input
                     state
-          Right event@EventCreate {..} -> do
+          Right event@Events.Create {..} -> do
             forM_ fileActionsUpload $ \FileInfo {..} -> do
               saveFile eid fileContent (C8.unpack fileName)
               System.Directory.removeFile fileContent
 
-            forM_ fileActionsDelete $ \EventAttachment {..} -> do
-              removeFile eid (Text.unpack eventAttachmentFileName)
+            forM_ fileActionsDelete $ \Events.Attachment {..} -> do
+              removeFile eid (Text.unpack attachmentFileName)
 
             forM_ fileActionsDontUpload $ \FileInfo {..} -> do
               System.Directory.removeFile fileContent
@@ -433,4 +433,4 @@ handleUpdateEvent
             updateEvent eid event
             return $
               LayoutStub "Veranstaltung Editieren" (Just Events) $
-                success $ "Veranstaltung " <> eventCreateTitle <> " erfolgreich editiert"
+                success $ "Veranstaltung " <> createTitle <> " erfolgreich editiert"

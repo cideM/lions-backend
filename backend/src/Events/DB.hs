@@ -11,20 +11,20 @@ import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.QQ (sql)
-import Events.Domain (Event (..), EventAttachment (..), EventCreate (..), EventId (..), Reply (..))
+import qualified Events.Types as Events
 import User.Types (UserId (..))
 import Prelude hiding (id)
 
 type EventRow = (Int, Text, Time.UTCTime, Bool, Text, Text, Text, Text)
 
 data EventDb = EventDb
-  { eventDbCreate :: EventCreate -> IO EventId,
-    eventDbGet :: EventId -> IO (Maybe Event),
-    eventDbAll :: IO [(EventId, Event)],
-    eventDbDeleteReply :: EventId -> UserId -> IO (),
-    eventDbDelete :: EventId -> IO (),
-    eventDbUpdate :: EventId -> EventCreate -> IO (),
-    eventDbUpsertReply :: EventId -> Reply -> IO ()
+  { eventDbCreate :: Events.Create -> IO Events.Id,
+    eventDbGet :: Events.Id -> IO (Maybe Events.Event),
+    eventDbAll :: IO [(Events.Id, Events.Event)],
+    eventDbDeleteReply :: Events.Id -> UserId -> IO (),
+    eventDbDelete :: Events.Id -> IO (),
+    eventDbUpdate :: Events.Id -> Events.Create -> IO (),
+    eventDbUpsertReply :: Events.Id -> Events.Reply -> IO ()
   }
 
 newEventDb :: SQLite.Connection -> EventDb
@@ -39,8 +39,8 @@ newEventDb conn =
       eventDbUpsertReply = upsertReply conn
     }
 
-createEvent :: SQLite.Connection -> EventCreate -> IO EventId
-createEvent conn EventCreate {..} = do
+createEvent :: SQLite.Connection -> Events.Create -> IO Events.Id
+createEvent conn Events.Create {..} = do
   SQLite.execute
     conn
     [sql|
@@ -52,20 +52,20 @@ createEvent conn EventCreate {..} = do
               location
             ) values (?,?,?,?,?)
           |]
-    (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation)
+    (createTitle, createDate, createFamilyAllowed, createDescription, createLocation)
   id <- SQLite.lastInsertRowId conn
-  forM_ eventCreateFiles $ \filename ->
+  forM_ createFiles $ \filename ->
     SQLite.execute conn [sql|insert into event_attachments (eventid, filename) values (?,?)|] (id, filename)
-  return . EventId $ fromIntegral id
+  return . Events.Id $ fromIntegral id
 
-createEventFromDb :: EventRow -> Either Text (EventId, Event)
+createEventFromDb :: EventRow -> Either Text (Events.Id, Events.Event)
 createEventFromDb (id, title, date, family, desc, loc, replies, attachments) = do
-  (attachments' :: [EventAttachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
-  (replies' :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
-  return (EventId id, Event title date family desc loc replies' attachments')
+  (attachments' :: [Events.Attachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
+  (replies' :: [Events.Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
+  return (Events.Id id, Events.Event title date family desc loc replies' attachments')
 
-getEvent :: SQLite.Connection -> EventId -> IO (Maybe Event)
-getEvent conn (EventId eventid) = do
+getEvent :: SQLite.Connection -> Events.Id -> IO (Maybe Events.Event)
+getEvent conn (Events.Id eventid) = do
   ([row] :: [EventRow]) <-
     SQLite.query
       conn
@@ -99,7 +99,7 @@ getEvent conn (EventId eventid) = do
     Left e -> throwString $ [i|couldn't parse event with id #{eventid} from DB: #{e}|]
     Right ok -> return $ Just $ snd ok
 
-getAll :: SQLite.Connection -> IO [(EventId, Event)]
+getAll :: SQLite.Connection -> IO [(Events.Id, Events.Event)]
 getAll conn = do
   (rows :: [EventRow]) <-
     SQLite.query_
@@ -129,18 +129,18 @@ getAll conn = do
     Left e -> throwString $ "couldn't parse events from DB: " <> show e
     Right parsed -> return parsed
 
-deleteReply :: SQLite.Connection -> EventId -> UserId -> IO ()
-deleteReply conn (EventId eventid) (UserId userid) =
+deleteReply :: SQLite.Connection -> Events.Id -> UserId -> IO ()
+deleteReply conn (Events.Id eventid) (UserId userid) =
   SQLite.execute conn "delete from event_replies where userid = ? and eventid = ?" [userid, eventid]
 
-deleteEvent :: SQLite.Connection -> EventId -> IO ()
-deleteEvent conn (EventId eventid) = do
+deleteEvent :: SQLite.Connection -> Events.Id -> IO ()
+deleteEvent conn (Events.Id eventid) = do
   SQLite.execute conn "delete from event_replies where eventid = ?" [eventid]
   SQLite.execute conn "delete from event_attachments where eventid = ?" [eventid]
   SQLite.execute conn "delete from events where id = ?" [eventid]
 
-updateEvent :: SQLite.Connection -> EventId -> EventCreate -> IO ()
-updateEvent conn (EventId eventid) EventCreate {..} = do
+updateEvent :: SQLite.Connection -> Events.Id -> Events.Create -> IO ()
+updateEvent conn (Events.Id eventid) Events.Create {..} = do
   SQLite.execute conn [sql|delete from event_attachments where eventid = ?|] [eventid]
   SQLite.execute
     conn
@@ -154,12 +154,12 @@ updateEvent conn (EventId eventid) EventCreate {..} = do
           location = ?
         where id = ?
       |]
-    (eventCreateTitle, eventCreateDate, eventCreateFamilyAllowed, eventCreateDescription, eventCreateLocation, eventid)
-  forM_ eventCreateFiles $ \filename ->
+    (createTitle, createDate, createFamilyAllowed, createDescription, createLocation, eventid)
+  forM_ createFiles $ \filename ->
     SQLite.execute conn [sql|insert into event_attachments (eventid, filename) values (?,?)|] (eventid, filename)
 
-upsertReply :: SQLite.Connection -> EventId -> Reply -> IO ()
-upsertReply conn (EventId eventid) (Reply coming _ (UserId userid) guests) =
+upsertReply :: SQLite.Connection -> Events.Id -> Events.Reply -> IO ()
+upsertReply conn (Events.Id eventid) (Events.Reply coming _ (UserId userid) guests) =
   SQLite.execute
     conn
     [sql|
