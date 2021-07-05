@@ -25,13 +25,15 @@ let
   '';
 
   # Need --impure so I can use getEnv in nix build
-  lions-vm = pkgs.writeShellScriptBin "lions-vm" ''
+  lions-vm = pkgs.writeShellScriptBin "lions-vm" (if pkgs.stdenv.isDarwin then ''
+    docker run -it -e LIONS_AWS_SES_ACCESS_KEY -e LIONS_AWS_SES_SECRET_ACCESS_KEY -e LIONS_SCRYPT_SALT_SEP -e LIONS_SCRYPT_SIGNER_KEY -e LITESTREAM_ACCESS_KEY_ID -e LITESTREAM_SECRET_ACCESS_KEY -p 127.0.0.1:81:8081 -p 127.0.0.1:80:8080 --rm -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes bash -c "nix build --impure .#packages.x86_64-linux.vm && QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443" ./result/bin/run-nixos-vm"
+  '' else ''
     nix build --impure .#vm
     echo "visit https://localhost:8081/"
     echo "or http://localhost:8080/"
     export QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"
     ./result/bin/run-nixos-vm
-  '';
+  '');
 
   lions-vm-db = pkgs.writeShellScriptBin "lions-vm-db" ''
     scp -P 2221 $LIONS_SQLITE_PATH root@localhost:/var/lib/lions-server/db

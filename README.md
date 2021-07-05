@@ -104,3 +104,9 @@ Login is `root` and an empty password.
 ```shell
 $ ./scripts/build_qemu
 ```
+
+Here are a few useful little notes on working with QEMU:
+
+- Just run commands through SSH so you get nicer shell history and also use your local tools, rather than being stuck in the emulator
+- `ssh root@localhost -p 2221 shutdown now`
+- Use shutdown to close the emulator until you've figured out how CTRL-C can be fixed

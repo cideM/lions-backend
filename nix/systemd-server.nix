@@ -1,9 +1,17 @@
 { config, pkgs, lib, ... }:
 with lib;
 let
-  migrateScript = pkgs.writeScript "lions-migrations" ''
-    #!${pkgs.runtimeShell}
-    ${pkgs.go-migrate}/bin/migrate -path ./backend/migrations -database "sqlite3://$LIONS_SQLITE_PATH" up
+  migrateScript = pkgs.writeShellScriptBin "lions-migrations" ''
+    ${pkgs.go-migrate}/bin/migrate -path ./migrations -database "sqlite3://$LIONS_SQLITE_PATH" up
+  '';
+
+  serverScript = pkgs.writeShellScriptBin "lions-start-service" ''
+    export LIONS_AWS_SES_ACCESS_KEY=$(cat ''${CREDENTIALS_DIRECTORY}/aws_ses_access_key) \
+      LIONS_AWS_SES_SECRET_ACCESS_KEY=$(cat ''${CREDENTIALS_DIRECTORY}/aws_ses_secret_access_key) \
+      LIONS_SCRYPT_SIGNER_KEY=$(cat ''${CREDENTIALS_DIRECTORY}/signerkey) \
+      LIONS_SCRYPT_SALT_SEP=$(cat ''${CREDENTIALS_DIRECTORY}/saltsep)
+
+    ${config.serverExe}
   '';
 in
 {
@@ -33,10 +41,11 @@ in
         Conflicts = "litestream.service";
         Before = "server.service";
         PrivateTmp = "yes";
+        DynamicUser = "yes";
         StateDirectory = "lions-server";
         WorkingDirectory = "${config.serverWorkingDir}";
         Restart = "on-failure";
-        ExecStart = migrateScript;
+        ExecStart = "${migrateScript}/bin/lions-migrations";
       };
     };
 
@@ -62,9 +71,10 @@ in
         ];
         PrivateDevices = "yes";
         PrivateTmp = "yes";
+        DynamicUser = "yes";
         StateDirectory = "lions-server";
         WorkingDirectory = "${config.serverWorkingDir}";
-        ExecStart = "/bin/sh -c \"export LIONS_AWS_SES_ACCESS_KEY=$(cat \${CREDENTIALS_DIRECTORY}/aws_ses_access_key) LIONS_AWS_SES_SECRET_ACCESS_KEY=$(cat \${CREDENTIALS_DIRECTORY}/aws_ses_secret_access_key) LIONS_SCRYPT_SIGNER_KEY=$(cat \${CREDENTIALS_DIRECTORY}/signerkey) LIONS_SCRYPT_SALT_SEP=$(cat \${CREDENTIALS_DIRECTORY}/saltsep); ${config.serverExe}\"";
+        ExecStart = "${serverScript}/bin/lions-start-service";
         Restart = "on-failure";
       };
     };

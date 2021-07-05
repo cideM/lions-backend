@@ -132,6 +132,7 @@ server
         send403 = render status403 . layout' . LayoutStub "Fehler" Nothing $ warning "Du hast keinen Zugriff auf diese Seite"
         send404 = render status404 . layout' . LayoutStub "Nicht gefunden" Nothing $ warning "Nicht Gefunden"
 
+    log' "received request"
     -- Now the actual routing starts. We get the paths and pattern match on them.
     case Wai.pathInfo req of
       [] ->
@@ -346,6 +347,8 @@ main = do
                           saltSep
                           internalState
                           storageDir
+
+                  Logging.log logger ("starting server..." :: Text.Text)
 
                   let requestIdMiddleware = addRequestId requestIdVaultKey
                       sessionMiddleware = Session.middleware (Logging.log logger) sessionDataVaultKey conn sessionKey

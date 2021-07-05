@@ -1,3 +1,0 @@
-#! /usr/bin/env bash
-docker run -it -p 127.0.0.1:81:8081 -p 127.0.0.1:80:8080 --rm -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes bash -c "chmod +x ./scripts/qemu && ./scripts/qemu"
-

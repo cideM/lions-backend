@@ -31,7 +31,7 @@
 
         localhost:443, localhost:80
 
-        reverse_proxy 127.0.0.1:3000
+        reverse_proxy localhost:3000
       '';
     };
   };

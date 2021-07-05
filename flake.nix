@@ -70,6 +70,11 @@
 
             clientStuff = import ./client/default.nix { inherit bootstrap-icons pkgs backend system; bootstrap = bootstrapsrc; };
 
+            migrationsDir = builtins.path {
+              name = "lions-migrations";
+              path = ./backend/migrations;
+            };
+
             lionsServer = pkgs.stdenv.mkDerivation {
               name = "lions-website";
               dontUnpack = true;
@@ -77,7 +82,9 @@
               installPhase = ''
                 mkdir $out
                 mkdir $out/public/
+                mkdir $out/migrations
                 cp -r ${clientStuff.allAssets}/* $out/public/
+                cp ${migrationsDir}/* $out/migrations/
                 cp ${backend}/bin/run-lions-backend $out/server
               '';
             };
@@ -87,6 +94,7 @@
               configuration = { config, pkgs, ... }:
                 {
                   imports = [
+                    ({ nixpkgs.overlays = [ (import ./nix/migrate.nix) ]; })
                     ({
                       systemd.services.devSecrets =
                         {
