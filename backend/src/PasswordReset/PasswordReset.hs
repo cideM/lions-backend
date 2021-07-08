@@ -7,6 +7,7 @@ module PasswordReset.PasswordReset
 where
 
 import Control.Exception.Safe
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.Map.Strict as Map
@@ -17,7 +18,7 @@ import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Form (FormFieldState (..))
-import Layout (LayoutStub(..), success, warning)
+import Layout (LayoutStub (..), success, warning)
 import qualified Logging as Logging
 import Lucid
 import qualified Network.AWS.SES as SES
@@ -29,7 +30,7 @@ import Time (timeDaysFromNow)
 import User.DB (getCredentials, hasUser)
 import User.Types (UserId (..))
 import Wai (parseParams, parseQueryParams)
-import Prelude hiding (id,log)
+import Prelude hiding (id, log)
 
 newtype TokenId = TokenId Int
   deriving (Show, Eq)
@@ -118,25 +119,29 @@ updateUserResetToken conn email =
 -- POST handler that will try to generate a password reset token and send it by
 -- email
 handleReset ::
+  (MonadIO m) =>
   SQLite.Connection ->
   Wai.Request ->
   (Text -> Text -> IO SES.SendEmailResponse) ->
-  IO LayoutStub
+  m LayoutStub
 handleReset conn req sendEmail' = do
-  Map.lookup "email" <$> parseParams req >>= \case
+  params <- liftIO $ parseParams req
+  case Map.lookup "email" params of
     Nothing -> return $ formInvalid pwResetEmptyEmail
     Just email -> do
-      updateUserResetToken conn email >>= \case
+      (liftIO $ updateUserResetToken conn email) >>= \case
         Nothing -> return $ formInvalid pwResetEmailNotFound
         Just token -> do
-          _ <- sendEmail' email $ encode' token
+          _ <- liftIO $ sendEmail' email $ encode' token
           return . passwordResetLayout $ success pwResetSuccess
   where
     encode' = T.pack . encode . T.unpack
     formInvalid = passwordResetLayout . ResetEmailForm.form . Just
 
 -- GET handler that just shows a simple email input field
-showResetForm :: IO LayoutStub
+showResetForm ::
+  (MonadIO m) =>
+  m LayoutStub
 showResetForm = return $ passwordResetLayout (ResetEmailForm.form Nothing)
 
 -- I'm omitting the password length check and all that stuff. The browser will
@@ -208,24 +213,32 @@ changePasswordForToken dbConn token pw pwMatch = do
         Just pw' -> return . Hashed $ decodeUtf8 pw'
 
 -- POST handler that actually changes the user's password in the database.
-handleChangePw :: Logging.Log -> SQLite.Connection -> Wai.Request -> IO LayoutStub
+handleChangePw ::
+  (MonadIO m) =>
+  Logging.Log ->
+  SQLite.Connection ->
+  Wai.Request ->
+  m LayoutStub
 handleChangePw log conn req = do
-  params <- parseParams req
+  params <- liftIO $ parseParams req
   case Map.lookup "token" params of
     Nothing -> return . passwordChangeLayout . warning $ changePwNoToken
     Just tok -> do
       let pw = (Map.findWithDefault "" "inputPassword" params)
           pwMatch = (Map.findWithDefault "" "inputPasswordMatch" params)
-      changePasswordForToken conn tok pw pwMatch >>= \case
+      (liftIO $ changePasswordForToken conn tok pw pwMatch) >>= \case
         Left e -> do
-          log $ T.pack $ show e
+          liftIO $ log $ T.pack $ show e
           return $ renderTryResetError e
         Right _ -> return . passwordChangeLayout $ success "Password erfolgreich geändert"
 
 -- GET handler that shows the form that lets users enter a new password.
 -- Expects a token to be passed via query string parameters. That token is
 -- later used to verify that the change password request is actually valid.
-showChangePwForm :: Wai.Request -> IO LayoutStub
+showChangePwForm ::
+  (MonadIO m, MonadThrow m) =>
+  Wai.Request ->
+  m LayoutStub
 showChangePwForm req = do
   case decode' <$> (Map.lookup "token" $ parseQueryParams req) of
     Nothing -> throwString "password change form requires ?token= to be set, but it's empty"

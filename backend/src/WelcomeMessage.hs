@@ -13,6 +13,7 @@ where
 
 import Control.Exception.Safe
 import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -184,9 +185,14 @@ editPageLayout = pageLayout "Nachricht Editieren"
 createPageLayout = pageLayout "Nachricht Erstellen"
 deletePageLayout = pageLayout "Nachricht Löschen"
 
-saveNewMessage :: SQLite.Connection -> Wai.Request -> Session.AdminUser -> IO LayoutStub
+saveNewMessage ::
+  (MonadIO m) =>
+  SQLite.Connection ->
+  Wai.Request ->
+  Session.AdminUser ->
+  m LayoutStub
 saveNewMessage conn req _ = do
-  params <- parseParams req
+  params <- liftIO $ parseParams req
   let input =
         FormInput
           (Map.findWithDefault "" "date" params)
@@ -195,17 +201,18 @@ saveNewMessage conn req _ = do
     Left state ->
       return . createPageLayout $ form input state "/neu"
     Right (message, date) -> do
-      saveNewWelcomeMsg conn message date
+      liftIO $ saveNewWelcomeMsg conn message date
       return . createPageLayout $ success "Nachricht erfolgreich erstellt"
 
 handleEditMessage ::
+  (MonadIO m) =>
   SQLite.Connection ->
   Wai.Request ->
   WelcomeMsgId ->
   Session.AdminUser ->
-  IO LayoutStub
+  m LayoutStub
 handleEditMessage conn req mid@(WelcomeMsgId msgid) _ = do
-  params <- parseParams req
+  params <- liftIO $ parseParams req
   let input =
         FormInput
           (Map.findWithDefault "" "date" params)
@@ -214,12 +221,17 @@ handleEditMessage conn req mid@(WelcomeMsgId msgid) _ = do
     Left state ->
       return . editPageLayout $ form input state [i|/editieren/#{msgid}|]
     Right (message, date) -> do
-      updateWelcomeMsg conn mid message date
+      liftIO $ updateWelcomeMsg conn mid message date
       return . editPageLayout $ success "Nachricht erfolgreich editiert"
 
-showDeleteConfirmation :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
+showDeleteConfirmation ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  WelcomeMsgId ->
+  Session.AdminUser ->
+  m LayoutStub
 showDeleteConfirmation conn mid@(WelcomeMsgId msgid) _ = do
-  getWelcomeMsgFromDb conn mid >>= \case
+  (liftIO $ getWelcomeMsgFromDb conn mid) >>= \case
     Nothing -> throwString [i|delete request, but no message with ID: #{msgid}|]
     Just (WelcomeMsg _ content _) -> do
       return . deletePageLayout $ do
@@ -228,32 +240,36 @@ showDeleteConfirmation conn mid@(WelcomeMsgId msgid) _ = do
         form_ [action_ [i|/loeschen/#{msgid}|], method_ "post", class_ ""] $
           button_ [class_ "btn btn-danger", type_ "submit"] "Ja, Nachricht löschen!"
 
-handleDeleteMessage :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
+handleDeleteMessage ::
+  (MonadIO m) =>
+  SQLite.Connection ->
+  WelcomeMsgId ->
+  Session.AdminUser ->
+  m LayoutStub
 handleDeleteMessage conn msgid _ = do
-  deleteMessage conn msgid
+  liftIO $ deleteMessage conn msgid
   return . deletePageLayout $ success "Nachricht erfolgreich gelöscht"
 
-showAddMessageForm :: Session.AdminUser -> IO LayoutStub
+showAddMessageForm ::
+  (MonadIO m) =>
+  Session.AdminUser ->
+  m LayoutStub
 showAddMessageForm _ = do
-  now <- Time.getCurrentTime
+  now <- liftIO $ Time.getCurrentTime
   let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ now
   return . createPageLayout $ form (FormInput formatted "") emptyState "/neu"
 
-showMessageEditForm :: SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> IO LayoutStub
+showMessageEditForm :: (MonadIO m, MonadThrow m) => SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> m LayoutStub
 showMessageEditForm conn mid@(WelcomeMsgId msgid) _ = do
-  getWelcomeMsgFromDb conn mid >>= \case
+  (liftIO $ getWelcomeMsgFromDb conn mid) >>= \case
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
     Just (WelcomeMsg _ content date) -> do
       let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ date
       return . editPageLayout $ form (FormInput formatted content) emptyState [i|/editieren/#{msgid}|]
 
-showFeed :: SQLite.Connection -> Session.Authenticated -> IO LayoutStub
+showFeed :: (MonadIO m) => SQLite.Connection -> Session.Authenticated -> m LayoutStub
 showFeed conn auth = do
-  let userIsAdmin = case auth of
-        Session.IsAdmin _ -> True
-        _ -> False
-  msgs <- handleAny onError (getAllWelcomeMsgsFromDb conn)
-  zone <- Time.getCurrentTimeZone
+  let userIsAdmin = Session.isUserAdmin auth
+  msgs <- liftIO $ getAllWelcomeMsgsFromDb conn
+  zone <- liftIO $ Time.getCurrentTimeZone
   return $ renderFeed zone userIsAdmin msgs
-  where
-    onError e = throwString $ "error getting welcome messages: " <> show e

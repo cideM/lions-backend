@@ -112,6 +112,7 @@ library
     , filepath
     , wai
     , wai-extra
+    , wai-transformers
     , wai-middleware-static
     , wai-session
     , warp

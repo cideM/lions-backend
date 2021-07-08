@@ -2,6 +2,7 @@ module Lib (server, main) where
 
 import Control.Exception.Safe
 import Control.Monad ((>=>))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Resource (InternalState, runResourceT, withInternalState)
 import qualified DB
 import qualified Data.ByteString as BS
@@ -14,8 +15,8 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Env (Environment (..), parseEnv)
 import qualified Events.DB
-import qualified Events.Types as Events
 import qualified Events.Handlers
+import qualified Events.Types as Events
 import Layout (LayoutStub (..), layout, warning)
 import qualified Logging
 import qualified Login.Login as Login
@@ -26,6 +27,7 @@ import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
+import qualified Network.Wai.Trans as WaiT
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
 import Scrypt (verifyPassword)
@@ -45,6 +47,7 @@ import qualified WelcomeMessage
 import Prelude hiding (id)
 
 server ::
+  (MonadIO m, MonadThrow m) =>
   Logging.TimedFastLogger ->
   SQLite.Connection ->
   ClientSession.Key ->
@@ -57,9 +60,7 @@ server ::
   BS.ByteString -> -- Project's base64_salt_separator
   InternalState ->
   FilePath ->
-  Wai.Request ->
-  (Wai.Response -> IO Wai.ResponseReceived) ->
-  IO Wai.ResponseReceived
+  WaiT.ApplicationT m
 server
   logger
   dbConn
@@ -132,7 +133,7 @@ server
         send403 = render status403 . layout' . LayoutStub "Fehler" Nothing $ warning "Du hast keinen Zugriff auf diese Seite"
         send404 = render status404 . layout' . LayoutStub "Nicht gefunden" Nothing $ warning "Nicht Gefunden"
 
-    log' "received request"
+    liftIO $ log' "received request"
     -- Now the actual routing starts. We get the paths and pattern match on them.
     case Wai.pathInfo req of
       [] ->

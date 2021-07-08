@@ -2,6 +2,7 @@ module Userlist (get) where
 
 import Control.Exception.Safe
 import Control.Monad (unless, when)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.List.NonEmpty (NonEmpty, toList)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
@@ -146,20 +147,22 @@ formatDataForView users =
     )
     users
 
-get :: SQLite.Connection -> Wai.Request -> Session.Authenticated -> IO LayoutStub
+get ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  Wai.Request ->
+  Session.Authenticated ->
+  m LayoutStub
 get conn req auth = do
   let selectionRaw = Map.findWithDefault "all" "userselect" $ parseQueryParams req
-  users <- getUsers conn
+  users <- liftIO $ getUsers conn
   (usersToShow, dropdown) <- case selectionLogic users selectionRaw of
     Left e -> throwString $ show e
     Right v -> return v
   return $
     LayoutStub "Mitglieder" (Just Members) $
       div_ [class_ "container p-2"] $ do
-        when (userIsAdmin auth) $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
+        when (Session.isUserAdmin auth) $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
         h1_ [class_ "h4 mb-5"] "Mitgliederliste"
         div_ [class_ "row row-cols-1 g-2"] $
           render (formatDataForView usersToShow) dropdown
-  where
-    userIsAdmin (Session.IsAdmin _) = True
-    userIsAdmin _ = False

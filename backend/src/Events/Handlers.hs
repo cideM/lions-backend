@@ -18,6 +18,7 @@ where
 
 import Control.Exception.Safe
 import Control.Monad (forM_, when)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Resource (InternalState)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C8
@@ -30,10 +31,10 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Time as Time
-import qualified Events.Types as Events
 import qualified Events.EventForm as EventForm
 import qualified Events.Preview
 import qualified Events.SingleEvent
+import qualified Events.Types as Events
 import GHC.Exts (sortWith)
 import Layout (ActiveNavLink (..), LayoutStub (..), success)
 import Locale (german)
@@ -76,31 +77,36 @@ eventPreviewsHtml userIsAdmin events =
     div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] $
       mapM_ (div_ [class_ "col"] . Events.Preview.render) events
 
-showAllEvents :: IO [(Events.Id, Events.Event)] -> Session.Authenticated -> IO LayoutStub
+showAllEvents ::
+  (MonadIO m) =>
+  IO [(Events.Id, Events.Event)] ->
+  Session.Authenticated ->
+  m LayoutStub
 showAllEvents getAllEvents auth = do
   let userIsAdmin = Session.isUserAdmin auth
       Session.UserSession {..} = Session.getSessionFromAuth auth
-  events <- toEventList userSessionUserId <$> getAllEvents
+  events <- toEventList userSessionUserId <$> liftIO getAllEvents
   return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml userIsAdmin events
 
 replyToEvent ::
+  (MonadIO m, MonadThrow m) =>
   (UserId -> IO (Maybe UserProfile)) ->
   (Events.Id -> UserId -> IO ()) ->
   (Events.Id -> Events.Reply -> IO ()) ->
   Wai.Request ->
-  (Wai.Response -> IO a) ->
+  (Wai.Response -> m a) ->
   Events.Id ->
   Session.Authenticated ->
-  IO a
+  m a
 replyToEvent getUser deleteReply upsertReply req send eventid@(Events.Id i) auth = do
   let Session.UserSession {..} = Session.getSessionFromAuth auth
 
   UserProfile {userEmail = userEmail} <-
-    getUser userSessionUserId >>= \case
+    (liftIO $ getUser userSessionUserId) >>= \case
       Nothing -> throwString [Interpolate.i|"no user for userid from session #{userSessionUserId}"|]
       Just v -> return v
 
-  (coming, numberOfGuests) <- parseParams'
+  (coming, numberOfGuests) <- liftIO $ parseParams'
 
   -- This is the core branching in this handler, everything else is just
   -- necessary edge cases and parsing inputs. The "Nothing" case is for when
@@ -108,8 +114,8 @@ replyToEvent getUser deleteReply upsertReply req send eventid@(Events.Id i) auth
   -- as having no reply. The "Just" case is then either yes or no, which
   -- doesn't matter. What matters is that I now store that repl.
   case coming of
-    Nothing -> deleteReply eventid userSessionUserId
-    Just yesno -> upsertReply eventid $ (Events.Reply yesno userEmail userSessionUserId numberOfGuests)
+    Nothing -> liftIO $ deleteReply eventid userSessionUserId
+    Just yesno -> liftIO . upsertReply eventid $ (Events.Reply yesno userEmail userSessionUserId numberOfGuests)
 
   send $ Wai.responseLBS status303 [("Location", encodeUtf8 $ "/veranstaltungen/" <> Text.pack (show i))] mempty
   where
@@ -137,11 +143,16 @@ replyToEvent getUser deleteReply upsertReply req send eventid@(Events.Id i) auth
         Left e -> Left [Interpolate.i|couldn't parse '#{s}' as number: #{e}|]
         Right i' -> Right i'
 
-showEvent :: (Events.Id -> IO (Maybe Events.Event)) -> Events.Id -> Session.Authenticated -> IO (Maybe LayoutStub)
+showEvent ::
+  (MonadIO m) =>
+  (Events.Id -> IO (Maybe Events.Event)) ->
+  Events.Id ->
+  Session.Authenticated ->
+  m (Maybe LayoutStub)
 showEvent getEvent eventid auth = do
   let userIsAdmin = Session.isUserAdmin auth
       Session.UserSession {..} = Session.getSessionFromAuth auth
-  getEvent eventid >>= \case
+  (liftIO $ getEvent eventid) >>= \case
     Nothing -> return Nothing
     Just e@Events.Event {..} -> do
       let ownReply = find ((==) userSessionUserId . Events.replyUserId) eventReplies
@@ -151,7 +162,7 @@ showEvent getEvent eventid auth = do
           (Just Events)
         $ Events.SingleEvent.render (Events.SingleEvent.ShowAdminTools userIsAdmin) ownReply eventid e
 
-showCreateEvent :: Session.AdminUser -> IO LayoutStub
+showCreateEvent :: (MonadIO m) => Session.AdminUser -> m LayoutStub
 showCreateEvent _ = do
   return . LayoutStub "Neue Veranstaltung" (Just Events) $
     div_ [class_ "container p-2"] $ do
@@ -159,30 +170,36 @@ showCreateEvent _ = do
       EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
 
 handleDeleteEvent ::
+  (MonadIO m) =>
   (Events.Id -> IO (Maybe Events.Event)) ->
   (Events.Id -> IO ()) ->
   (Events.Id -> IO ()) ->
   Events.Id ->
   Session.AdminUser ->
-  IO LayoutStub
+  m LayoutStub
 handleDeleteEvent getEvent removeAll deleteEvent eventid _ = do
-  maybeEvent <- getEvent eventid
+  maybeEvent <- liftIO $ getEvent eventid
   case maybeEvent of
     Nothing -> return . LayoutStub "Fehler" (Just Events) $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just event -> do
-      removeAll eventid
-      deleteEvent eventid
+      liftIO $ removeAll eventid
+      liftIO $ deleteEvent eventid
       return $
         LayoutStub "Veranstaltung" (Just Events) $
           success $ "Veranstaltung " <> Events.eventTitle event <> " erfolgreich gelöscht"
 
-showDeleteEventConfirmation :: (Events.Id -> IO (Maybe Events.Event)) -> Events.Id -> Session.AdminUser -> IO LayoutStub
+showDeleteEventConfirmation ::
+  (MonadIO m, MonadThrow m) =>
+  (Events.Id -> IO (Maybe Events.Event)) ->
+  Events.Id ->
+  Session.AdminUser ->
+  m LayoutStub
 showDeleteEventConfirmation getEvent eid@(Events.Id eventid) _ = do
   -- TODO: Duplicated
-  getEvent eid >>= \case
+  (liftIO $ getEvent eid) >>= \case
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
       return . LayoutStub "Veranstaltung Löschen" (Just Events) $
@@ -281,6 +298,7 @@ fileUploadOpts :: ParseRequestBodyOptions
 fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
 
 handleCreateEvent ::
+  (MonadIO m) =>
   (ByteString -> IO ByteString) ->
   (ByteString -> Maybe ByteString) ->
   (Events.Create -> IO Events.Id) ->
@@ -288,7 +306,7 @@ handleCreateEvent ::
   (Events.Id -> FilePath -> FilePath -> IO ()) ->
   Wai.Request ->
   Session.AdminUser ->
-  IO LayoutStub
+  m LayoutStub
 handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
   -- There's no point in trying to catch an exception arising from a payload
   -- that's too large. The connection will be closed, so no more bytes are read
@@ -298,12 +316,12 @@ handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
   -- but also show nice errors that means always reading the entire request
   -- payload and then doing a check for its size. For now I just won't enforce
   -- any file limit other than the hard 100MB.
-  body <- parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
+  body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
 
   let params = paramsToMap $ fst body
       fromParams key = Map.findWithDefault "" key params
 
-  (FileActions {..}, encryptedFileInfos) <- getFileActions encrypt decrypt [] body
+  (FileActions {..}, encryptedFileInfos) <- liftIO $ getFileActions encrypt decrypt [] body
 
   let notSavedAndDeleteCheckbox = map (\FileInfo {..} -> (decodeUtf8 fileName, False)) fileActionsDontUpload
       uploadCheckbox = zip (map (decodeUtf8 . fileName) fileActionsUpload) (repeat True)
@@ -325,25 +343,26 @@ handleCreateEvent encrypt decrypt createEvent internalState saveFile req _ = do
           h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
           EventForm.render "Speichern" "/veranstaltungen/neu" input state
     Right newEvent@Events.Create {..} -> do
-      eid <- createEvent newEvent
+      eid <- liftIO $ createEvent newEvent
 
       forM_ fileActionsUpload $ \FileInfo {..} -> do
-        saveFile eid fileContent (C8.unpack fileName)
-        System.Directory.removeFile fileContent
+        liftIO $ saveFile eid fileContent (C8.unpack fileName)
+        liftIO $ System.Directory.removeFile fileContent
 
       forM_ fileActionsDontUpload $ \FileInfo {..} -> do
-        System.Directory.removeFile fileContent
+        liftIO $ System.Directory.removeFile fileContent
 
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
         success $ "Neue Veranstaltung " <> createTitle <> " erfolgreich erstellt!"
 
 showEditEventForm ::
+  (MonadIO m, MonadThrow m) =>
   (Events.Id -> IO (Maybe Events.Event)) ->
   Events.Id ->
   Session.AdminUser ->
-  IO LayoutStub
+  m LayoutStub
 showEditEventForm getEvent eid@(Events.Id eventid) _ = do
-  getEvent eid >>= \case
+  (liftIO $ getEvent eid) >>= \case
     Nothing -> throwString $ "edit event but no event for id: " <> show eventid
     Just Events.Event {..} ->
       let input =
@@ -363,6 +382,7 @@ showEditEventForm getEvent eid@(Events.Id eventid) _ = do
     renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
 
 handleUpdateEvent ::
+  (MonadThrow m, MonadIO m) =>
   (Events.Id -> Events.Create -> IO ()) ->
   (Events.Id -> IO (Maybe Events.Event)) ->
   (ByteString -> IO ByteString) ->
@@ -373,7 +393,7 @@ handleUpdateEvent ::
   Wai.Request ->
   Events.Id ->
   Session.AdminUser ->
-  IO LayoutStub
+  m LayoutStub
 handleUpdateEvent
   updateEvent
   getEvent
@@ -385,12 +405,12 @@ handleUpdateEvent
   req
   eid@(Events.Id eventid)
   _ = do
-    body <- parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
+    body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
 
-    getEvent eid >>= \case
+    (liftIO $ getEvent eid) >>= \case
       Nothing -> throwString $ "edit event but no event for id: " <> show eventid
       Just Events.Event {..} -> do
-        (FileActions {..}, encryptedFileInfos) <- getFileActions encrypt decrypt eventAttachments body
+        (FileActions {..}, encryptedFileInfos) <- liftIO $ getFileActions encrypt decrypt eventAttachments body
 
         let params = paramsToMap $ fst body
             fromParams key = Map.findWithDefault "" key params
@@ -421,16 +441,16 @@ handleUpdateEvent
                     state
           Right event@Events.Create {..} -> do
             forM_ fileActionsUpload $ \FileInfo {..} -> do
-              saveFile eid fileContent (C8.unpack fileName)
-              System.Directory.removeFile fileContent
+              liftIO $ saveFile eid fileContent (C8.unpack fileName)
+              liftIO $ System.Directory.removeFile fileContent
 
             forM_ fileActionsDelete $ \Events.Attachment {..} -> do
-              removeFile eid (Text.unpack attachmentFileName)
+              liftIO $ removeFile eid (Text.unpack attachmentFileName)
 
             forM_ fileActionsDontUpload $ \FileInfo {..} -> do
-              System.Directory.removeFile fileContent
+              liftIO $ System.Directory.removeFile fileContent
 
-            updateEvent eid event
+            liftIO $ updateEvent eid event
             return $
               LayoutStub "Veranstaltung Editieren" (Just Events) $
                 success $ "Veranstaltung " <> createTitle <> " erfolgreich editiert"

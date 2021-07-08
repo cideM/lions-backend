@@ -1,6 +1,7 @@
 module Login.Login (logout, login, showLoginForm) where
 
 import Control.Exception.Safe
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
@@ -22,17 +23,18 @@ import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
 logout ::
+  (MonadIO m, MonadThrow m) =>
   (UserId -> IO ()) ->
   (Vault.Vault -> Maybe ([Role], UserId)) ->
   Environment ->
   Wai.Request ->
-  (Wai.Response -> IO a) ->
-  IO a
+  (Wai.Response -> m a) ->
+  m a
 logout deleteSessions vaultLookup env req send =
   case vaultLookup $ Wai.vault req of
     Nothing -> throwString "logout request but no session in vault"
     Just (_, userId) -> do
-      deleteSessions userId
+      liftIO $ deleteSessions userId
       send
         . Wai.responseLBS
           status302
@@ -57,17 +59,18 @@ logout deleteSessions vaultLookup env req send =
 -- POST handler that creates a new session in the DB and sets a cookie with the
 -- encrypted session ID
 login ::
+  (MonadIO m) =>
   Logging.Log ->
   (Text -> Text -> IO (Either Text (ByteString, Time.UTCTime))) ->
   Environment ->
   Wai.Request ->
-  (Wai.Response -> IO a) ->
-  IO a
+  (Wai.Response -> m a) ->
+  m a
 login _ tryLogin env req send = do
-  params <- parseParams req
+  params <- liftIO $ parseParams req
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
-  (tryLogin email formPw) >>= \case
+  (liftIO $ tryLogin email formPw) >>= \case
     Left _ -> renderFormInvalid email formPw
     Right (sessionId, expires) -> do
       let cookie = makeCookie sessionId expires
@@ -97,7 +100,10 @@ login _ tryLogin env req send = do
           (Just "Ungültige Kombination aus Email und Passwort")
 
 -- GET handler for showing the login form
-showLoginForm :: Authentication -> IO (Html ())
+showLoginForm ::
+  (MonadIO m) =>
+  Authentication ->
+  m (Html ())
 showLoginForm (IsNotAuthenticated) =
   return . layout IsNotAuthenticated . LoginForm.form $ LoginForm.NotLoggedInNotValidated
 showLoginForm auth = return . layout auth . LoginForm.form $ LoginForm.LoggedIn

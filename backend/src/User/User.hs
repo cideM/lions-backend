@@ -9,6 +9,7 @@ module User.User
 where
 
 import Control.Exception.Safe
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -18,7 +19,7 @@ import Layout (LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Session as Session
-import User.DB (deleteUserById, getUser, saveUser, saveUserRoles, getRolesFromDb, updateUser)
+import User.DB (deleteUserById, getRolesFromDb, getUser, saveUser, saveUserRoles, updateUser)
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import User.Types
   ( Role (..),
@@ -30,7 +31,10 @@ import User.Types
   )
 import Wai (parseParams)
 
-createGet :: Session.AdminUser -> IO LayoutStub
+createGet ::
+  (MonadIO m) =>
+  Session.AdminUser ->
+  m LayoutStub
 createGet _ =
   return $
     LayoutStub "Nutzer Hinzufügen" Nothing $
@@ -42,9 +46,14 @@ createGet _ =
           (FormInput "" "" "" False False False False "" "" "" "" "" "" "")
           emptyForm
 
-createPost :: SQLite.Connection -> Wai.Request -> Session.AdminUser -> IO LayoutStub
+createPost ::
+  (MonadIO m) =>
+  SQLite.Connection ->
+  Wai.Request ->
+  Session.AdminUser ->
+  m LayoutStub
 createPost conn req _ = do
-  params <- parseParams req
+  params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
       input =
@@ -63,7 +72,7 @@ createPost conn req _ = do
           (paramt "inputLastNamePartner")
           (paramt "inputMobile")
           (paramt "inputLandline")
-  makeProfile input >>= \case
+  (liftIO $ makeProfile input) >>= \case
     Left state ->
       return $
         LayoutStub "Nutzer Hinzufügen" Nothing $
@@ -75,12 +84,13 @@ createPost conn req _ = do
               input
               state
     Right (profile@UserProfileCreate {..}) -> do
-      SQLite.withTransaction
-        conn
-        $ do
-          saveUser conn profile
-          (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
-          saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
+      liftIO $
+        SQLite.withTransaction
+          conn
+          $ do
+            saveUser conn profile
+            (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
+            saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
       let (UserEmail email) = userCreateEmail
       return $
         LayoutStub "Nutzer Hinzufügen" Nothing $
@@ -89,13 +99,18 @@ createPost conn req _ = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> showEmail email <> " erfolgreich erstellt"
 
-deletePost :: SQLite.Connection -> UserId -> Session.AdminUser -> IO LayoutStub
+deletePost ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  UserId ->
+  Session.AdminUser ->
+  m LayoutStub
 deletePost conn userId _ = do
-  user <- getUser conn userId
+  user <- liftIO $ getUser conn userId
   case user of
     Nothing -> throwString $ "edit user but no user found for id: " <> show userId
     Just userProfile -> do
-      deleteUserById conn userId
+      liftIO $ deleteUserById conn userId
       return $
         LayoutStub "Nutzerprofil" Nothing $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -103,9 +118,14 @@ deletePost conn userId _ = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> show (userEmail userProfile) <> " erfolgreich gelöscht"
 
-deleteGet :: SQLite.Connection -> UserId -> Session.AdminUser -> IO LayoutStub
+deleteGet ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  UserId ->
+  Session.AdminUser ->
+  m LayoutStub
 deleteGet conn userId@(UserId uid) _ = do
-  user <- getUser conn userId
+  user <- liftIO $ getUser conn userId
   case user of
     Nothing -> throwString $ "delete user but no user for eid found: " <> show userId
     Just userProfile -> do
@@ -121,9 +141,14 @@ deleteGet conn userId@(UserId uid) _ = do
               ]
               $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Nutzer löschen!"
 
-editGet :: SQLite.Connection -> UserId -> Session.Authenticated -> IO LayoutStub
+editGet ::
+  (MonadIO m) =>
+  SQLite.Connection ->
+  UserId ->
+  Session.Authenticated ->
+  m LayoutStub
 editGet conn userIdToEdit@(UserId uid) auth = do
-  user <- getUser conn userIdToEdit
+  user <- liftIO $ getUser conn userIdToEdit
   return $ case user of
     Nothing -> LayoutStub "Fehler" Nothing $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
@@ -134,7 +159,7 @@ editGet conn userIdToEdit@(UserId uid) auth = do
        in LayoutStub "Nutzer Editieren" Nothing $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
               User.Form.render
-                (CanEditRoles userIsAdmin)
+                (CanEditRoles $ Session.isUserAdmin auth)
                 "Nutzer editieren"
                 [i|/nutzer/#{uid}/editieren|]
                 ( FormInput
@@ -155,15 +180,17 @@ editGet conn userIdToEdit@(UserId uid) auth = do
                     }
                 )
                 emptyForm
-  where
-    userIsAdmin = case auth of
-      Session.IsAdmin _ -> True
-      _ -> False
 
-editPost :: SQLite.Connection -> Wai.Request -> UserId -> Session.Authenticated -> IO LayoutStub
+editPost ::
+  (MonadIO m, MonadThrow m) =>
+  SQLite.Connection ->
+  Wai.Request ->
+  UserId ->
+  Session.Authenticated ->
+  m LayoutStub
 editPost conn req userId auth = do
-  rolesForUserToUpdate <- getRolesFromDb conn userId
-  params <- parseParams req
+  rolesForUserToUpdate <- liftIO $ getRolesFromDb conn userId
+  params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
       isRole role = maybe False (any ((==) role)) rolesForUserToUpdate
@@ -183,7 +210,7 @@ editPost conn req userId auth = do
           (paramt "inputLastNamePartner")
           (paramt "inputMobile")
           (paramt "inputLandline")
-  makeProfile input >>= \case
+  (liftIO $ makeProfile input) >>= \case
     Left state ->
       return $
         LayoutStub "Nutzer Editieren" Nothing $
@@ -210,7 +237,7 @@ editPost conn req userId auth = do
                 userId = userId,
                 userRoles = userCreateRoles
               }
-      updateUser conn userId profile
+      liftIO $ updateUser conn userId profile
       let (UserEmail email) = userCreateEmail
       return $
         LayoutStub "Nutzer Editieren" Nothing $
@@ -219,6 +246,4 @@ editPost conn req userId auth = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> showEmail email <> " erfolgreich editiert"
   where
-    userIsAdmin = case auth of
-      Session.IsAdmin _ -> True
-      _ -> False
+    userIsAdmin = Session.isUserAdmin auth

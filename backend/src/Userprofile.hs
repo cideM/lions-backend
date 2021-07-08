@@ -1,6 +1,7 @@
 module Userprofile (get) where
 
 import Control.Monad (unless, when)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
@@ -83,17 +84,18 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
     showBadge Admin = "Administrator"
     showBadge User = "Nutzer"
 
-get :: SQLite.Connection -> Int -> Session.Authenticated -> IO (Maybe LayoutStub)
+get ::
+  (MonadIO m) =>
+  SQLite.Connection ->
+  Int ->
+  Session.Authenticated ->
+  m (Maybe LayoutStub)
 get conn paramId auth = do
   let userIdToShow = UserId paramId
-      userIsAdmin = case auth of
-        Session.IsAdmin _ -> True
-        _ -> False
-      Session.UserSession loggedInUserId _ = case auth of
-        Session.IsUser session -> session
-        Session.IsAdmin (Session.AdminUser session) -> session
-      isOwnProfile = loggedInUserId == userIdToShow
-  user <- getUser conn userIdToShow
+      userIsAdmin = Session.isUserAdmin auth
+      Session.UserSession {..} = Session.getSessionFromAuth auth
+      isOwnProfile = userSessionUserId == userIdToShow
+  user <- liftIO $ getUser conn userIdToShow
   return $ case user of
     Nothing -> Nothing
     Just userProfile -> do

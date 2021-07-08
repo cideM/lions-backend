@@ -21,6 +21,7 @@ module Session
 where
 
 import Control.Exception.Safe
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import Data.String.Interpolate (i)
@@ -34,6 +35,7 @@ import qualified Logging
 import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
+import qualified Network.Wai.Trans as WaiT
 import Time (timeDaysFromNow)
 import User.DB
   ( getCredentials,
@@ -149,16 +151,16 @@ tryLoginFromSession dbConn sessionKey sessionDataVaultKey req = do
 -- the Vault associated with this particular request so that downstream code
 -- can access it.
 middleware ::
+  (MonadIO m) =>
   Logging.Log ->
   SessionDataVaultKey ->
   SQLite.Connection ->
   ClientSession.Key ->
-  Wai.Application ->
-  Wai.Application
+  WaiT.MiddlewareT m
 middleware log sessionDataVaultKey dbConn sessionKey nextApp req send = do
-  tryLoginFromSession dbConn sessionKey sessionDataVaultKey req >>= \case
+  (liftIO $ tryLoginFromSession dbConn sessionKey sessionDataVaultKey req) >>= \case
     Left e -> do
-      log $ Text.pack $ "error in tryLoginFromSession: " <> show e
+      liftIO . log $ Text.pack $ "error in tryLoginFromSession: " <> show e
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send
