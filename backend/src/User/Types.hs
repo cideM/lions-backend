@@ -9,15 +9,23 @@ module User.Types
   )
 where
 
-import Data.Aeson (FromJSON(..), ToJSON, Value (..), defaultOptions, genericToEncoding, toEncoding, toJSON)
+import Data.Aeson
+  ( FromJSON (..),
+    ToJSON,
+    Value (..),
+    defaultOptions,
+    genericToEncoding,
+    toEncoding,
+    toJSON,
+  )
 import qualified Data.Aeson as Aeson
 import Data.List.NonEmpty (NonEmpty)
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import Data.String.Interpolate (i)
 import GHC.Generics
-import Text.Email.Validate (emailAddress, EmailAddress, toByteString)
+import Text.Email.Validate (EmailAddress, emailAddress, toByteString)
 
 newtype UserEmail = UserEmail EmailAddress deriving (Show, Eq)
 
@@ -25,7 +33,7 @@ instance ToJSON UserEmail where
   toJSON (UserEmail email) = String $ showEmail email
 
 instance FromJSON UserEmail where
-  parseJSON (Aeson.String s) = 
+  parseJSON (Aeson.String s) =
     case emailAddress (encodeUtf8 s) of
       Just addr -> return $ UserEmail addr
       Nothing -> fail [i|couldn't parse email: #{s}|]

@@ -11,8 +11,11 @@ module User.DB
   )
 where
 
+import qualified App
 import Control.Exception.Safe
 import Control.Monad (forM_)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.List.NonEmpty as NE
@@ -302,21 +305,28 @@ saveUser conn profile = do
     |]
     $ UserProfileCreateWithPw (hashed, profile)
 
-getRolesFromDb :: SQLite.Connection -> UserId -> IO (Maybe [Role])
-getRolesFromDb conn (UserId userId) =
+getRolesFromDb ::
+  ( MonadIO m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  UserId ->
+  m (Maybe [Role])
+getRolesFromDb (UserId userId) = do
+  conn <- asks App.getDb
   let q =
         [sql|
            WITH roles_for_id AS (SELECT roleid FROM user_roles WHERE userid = ?)
            SELECT label FROM roles_for_id JOIN roles ON id = roleid
         |]
-   in do
-        r <- SQLite.query conn q [userId]
-        case r of
-          [] -> return Nothing
-          (roles :: [[Text]]) -> do
-            case traverse parseRole $ concat roles of
-              Left e -> throwString $ "couldn't parse roles: " <> show e
-              Right parsedRoles -> return $ Just parsedRoles
+  rows <- liftIO $ SQLite.query conn q [userId]
+  case rows of
+    [] -> return Nothing
+    (roles :: [[Text]]) -> do
+      case traverse parseRole $ concat roles of
+        Left e -> throwString $ "couldn't parse roles: " <> show e
+        Right parsedRoles -> return $ Just parsedRoles
 
 saveUserRoles :: SQLite.Connection -> UserId -> [Role] -> IO ()
 saveUserRoles conn (UserId userid) roles =

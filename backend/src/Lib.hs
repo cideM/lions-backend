@@ -53,6 +53,7 @@ server ::
     MonadIO m,
     MonadThrow m,
     App.HasRequestIdVaultKey env,
+    App.HasDb env,
     MonadReader env m
   ) =>
   SQLite.Connection ->

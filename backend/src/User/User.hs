@@ -8,8 +8,10 @@ module User.User
   )
 where
 
+import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader.Class (MonadReader)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -20,7 +22,14 @@ import Lucid
 import qualified Network.Wai as Wai
 import qualified Session as Session
 import qualified Session.Types as Session
-import User.DB (deleteUserById, getRolesFromDb, getUser, saveUser, saveUserRoles, updateUser)
+import User.DB
+  ( deleteUserById,
+    getRolesFromDb,
+    getUser,
+    saveUser,
+    saveUserRoles,
+    updateUser,
+  )
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import User.Types
   ( Role (..),
@@ -183,14 +192,19 @@ editGet conn userIdToEdit@(UserId uid) auth = do
                 emptyForm
 
 editPost ::
-  (MonadIO m, MonadThrow m) =>
+  ( MonadIO m,
+    MonadThrow m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
   SQLite.Connection ->
   Wai.Request ->
   UserId ->
   Session.Authenticated ->
   m LayoutStub
 editPost conn req userId auth = do
-  rolesForUserToUpdate <- liftIO $ getRolesFromDb conn userId
+  rolesForUserToUpdate <- getRolesFromDb userId
   params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
