@@ -152,15 +152,15 @@ tryLoginFromSession dbConn sessionKey sessionDataVaultKey req = do
 -- can access it.
 middleware ::
   (MonadIO m) =>
-  Logging.Log ->
+  -- Logging.Log ->
   SessionDataVaultKey ->
   SQLite.Connection ->
   ClientSession.Key ->
   WaiT.MiddlewareT m
-middleware log sessionDataVaultKey dbConn sessionKey nextApp req send = do
+middleware sessionDataVaultKey dbConn sessionKey nextApp req send = do
   (liftIO $ tryLoginFromSession dbConn sessionKey sessionDataVaultKey req) >>= \case
     Left e -> do
-      liftIO . log $ Text.pack $ "error in tryLoginFromSession: " <> show e
+      -- liftIO . log $ Text.pack $ "error in tryLoginFromSession: " <> show e
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send

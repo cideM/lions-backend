@@ -215,11 +215,10 @@ changePasswordForToken dbConn token pw pwMatch = do
 -- POST handler that actually changes the user's password in the database.
 handleChangePw ::
   (MonadIO m) =>
-  Logging.Log ->
   SQLite.Connection ->
   Wai.Request ->
   m LayoutStub
-handleChangePw log conn req = do
+handleChangePw conn req = do
   params <- liftIO $ parseParams req
   case Map.lookup "token" params of
     Nothing -> return . passwordChangeLayout . warning $ changePwNoToken
@@ -228,7 +227,7 @@ handleChangePw log conn req = do
           pwMatch = (Map.findWithDefault "" "inputPasswordMatch" params)
       (liftIO $ changePasswordForToken conn tok pw pwMatch) >>= \case
         Left e -> do
-          liftIO $ log $ T.pack $ show e
+          -- liftIO $ log $ T.pack $ show e
           return $ renderTryResetError e
         Right _ -> return . passwordChangeLayout $ success "Password erfolgreich geändert"
 

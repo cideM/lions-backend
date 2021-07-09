@@ -1,5 +1,6 @@
 module Lib (server, main) where
 
+import qualified App
 import Control.Exception.Safe
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -13,10 +14,10 @@ import Data.UUID (UUID)
 import Data.UUID.V4 (nextRandom)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import Env (Environment (..), parseEnv)
 import qualified Events.DB
 import qualified Events.Handlers
 import qualified Events.Types as Events
+import qualified Katip as K
 import Layout (LayoutStub (..), layout, warning)
 import qualified Logging
 import qualified Login.Login as Login
@@ -35,6 +36,7 @@ import Session (SessionDataVaultKey)
 import qualified Session
 import qualified System.Directory
 import System.Environment (getEnv)
+import qualified System.IO
 import Text.Read (readEither)
 import qualified User.DB
 import User.Types (UserId (..))
@@ -48,13 +50,12 @@ import Prelude hiding (id)
 
 server ::
   (MonadIO m, MonadThrow m) =>
-  Logging.TimedFastLogger ->
   SQLite.Connection ->
   ClientSession.Key ->
   RequestIdVaultKey ->
   AWS.Env ->
   Int ->
-  Environment ->
+  App.Environment ->
   SessionDataVaultKey ->
   BS.ByteString -> -- Project's base64_signer_key
   BS.ByteString -> -- Project's base64_salt_separator
@@ -62,7 +63,6 @@ server ::
   FilePath ->
   WaiT.ApplicationT m
 server
-  logger
   dbConn
   sessionKey
   requestIdVaultKey
@@ -101,11 +101,11 @@ server
         -- stupid Monads on me, I'm creating an ad-hoc, shoddily implemented,
         -- 50% structured logger.
         requestId = maybe "" (Text.pack . show) $ Vault.lookup requestIdVaultKey vault
-        log' msg = Logging.log logger ([Interpolate.i|"request_id: #{(requestId :: Text.Text)} message: #{(msg :: Text.Text)}"|] :: Text.Text)
+        -- log' msg = Logging.log logger ([Interpolate.i|"request_id: #{(requestId :: Text.Text)} message: #{(msg :: Text.Text)}"|] :: Text.Text)
 
         -- TODO: The resetHost should probably be passed in as an argument from the outside
         resetHost =
-          if appEnv == Production
+          if appEnv == App.Production
             then "https://www.lions-achern.de"
             else Text.pack $ "http://localhost:" <> show port
 
@@ -133,7 +133,7 @@ server
         send403 = render status403 . layout' . LayoutStub "Fehler" Nothing $ warning "Du hast keinen Zugriff auf diese Seite"
         send404 = render status404 . layout' . LayoutStub "Nicht gefunden" Nothing $ warning "Nicht Gefunden"
 
-    liftIO $ log' "received request"
+    -- liftIO $ log' "received request"
     -- Now the actual routing starts. We get the paths and pattern match on them.
     case Wai.pathInfo req of
       [] ->
@@ -277,7 +277,7 @@ server
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of
-          "POST" -> Login.login log' tryLogin' appEnv req send
+          "POST" -> Login.login tryLogin' appEnv req send
           "GET" -> Login.showLoginForm routeData >>= send200
           _ -> send404
       ["logout"] ->
@@ -287,7 +287,7 @@ server
       ["passwort", "aendern"] ->
         case Wai.requestMethod req of
           "GET" -> PasswordReset.showChangePwForm req >>= send200 . layout'
-          "POST" -> PasswordReset.handleChangePw log' dbConn req >>= send200 . layout'
+          "POST" -> PasswordReset.handleChangePw dbConn req >>= send200 . layout'
           _ -> send404
       ["passwort", "link"] ->
         case Wai.requestMethod req of
@@ -298,9 +298,9 @@ server
 
 type RequestIdVaultKey = Vault.Key UUID
 
-addRequestId :: RequestIdVaultKey -> Wai.Application -> Wai.Application
+addRequestId :: (MonadIO m) => RequestIdVaultKey -> WaiT.MiddlewareT m
 addRequestId requestIdVaultKey next req send = do
-  uuid <- nextRandom
+  uuid <- liftIO $ nextRandom
   let vault' = Vault.insert requestIdVaultKey uuid (Wai.vault req)
       req' = req {Wai.vault = vault'}
   next req' send
@@ -308,7 +308,7 @@ addRequestId requestIdVaultKey next req send = do
 main :: IO ()
 main = do
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
-  appEnv <- getEnv "LIONS_ENV" >>= parseEnv
+  appEnv <- getEnv "LIONS_ENV" >>= App.parseEnv
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
@@ -331,12 +331,33 @@ main = do
 
         runResourceT $
           withInternalState
-            ( \internalState ->
-                Logging.withLogger $ \logger -> do
+            ( \internalState -> do
+                Logging.withKatip $ do
+                  ctx <- K.getKatipContext
+                  ns <- K.getKatipNamespace
+                  logEnv <- K.getLogEnv
+
+                  let env =
+                        App.Env
+                          { envDatabaseConnection = conn,
+                            envEnvironment = appEnv,
+                            envSessionKeyFile = sessionKeyFile,
+                            envAwsAccessKey = aKey,
+                            envAwsSecretAccessKey = sKey,
+                            envScryptSignerKey = signerKey,
+                            envScryptSaltSeparator = saltSep,
+                            envEventAttachmentStorageDir = storageDir,
+                            envSessionDataVaultKey = sessionDataVaultKey,
+                            envRequestIdVaultKey = requestIdVaultKey,
+                            envSessionEncryptionKey = sessionKey,
+                            envLogNamespace = ns,
+                            envLogContext = ctx,
+                            envLogEnv = logEnv
+                          }
+
                   let port = (3000 :: Int)
                       app' =
                         server
-                          logger
                           conn
                           sessionKey
                           requestIdVaultKey
@@ -349,22 +370,24 @@ main = do
                           internalState
                           storageDir
 
-                  Logging.log logger ("starting server..." :: Text.Text)
+                  K.katipAddContext (K.sl "port" port) $ do
+                    K.logLocM K.InfoS "starting server"
 
-                  let requestIdMiddleware = addRequestId requestIdVaultKey
-                      sessionMiddleware = Session.middleware (Logging.log logger) sessionDataVaultKey conn sessionKey
-                      assetMiddleware = staticPolicy (addBase "public")
-                      -- Must come after sessionMiddleware because these files shouldn't be public
-                      storageStaticMiddleware = staticPolicy (addBase storageDir)
-                      allMiddlewares = assetMiddleware . requestIdMiddleware . sessionMiddleware . storageStaticMiddleware
-                      errorHandler send err = do
-                        Logging.log logger $ show err
-                        send500 send
-                      finalApp req send =
-                        handleAny (errorHandler send) $ allMiddlewares app' req send
-                      warpServer = runSettings . setPort port $ setHost "localhost" defaultSettings
+                    let requestIdMiddleware = addRequestId requestIdVaultKey
+                        sessionMiddleware = Session.middleware sessionDataVaultKey conn sessionKey
+                        assetMiddleware = staticPolicy (addBase "public")
+                        -- Must come after sessionMiddleware because these files shouldn't be public
+                        storageStaticMiddleware = staticPolicy (addBase storageDir)
+                        allMiddlewares = assetMiddleware . requestIdMiddleware . sessionMiddleware . storageStaticMiddleware
+                        errorHandler send err = do
+                          -- Logging.log logger $ show err
+                          send500 send
+                        -- finalApp :: (MonadIO m) => WaiT.ApplicationT m
+                        finalApp req send =
+                          handleAny (errorHandler send) $ allMiddlewares app' req send
+                        warpServer = runSettings . setPort port $ setHost "localhost" defaultSettings
 
-                  warpServer $ logStdout finalApp
+                    liftIO . warpServer $ logStdout finalApp
             )
     )
   where

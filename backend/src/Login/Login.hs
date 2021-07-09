@@ -9,7 +9,7 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
-import Env (Environment (..))
+import qualified App
 import Layout (layout)
 import qualified Logging as Logging
 import qualified Login.LoginForm as LoginForm
@@ -26,7 +26,7 @@ logout ::
   (MonadIO m, MonadThrow m) =>
   (UserId -> IO ()) ->
   (Vault.Vault -> Maybe ([Role], UserId)) ->
-  Environment ->
+  App.Environment ->
   Wai.Request ->
   (Wai.Response -> m a) ->
   m a
@@ -51,7 +51,7 @@ logout deleteSessions vaultLookup env req send =
             Cookie.setCookieValue = "",
             Cookie.setCookieExpires = Nothing,
             Cookie.setCookiePath = Just "/",
-            Cookie.setCookieSecure = env == Production,
+            Cookie.setCookieSecure = env == App.Production,
             Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
             Cookie.setCookieHttpOnly = True
           }
@@ -60,13 +60,12 @@ logout deleteSessions vaultLookup env req send =
 -- encrypted session ID
 login ::
   (MonadIO m) =>
-  Logging.Log ->
   (Text -> Text -> IO (Either Text (ByteString, Time.UTCTime))) ->
-  Environment ->
+  App.Environment ->
   Wai.Request ->
   (Wai.Response -> m a) ->
   m a
-login _ tryLogin env req send = do
+login tryLogin env req send = do
   params <- liftIO $ parseParams req
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
@@ -83,7 +82,7 @@ login _ tryLogin env req send = do
             Cookie.setCookieValue = sessionId,
             Cookie.setCookieExpires = Just expires,
             Cookie.setCookiePath = Just "/",
-            Cookie.setCookieSecure = env == Production,
+            Cookie.setCookieSecure = env == App.Production,
             Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
             Cookie.setCookieHttpOnly = True
           }

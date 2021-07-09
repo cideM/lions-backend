@@ -31,6 +31,8 @@ common shared-props
     DeriveGeneric
     NamedFieldPuns
     LambdaCase
+    FlexibleInstances
+    FlexibleContexts
     OverloadedStrings
     ScopedTypeVariables
 
@@ -106,6 +108,9 @@ library
     , text
     , time
     , uri-encode
+    , mtl
+    , transformers
+    , katip
     , uuid
     , vault
     , directory
@@ -134,7 +139,11 @@ library
     Login.LoginForm
     PasswordReset.PasswordReset
     PasswordReset.ResetEmailForm
+    Session.Types
+    Request.Middleware
+    Request.Types
     PasswordReset.ChangePasswordForm
+    App
     PasswordReset.SendEmail
     DB
     Scrypt
