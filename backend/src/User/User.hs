@@ -19,6 +19,7 @@ import Layout (LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Session as Session
+import qualified Session.Types as Session
 import User.DB (deleteUserById, getRolesFromDb, getUser, saveUser, saveUserRoles, updateUser)
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import User.Types

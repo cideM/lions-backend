@@ -1,5 +1,6 @@
 module Login.Login (logout, login, showLoginForm) where
 
+import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.ByteString (ByteString)
@@ -9,14 +10,12 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
-import qualified App
 import Layout (layout)
-import qualified Logging as Logging
 import qualified Login.LoginForm as LoginForm
 import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
-import Session (Authentication (..))
+import Session.Types (Authentication (..))
 import User.Types (Role, UserId (..))
 import Wai (parseParams)
 import qualified Web.Cookie as Cookie

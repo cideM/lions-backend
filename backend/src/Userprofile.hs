@@ -9,6 +9,7 @@ import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
 import qualified Session
+import Session.Types (Authenticated (..), UserSession (..))
 import User.DB (getUser)
 import User.Types
   ( Role (..),
@@ -88,12 +89,12 @@ get ::
   (MonadIO m) =>
   SQLite.Connection ->
   Int ->
-  Session.Authenticated ->
+  Authenticated ->
   m (Maybe LayoutStub)
 get conn paramId auth = do
   let userIdToShow = UserId paramId
       userIsAdmin = Session.isUserAdmin auth
-      Session.UserSession {..} = Session.getSessionFromAuth auth
+      UserSession {..} = Session.getSessionFromAuth auth
       isOwnProfile = userSessionUserId == userIdToShow
   user <- liftIO $ getUser conn userIdToShow
   return $ case user of

@@ -19,7 +19,6 @@ import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Form (FormFieldState (..))
 import Layout (LayoutStub (..), success, warning)
-import qualified Logging as Logging
 import Lucid
 import qualified Network.AWS.SES as SES
 import Network.URI.Encode (decode, encode)

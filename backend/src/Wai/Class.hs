@@ -1,11 +1,7 @@
 module Wai.Class where
 
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Network.Wai (Application, Middleware, Request, Response, ResponseReceived)
-import qualified Network.Wai as Wai
-import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
-import Network.Wai.Middleware.RequestLogger (logStdout)
-import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified UnliftIO
 
 -- Shamelessly stolen from

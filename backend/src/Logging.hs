@@ -1,8 +1,7 @@
 module Logging (withKatip, withLogger, log, TimedFastLogger, Log) where
 
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Text
+import Control.Monad.IO.Class (liftIO)
 import Data.Text (Text)
 import qualified Katip as K
 import qualified System.IO
@@ -20,6 +19,7 @@ withLogger f = do
   withTimedFastLogger formattedTime (LogStdout defaultBufSize) f
 
 -- TODO: MyApp etc
+withKatip :: K.KatipContextT IO b -> IO b
 withKatip f = do
   handleScribe <- liftIO $ K.mkHandleScribe K.ColorIfTerminal System.IO.stdout (K.permitItem K.InfoS) K.V2
 

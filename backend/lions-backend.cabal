@@ -118,6 +118,7 @@ library
     , wai
     , wai-extra
     , unliftio
+    , errors
     , wai-middleware-static
     , wai-session
     , warp
@@ -127,6 +128,7 @@ library
     Env
     Events.DB
     Events.Types
+    Error
     Events.Preview
     Events.EventForm
     Events.Handlers
@@ -140,6 +142,8 @@ library
     PasswordReset.PasswordReset
     PasswordReset.ResetEmailForm
     Session.Types
+    Session.Middleware
+    Session.DB
     Request.Middleware
     Request.Types
     PasswordReset.ChangePasswordForm

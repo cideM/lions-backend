@@ -17,7 +17,12 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
-import Session
+import Session.Types
+  ( AdminUser (..),
+    Authenticated (..),
+    Authentication (..),
+    UserSession (..),
+  )
 import User.Types (UserId (..))
 
 data LayoutStub = LayoutStub

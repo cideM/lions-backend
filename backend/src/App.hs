@@ -22,7 +22,6 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks, local)
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Data.ByteString (ByteString)
-import Data.Text (Text)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
 import qualified Network.AWS as AWS

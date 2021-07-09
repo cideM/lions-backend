@@ -26,6 +26,7 @@ import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Session as Session
+import qualified Session.Types as Session
 import Wai (parseParams)
 import Prelude hiding (id)
 

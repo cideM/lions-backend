@@ -4,14 +4,12 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad ((>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.Trans.Resource (InternalState, runResourceT, withInternalState)
 import qualified DB
 import qualified Data.ByteString as BS
-import qualified Data.String.Interpolate as Interpolate
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
-import Data.UUID (UUID)
-import Data.UUID.V4 (nextRandom)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import qualified Events.DB
@@ -30,12 +28,13 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
+import qualified Request.Middleware
 import Scrypt (verifyPassword)
-import Session (SessionDataVaultKey)
 import qualified Session
+import qualified Session.Types as Session
+import qualified Session.Middleware as Session
 import qualified System.Directory
 import System.Environment (getEnv)
-import qualified System.IO
 import Text.Read (readEither)
 import qualified UnliftIO
 import qualified User.DB
@@ -50,14 +49,18 @@ import qualified WelcomeMessage
 import Prelude hiding (id)
 
 server ::
-  (K.KatipContext m, MonadIO m, MonadThrow m) =>
+  ( K.KatipContext m,
+    MonadIO m,
+    MonadThrow m,
+    App.HasRequestIdVaultKey env,
+    MonadReader env m
+  ) =>
   SQLite.Connection ->
   ClientSession.Key ->
-  RequestIdVaultKey ->
   AWS.Env ->
   Int ->
   App.Environment ->
-  SessionDataVaultKey ->
+  Session.SessionDataVaultKey ->
   BS.ByteString -> -- Project's base64_signer_key
   BS.ByteString -> -- Project's base64_salt_separator
   InternalState ->
@@ -66,7 +69,6 @@ server ::
 server
   dbConn
   sessionKey
-  requestIdVaultKey
   awsEnv
   port
   appEnv
@@ -77,6 +79,8 @@ server
   storageDir
   req
   send = do
+    reqIdVaultKey <- asks App.getRequestIdVaultKey
+
     let vault = Wai.vault req
         -- Create some helpers for doing things based on the user's auth status.
         routeData = Session.getAuthFromVault sessionDataVaultKey vault
@@ -100,7 +104,7 @@ server
         -- Because every logger in the Haskell ecosystem insists on forcing
         -- stupid Monads on me, I'm creating an ad-hoc, shoddily implemented,
         -- 50% structured logger.
-        requestId = maybe "" (Text.pack . show) $ Vault.lookup requestIdVaultKey vault
+        requestId = maybe "" (Text.pack . show) $ Vault.lookup reqIdVaultKey vault
         -- log' msg = Logging.log logger ([Interpolate.i|"request_id: #{(requestId :: Text.Text)} message: #{(msg :: Text.Text)}"|] :: Text.Text)
 
         -- TODO: The resetHost should probably be passed in as an argument from the outside
@@ -296,15 +300,6 @@ server
             _ -> send404
         _ -> send404
 
-type RequestIdVaultKey = Vault.Key UUID
-
-addRequestId :: (MonadIO m) => RequestIdVaultKey -> Wai.MiddlewareT m
-addRequestId requestIdVaultKey next req send = do
-  uuid <- liftIO $ nextRandom
-  let vault' = Vault.insert requestIdVaultKey uuid (Wai.vault req)
-      req' = req {Wai.vault = vault'}
-  next req' send
-
 main :: IO ()
 main = do
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
@@ -360,7 +355,6 @@ main = do
                         server
                           conn
                           sessionKey
-                          requestIdVaultKey
                           awsEnv
                           port
                           appEnv
@@ -373,9 +367,7 @@ main = do
                   K.katipAddContext (K.sl "port" port) $ do
                     K.logLocM K.InfoS "starting server"
 
-                    let requestIdMiddleware = addRequestId requestIdVaultKey
-                        sessionMiddleware = Session.middleware sessionDataVaultKey conn sessionKey
-                        assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
+                    let assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
                         assetMiddleware = Wai.liftMiddleware $ staticPolicy (addBase "public")
                         -- Must come after sessionMiddleware because these files shouldn't be public
                         storageStaticMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
@@ -383,8 +375,8 @@ main = do
                         allMiddlewares =
                           assetMiddleware
                             . (Wai.liftMiddleware logStdout)
-                            . requestIdMiddleware
-                            . sessionMiddleware
+                            . Request.Middleware.middleware
+                            . Session.middleware
                             . (Wai.liftMiddleware (staticPolicy (addBase storageDir)))
                             . storageStaticMiddleware
                         appWithMiddlewares = allMiddlewares app'
