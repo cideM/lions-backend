@@ -20,14 +20,15 @@ where
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks, local)
-import qualified Network.AWS as AWS
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
+import qualified Network.AWS as AWS
 import qualified Request.Types
 import qualified Session.Types
+import qualified UnliftIO
 import qualified Web.ClientSession as ClientSession
 
 newtype App env result = App {unApp :: env -> IO result}
@@ -36,6 +37,7 @@ newtype App env result = App {unApp :: env -> IO result}
       Applicative,
       Monad,
       MonadIO,
+      UnliftIO.MonadUnliftIO,
       MonadThrow,
       MonadReader env,
       MonadCatch

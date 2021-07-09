@@ -20,7 +20,6 @@ withLogger f = do
   withTimedFastLogger formattedTime (LogStdout defaultBufSize) f
 
 -- TODO: MyApp etc
-withKatip :: K.KatipContextT IO b -> IO b
 withKatip f = do
   handleScribe <- liftIO $ K.mkHandleScribe K.ColorIfTerminal System.IO.stdout (K.permitItem K.InfoS) K.V2
 

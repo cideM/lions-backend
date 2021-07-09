@@ -28,7 +28,6 @@ import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
-import qualified Network.Wai.Trans as WaiT
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
 import Scrypt (verifyPassword)
@@ -38,18 +37,20 @@ import qualified System.Directory
 import System.Environment (getEnv)
 import qualified System.IO
 import Text.Read (readEither)
+import qualified UnliftIO
 import qualified User.DB
 import User.Types (UserId (..))
 import qualified User.User
 import qualified Userlist
 import qualified Userprofile
+import qualified Wai.Class as Wai
 import qualified Web.ClientSession as ClientSession
 import WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage
 import Prelude hiding (id)
 
 server ::
-  (MonadIO m, MonadThrow m) =>
+  (K.KatipContext m, MonadIO m, MonadThrow m) =>
   SQLite.Connection ->
   ClientSession.Key ->
   RequestIdVaultKey ->
@@ -61,7 +62,7 @@ server ::
   BS.ByteString -> -- Project's base64_salt_separator
   InternalState ->
   FilePath ->
-  WaiT.ApplicationT m
+  Wai.ApplicationT m
 server
   dbConn
   sessionKey
@@ -77,7 +78,6 @@ server
   req
   send = do
     let vault = Wai.vault req
-
         -- Create some helpers for doing things based on the user's auth status.
         routeData = Session.getAuthFromVault sessionDataVaultKey vault
         adminOnlyOrOwn id next = case routeData of
@@ -123,7 +123,6 @@ server
         clientDecrypt = ClientSession.decrypt sessionKey
         tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) clientEncrypt
         getUser = User.DB.getUser dbConn
-
         -- Some helpers related to rendering content. I could look into
         -- bringing back Snap or something similar so I don't need to
         -- reimplement these helpers in a crappy and bug ridden way.
@@ -133,172 +132,173 @@ server
         send403 = render status403 . layout' . LayoutStub "Fehler" Nothing $ warning "Du hast keinen Zugriff auf diese Seite"
         send404 = render status404 . layout' . LayoutStub "Nicht gefunden" Nothing $ warning "Nicht Gefunden"
 
-    -- liftIO $ log' "received request"
-    -- Now the actual routing starts. We get the paths and pattern match on them.
-    case Wai.pathInfo req of
-      [] ->
-        case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ WelcomeMessage.showFeed dbConn >=> send200 . layout'
-          _ -> send404
-      ["veranstaltungen"] ->
-        case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents eventDbAll >=> send200 . layout'
-          -- TODO: Send unsupported method 405
-          _ -> send404
-      ["veranstaltungen", "neu"] ->
-        case Wai.requestMethod req of
-          "GET" -> adminOnly' $ Events.Handlers.showCreateEvent >=> send200 . layout'
-          "POST" ->
-            adminOnly' $
-              Events.Handlers.handleCreateEvent
-                clientEncrypt
-                clientDecrypt
-                eventDbCreate
-                internalState
-                saveAttachment'
-                req
-                >=> send200 . layout'
-          -- TODO: Send unsupported method 405
-          _ -> send404
-      ["veranstaltungen", i] ->
-        case readEither (Text.unpack i) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
-            case Wai.requestMethod req of
-              "GET" ->
-                authenticatedOnly' $
-                  Events.Handlers.showEvent eventDbGet (Events.Id parsed) >=> \case
-                    Nothing -> send404
-                    Just stub -> send200 $ layout' stub
-              _ -> send404
-      ["veranstaltungen", i, "antwort"] ->
-        case readEither (Text.unpack i) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
-            case Wai.requestMethod req of
-              "POST" ->
-                authenticatedOnly' $
-                  Events.Handlers.replyToEvent getUser eventDbDeleteReply eventDbUpsertReply req send (Events.Id parsed)
-              _ -> send404
-      ["veranstaltungen", i, "loeschen"] ->
-        case readEither (Text.unpack i) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
-            case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation eventDbGet (Events.Id parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent eventDbGet eventDbDelete removeAllAttachments' (Events.Id parsed) >=> send200 . layout'
-              _ -> send404
-      ["veranstaltungen", i, "editieren"] ->
-        case readEither (Text.unpack i) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
-            case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.showEditEventForm eventDbGet (Events.Id parsed) >=> send200 . layout'
-              "POST" ->
-                adminOnly' $
-                  Events.Handlers.handleUpdateEvent
-                    eventDbUpdate
-                    eventDbGet
-                    clientEncrypt
-                    clientDecrypt
-                    removeAttachment'
-                    saveAttachment'
-                    internalState
-                    req
-                    (Events.Id parsed)
-                    >=> send200 . layout'
-              _ -> send404
-      ["loeschen", i] ->
-        case readEither (Text.unpack i) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
-          Right (parsed :: Int) ->
-            let msgId = WelcomeMsgId parsed
-             in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ WelcomeMessage.handleDeleteMessage dbConn msgId >=> send200 . layout'
-                  "GET" -> adminOnly' $ WelcomeMessage.showDeleteConfirmation dbConn msgId >=> send200 . layout'
-                  _ -> send404
-      ["neu"] ->
-        case Wai.requestMethod req of
-          "POST" -> adminOnly' $ WelcomeMessage.saveNewMessage dbConn req >=> send200 . layout'
-          "GET" -> adminOnly' $ WelcomeMessage.showAddMessageForm >=> send200 . layout'
-          _ -> send404
-      ["editieren", i] ->
-        case readEither (Text.unpack i) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
-          Right (parsed :: Int) ->
-            let msgId = WelcomeMsgId parsed
-             in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ WelcomeMessage.handleEditMessage dbConn req msgId >=> send200 . layout'
-                  "GET" -> adminOnly' $ WelcomeMessage.showMessageEditForm dbConn msgId >=> send200 . layout'
-                  _ -> send404
-      ["nutzer"] ->
-        case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Userlist.get dbConn req >=> send200 . layout'
-          _ -> send404
-      ["nutzer", "neu"] ->
-        case Wai.requestMethod req of
-          "POST" -> adminOnly' $ User.User.createPost dbConn req >=> send200 . layout'
-          "GET" -> adminOnly' (User.User.createGet >=> send200 . layout')
-          _ -> send404
-      ["nutzer", int, "editieren"] ->
-        case readEither (Text.unpack int) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-          Right (parsed :: Int) ->
-            let userId = UserId parsed
-             in case Wai.requestMethod req of
-                  "GET" -> adminOnlyOrOwn userId $
-                    \(id, auth) ->
-                      User.User.editGet dbConn id auth
-                        >>= send200 . layout'
-                  "POST" -> adminOnlyOrOwn userId $
-                    \(id, auth) ->
-                      User.User.editPost dbConn req id auth
-                        >>= send200 . layout'
-                  _ -> send404
-      ["nutzer", int] ->
-        case Wai.requestMethod req of
-          "GET" ->
-            case readEither (Text.unpack int) of
-              Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-              Right (parsed :: Int) ->
-                authenticatedOnly' $
-                  Userprofile.get dbConn parsed >=> \case
-                    Nothing -> send404
-                    Just stub -> send200 $ layout' stub
-          _ -> send404
-      ["nutzer", int, "loeschen"] ->
-        case readEither (Text.unpack int) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
-          Right (parsed :: Int) ->
-            let userId = UserId parsed
-             in case Wai.requestMethod req of
-                  "GET" -> adminOnly' $ User.User.deleteGet dbConn userId >=> send200 . layout'
-                  "POST" -> adminOnly' $ User.User.deletePost dbConn userId >=> send200 . layout'
-                  _ -> send404
-      ["login"] ->
-        case Wai.requestMethod req of
-          "POST" -> Login.login tryLogin' appEnv req send
-          "GET" -> Login.showLoginForm routeData >>= send200
-          _ -> send404
-      ["logout"] ->
-        case Wai.requestMethod req of
-          "POST" -> Login.logout (Session.deleteSessionsForUser dbConn) (Vault.lookup sessionDataVaultKey) appEnv req send
-          _ -> send404
-      ["passwort", "aendern"] ->
-        case Wai.requestMethod req of
-          "GET" -> PasswordReset.showChangePwForm req >>= send200 . layout'
-          "POST" -> PasswordReset.handleChangePw dbConn req >>= send200 . layout'
-          _ -> send404
-      ["passwort", "link"] ->
-        case Wai.requestMethod req of
-          "GET" -> PasswordReset.showResetForm >>= send200 . layout'
-          "POST" -> PasswordReset.handleReset dbConn req sendMail' >>= send200 . layout'
-          _ -> send404
-      _ -> send404
+    K.katipAddContext (K.sl "request_id" requestId) $ do
+      K.logLocM K.InfoS "request received"
+
+      case Wai.pathInfo req of
+        [] ->
+          case Wai.requestMethod req of
+            "GET" -> authenticatedOnly' $ WelcomeMessage.showFeed dbConn >=> send200 . layout'
+            _ -> send404
+        ["veranstaltungen"] ->
+          case Wai.requestMethod req of
+            "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents eventDbAll >=> send200 . layout'
+            -- TODO: Send unsupported method 405
+            _ -> send404
+        ["veranstaltungen", "neu"] ->
+          case Wai.requestMethod req of
+            "GET" -> adminOnly' $ Events.Handlers.showCreateEvent >=> send200 . layout'
+            "POST" ->
+              adminOnly' $
+                Events.Handlers.handleCreateEvent
+                  clientEncrypt
+                  clientDecrypt
+                  eventDbCreate
+                  internalState
+                  saveAttachment'
+                  req
+                  >=> send200 . layout'
+            -- TODO: Send unsupported method 405
+            _ -> send404
+        ["veranstaltungen", i] ->
+          case readEither (Text.unpack i) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+            Right (parsed :: Int) ->
+              case Wai.requestMethod req of
+                "GET" ->
+                  authenticatedOnly' $
+                    Events.Handlers.showEvent eventDbGet (Events.Id parsed) >=> \case
+                      Nothing -> send404
+                      Just stub -> send200 $ layout' stub
+                _ -> send404
+        ["veranstaltungen", i, "antwort"] ->
+          case readEither (Text.unpack i) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+            Right (parsed :: Int) ->
+              case Wai.requestMethod req of
+                "POST" ->
+                  authenticatedOnly' $
+                    Events.Handlers.replyToEvent getUser eventDbDeleteReply eventDbUpsertReply req send (Events.Id parsed)
+                _ -> send404
+        ["veranstaltungen", i, "loeschen"] ->
+          case readEither (Text.unpack i) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+            Right (parsed :: Int) ->
+              case Wai.requestMethod req of
+                "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation eventDbGet (Events.Id parsed) >=> send200 . layout'
+                "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent eventDbGet eventDbDelete removeAllAttachments' (Events.Id parsed) >=> send200 . layout'
+                _ -> send404
+        ["veranstaltungen", i, "editieren"] ->
+          case readEither (Text.unpack i) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
+            Right (parsed :: Int) ->
+              case Wai.requestMethod req of
+                "GET" -> adminOnly' $ Events.Handlers.showEditEventForm eventDbGet (Events.Id parsed) >=> send200 . layout'
+                "POST" ->
+                  adminOnly' $
+                    Events.Handlers.handleUpdateEvent
+                      eventDbUpdate
+                      eventDbGet
+                      clientEncrypt
+                      clientDecrypt
+                      removeAttachment'
+                      saveAttachment'
+                      internalState
+                      req
+                      (Events.Id parsed)
+                      >=> send200 . layout'
+                _ -> send404
+        ["loeschen", i] ->
+          case readEither (Text.unpack i) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
+            Right (parsed :: Int) ->
+              let msgId = WelcomeMsgId parsed
+               in case Wai.requestMethod req of
+                    "POST" -> adminOnly' $ WelcomeMessage.handleDeleteMessage dbConn msgId >=> send200 . layout'
+                    "GET" -> adminOnly' $ WelcomeMessage.showDeleteConfirmation dbConn msgId >=> send200 . layout'
+                    _ -> send404
+        ["neu"] ->
+          case Wai.requestMethod req of
+            "POST" -> adminOnly' $ WelcomeMessage.saveNewMessage dbConn req >=> send200 . layout'
+            "GET" -> adminOnly' $ WelcomeMessage.showAddMessageForm >=> send200 . layout'
+            _ -> send404
+        ["editieren", i] ->
+          case readEither (Text.unpack i) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
+            Right (parsed :: Int) ->
+              let msgId = WelcomeMsgId parsed
+               in case Wai.requestMethod req of
+                    "POST" -> adminOnly' $ WelcomeMessage.handleEditMessage dbConn req msgId >=> send200 . layout'
+                    "GET" -> adminOnly' $ WelcomeMessage.showMessageEditForm dbConn msgId >=> send200 . layout'
+                    _ -> send404
+        ["nutzer"] ->
+          case Wai.requestMethod req of
+            "GET" -> authenticatedOnly' $ Userlist.get dbConn req >=> send200 . layout'
+            _ -> send404
+        ["nutzer", "neu"] ->
+          case Wai.requestMethod req of
+            "POST" -> adminOnly' $ User.User.createPost dbConn req >=> send200 . layout'
+            "GET" -> adminOnly' (User.User.createGet >=> send200 . layout')
+            _ -> send404
+        ["nutzer", int, "editieren"] ->
+          case readEither (Text.unpack int) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
+            Right (parsed :: Int) ->
+              let userId = UserId parsed
+               in case Wai.requestMethod req of
+                    "GET" -> adminOnlyOrOwn userId $
+                      \(id, auth) ->
+                        User.User.editGet dbConn id auth
+                          >>= send200 . layout'
+                    "POST" -> adminOnlyOrOwn userId $
+                      \(id, auth) ->
+                        User.User.editPost dbConn req id auth
+                          >>= send200 . layout'
+                    _ -> send404
+        ["nutzer", int] ->
+          case Wai.requestMethod req of
+            "GET" ->
+              case readEither (Text.unpack int) of
+                Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
+                Right (parsed :: Int) ->
+                  authenticatedOnly' $
+                    Userprofile.get dbConn parsed >=> \case
+                      Nothing -> send404
+                      Just stub -> send200 $ layout' stub
+            _ -> send404
+        ["nutzer", int, "loeschen"] ->
+          case readEither (Text.unpack int) of
+            Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
+            Right (parsed :: Int) ->
+              let userId = UserId parsed
+               in case Wai.requestMethod req of
+                    "GET" -> adminOnly' $ User.User.deleteGet dbConn userId >=> send200 . layout'
+                    "POST" -> adminOnly' $ User.User.deletePost dbConn userId >=> send200 . layout'
+                    _ -> send404
+        ["login"] ->
+          case Wai.requestMethod req of
+            "POST" -> Login.login tryLogin' appEnv req send
+            "GET" -> Login.showLoginForm routeData >>= send200
+            _ -> send404
+        ["logout"] ->
+          case Wai.requestMethod req of
+            "POST" -> Login.logout (Session.deleteSessionsForUser dbConn) (Vault.lookup sessionDataVaultKey) appEnv req send
+            _ -> send404
+        ["passwort", "aendern"] ->
+          case Wai.requestMethod req of
+            "GET" -> PasswordReset.showChangePwForm req >>= send200 . layout'
+            "POST" -> PasswordReset.handleChangePw dbConn req >>= send200 . layout'
+            _ -> send404
+        ["passwort", "link"] ->
+          case Wai.requestMethod req of
+            "GET" -> PasswordReset.showResetForm >>= send200 . layout'
+            "POST" -> PasswordReset.handleReset dbConn req sendMail' >>= send200 . layout'
+            _ -> send404
+        _ -> send404
 
 type RequestIdVaultKey = Vault.Key UUID
 
-addRequestId :: (MonadIO m) => RequestIdVaultKey -> WaiT.MiddlewareT m
+addRequestId :: (MonadIO m) => RequestIdVaultKey -> Wai.MiddlewareT m
 addRequestId requestIdVaultKey next req send = do
   uuid <- liftIO $ nextRandom
   let vault' = Vault.insert requestIdVaultKey uuid (Wai.vault req)
@@ -375,19 +375,28 @@ main = do
 
                     let requestIdMiddleware = addRequestId requestIdVaultKey
                         sessionMiddleware = Session.middleware sessionDataVaultKey conn sessionKey
-                        assetMiddleware = staticPolicy (addBase "public")
+                        assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
+                        assetMiddleware = Wai.liftMiddleware $ staticPolicy (addBase "public")
                         -- Must come after sessionMiddleware because these files shouldn't be public
-                        storageStaticMiddleware = staticPolicy (addBase storageDir)
-                        allMiddlewares = assetMiddleware . requestIdMiddleware . sessionMiddleware . storageStaticMiddleware
-                        errorHandler send err = do
-                          -- Logging.log logger $ show err
-                          send500 send
-                        -- finalApp :: (MonadIO m) => WaiT.ApplicationT m
-                        finalApp req send =
-                          handleAny (errorHandler send) $ allMiddlewares app' req send
-                        warpServer = runSettings . setPort port $ setHost "localhost" defaultSettings
+                        storageStaticMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
+                        storageStaticMiddleware = Wai.liftMiddleware $ staticPolicy (addBase storageDir)
+                        allMiddlewares =
+                          assetMiddleware
+                            . (Wai.liftMiddleware logStdout)
+                            . requestIdMiddleware
+                            . sessionMiddleware
+                            . (Wai.liftMiddleware (staticPolicy (addBase storageDir)))
+                            . storageStaticMiddleware
+                        appWithMiddlewares = allMiddlewares app'
 
-                    liftIO . warpServer $ logStdout finalApp
+                    let settings = setPort port $ setHost "localhost" defaultSettings
+                    liftIO . runSettings settings $
+                      ( \r s ->
+                          let send = liftIO . s
+                           in flip App.unApp env
+                                . handleAny (\_ -> send500 send)
+                                $ appWithMiddlewares r send
+                      )
             )
     )
   where

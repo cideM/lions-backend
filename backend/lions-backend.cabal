@@ -117,7 +117,7 @@ library
     , filepath
     , wai
     , wai-extra
-    , wai-transformers
+    , unliftio
     , wai-middleware-static
     , wai-session
     , warp
@@ -143,6 +143,7 @@ library
     Request.Middleware
     Request.Types
     PasswordReset.ChangePasswordForm
+    Wai.Class
     App
     PasswordReset.SendEmail
     DB

@@ -25,6 +25,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import Data.String.Interpolate (i)
+import qualified Wai.Class as Wai
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -35,7 +36,6 @@ import qualified Logging
 import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
 import Network.Wai.Session (genSessionId)
-import qualified Network.Wai.Trans as WaiT
 import Time (timeDaysFromNow)
 import User.DB
   ( getCredentials,
@@ -156,7 +156,7 @@ middleware ::
   SessionDataVaultKey ->
   SQLite.Connection ->
   ClientSession.Key ->
-  WaiT.MiddlewareT m
+  Wai.MiddlewareT m
 middleware sessionDataVaultKey dbConn sessionKey nextApp req send = do
   (liftIO $ tryLoginFromSession dbConn sessionKey sessionDataVaultKey req) >>= \case
     Left e -> do
