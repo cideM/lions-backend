@@ -2,8 +2,9 @@ module Events.Types
   ( Reply (..),
     Event (..),
     Create (..),
-    Attachment (..),
+    FileActions (..),
     Id (..),
+    Attachment (..),
   )
 where
 
@@ -13,7 +14,16 @@ import qualified Data.Char as Char
 import Data.Text (Text)
 import qualified Data.Time as Time
 import GHC.Generics
+import Network.Wai.Parse (FileInfo (..))
 import User.Types (UserEmail (..), UserId (..))
+
+data FileActions = FileActions
+  { fileActionsKeep :: [Attachment],
+    fileActionsDelete :: [Attachment],
+    fileActionsDontUpload :: [FileInfo FilePath],
+    fileActionsUpload :: [FileInfo FilePath]
+  }
+  deriving (Show, Eq)
 
 -- Now that I'm writing tests that involve this data type I find it a bit weird
 -- that it doesn't have the event ID. Strictly speaking a reply is meaningless
@@ -45,18 +55,6 @@ data Create = Create
 instance ToJSON Create where
   toEncoding = genericToEncoding defaultOptions
 
-data Attachment = Attachment {attachmentFileName :: Text} deriving (Show, Generic, Eq)
-
-lower1 :: String -> String
-lower1 (c : cs) = Char.toLower c : cs
-lower1 [] = []
-
-instance FromJSON Attachment where
-  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
-
-instance ToJSON Attachment where
-  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
-
 data Event = Event
   { eventTitle :: Text,
     eventDate :: Time.UTCTime,
@@ -75,3 +73,15 @@ newtype Id = Id Int
   deriving (Show)
   deriving (Ord) via Int
   deriving (Eq) via Int
+
+data Attachment = Attachment {attachmentFileName :: Text} deriving (Show, Generic, Eq)
+
+lower1 :: String -> String
+lower1 (c : cs) = Char.toLower c : cs
+lower1 [] = []
+
+instance FromJSON Attachment where
+  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
+
+instance ToJSON Attachment where
+  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}

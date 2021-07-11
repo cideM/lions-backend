@@ -20,7 +20,8 @@ import qualified Database.SQLite.Simple as SQLite
 import Layout (LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
-import qualified Session.Session as Session
+import qualified Session.Types as Session
+import qualified Session.Auth as Session
 import User.DB
   ( deleteUserById,
     getRolesFromDb,

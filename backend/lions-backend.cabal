@@ -133,7 +133,7 @@ library
     Events.Attachments
     Events.Form
     Events.Handlers
-    Events.SingleEvent
+    Events.Full
     Form
     Layout
     Locale
@@ -142,9 +142,12 @@ library
     Login.LoginForm
     PasswordReset.PasswordReset
     PasswordReset.ResetEmailForm
+    PasswordReset.Token
     Session.Types
     Session.Middleware
     Session.DB
+    Session.Auth
+    Session.Valid
     Request.Types
     Request.Middleware
     PasswordReset.ChangePasswordForm
@@ -153,7 +156,6 @@ library
     PasswordReset.SendEmail
     DB
     Scrypt
-    Session.Session
     Time
     User.DB
     User.Types

@@ -25,7 +25,8 @@ import Layout (ActiveNavLink (..), LayoutStub (..), describedBy_, success)
 import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
-import qualified Session.Session as Session
+import qualified Session.Auth as Session
+import qualified Session.Types as Session
 import Wai (parseParams)
 import Prelude hiding (id)
 

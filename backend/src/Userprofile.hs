@@ -8,8 +8,8 @@ import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
-import Session.Session (Authenticated (..), UserSession (..))
-import qualified Session.Session as Session
+import Session.Types (Authenticated (..), UserSession (..))
+import qualified Session.Auth as Session
 import User.DB (getUser)
 import User.Types
   ( Role (..),

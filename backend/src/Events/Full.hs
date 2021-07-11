@@ -1,4 +1,4 @@
-module Events.SingleEvent (render, ShowAdminTools (..)) where
+module Events.Full (render, ShowAdminTools (..)) where
 
 import Control.Monad (forM_, when)
 import Data.Function ((&))

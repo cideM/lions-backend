@@ -6,18 +6,20 @@ module PasswordReset.PasswordReset
   )
 where
 
+import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Crypto.BCrypt as BCrypt
-import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
+import qualified Error as E
 import Form (FormFieldState (..))
+import qualified Katip as K
 import Layout (LayoutStub (..), success, warning)
 import Lucid
 import qualified Network.AWS.SES as SES
@@ -25,29 +27,11 @@ import Network.URI.Encode (decode, encode)
 import qualified Network.Wai as Wai
 import qualified PasswordReset.ChangePasswordForm as ChangePasswordForm
 import qualified PasswordReset.ResetEmailForm as ResetEmailForm
-import Time (timeDaysFromNow)
-import User.DB (getCredentials, hasUser)
+import qualified PasswordReset.Token as Token
+import qualified UnliftIO
 import User.Types (UserId (..))
 import Wai (parseParams, parseQueryParams)
 import Prelude hiding (id, log)
-
-newtype TokenId = TokenId Int
-  deriving (Show, Eq)
-
-data TokenCreate = TokenCreate
-  { tokenCreateValue :: Text,
-    tokenCreateExpires :: Time.UTCTime,
-    tokenCreateUserId :: UserId
-  }
-  deriving (Show, Eq)
-
-data Token = Token
-  { tokenValue :: Text,
-    tokenExpires :: Time.UTCTime,
-    tokenId :: TokenId,
-    tokenUserId :: UserId
-  }
-  deriving (Show, Eq)
 
 newtype Hashed = Hashed Text deriving (Show)
 
@@ -68,67 +52,24 @@ updatePassword conn hashed (UserId userid) = do
   where
     unhash (Hashed s) = s
 
-getTokenByValue :: SQLite.Connection -> Text -> IO (Maybe Token)
-getTokenByValue conn t =
-  handleAny (\e -> throwString $ "error getting users: " <> show e) $
-    (SQLite.query conn "select token, expires, id, userid from reset_tokens where token = ?" [t])
-      >>= \case
-        [] -> return Nothing
-        [(value, expires, id, userid) :: (Text, Time.UTCTime, Int, Int)] ->
-          return . Just $ Token value expires (TokenId id) (UserId userid)
-        _ -> throwString . T.unpack $ "returned more than one token for value: " <> t
-
-deleteToken :: SQLite.Connection -> UserId -> IO ()
-deleteToken conn (UserId userid) = SQLite.execute conn "delete from reset_tokens where userid = ?" $ SQLite.Only userid
-
-insertToken :: SQLite.Connection -> TokenCreate -> IO ()
-insertToken conn TokenCreate {tokenCreateUserId = (UserId userid), ..} =
-  SQLite.execute
-    conn
-    "insert into reset_tokens (token, expires, userid) values (?,?,?)"
-    (tokenCreateValue, tokenCreateExpires, userid)
-
--- Generate a new password reset token and its expiration date
-createNewToken :: IO (Text, Time.UTCTime)
-createNewToken = do
-  expires <- timeDaysFromNow 10
-  (g :: SystemRandom) <- newGenIO
-  token <- case genBytes 20 g of
-    Left e -> throwString $ show e
-    Right (token', _) ->
-      (BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy token') >>= \case
-        Nothing -> throwString "hashing reset token failed"
-        Just token'' -> return $ decodeUtf8 token''
-  return (token, expires)
-
--- Generates a new password reset token for the given user email and stores it
--- in the DB, removing whatever old tokens existed
-updateUserResetToken :: SQLite.Connection -> Text -> IO (Maybe Text)
-updateUserResetToken conn email =
-  getCredentials conn email >>= \case
-    Nothing -> return Nothing
-    Just (userid, _, _) -> do
-      (tokenValue, expires) <- createNewToken
-      let token = TokenCreate tokenValue expires userid
-      SQLite.withTransaction conn $ do
-        deleteToken conn userid
-        insertToken conn token
-      return $ Just tokenValue
-
 -- POST handler that will try to generate a password reset token and send it by
 -- email
 handleReset ::
-  (MonadIO m) =>
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader env m,
+    UnliftIO.MonadUnliftIO m,
+    App.HasDb env,
+    MonadThrow m
+  ) =>
   Wai.Request ->
   (Text -> Text -> IO SES.SendEmailResponse) ->
   m LayoutStub
-handleReset conn req sendEmail' = do
+handleReset req sendEmail' = do
   params <- liftIO $ parseParams req
   case Map.lookup "email" params of
     Nothing -> return $ formInvalid pwResetEmptyEmail
     Just email -> do
-      (liftIO $ updateUserResetToken conn email) >>= \case
+      Token.update email >>= \case
         Nothing -> return $ formInvalid pwResetEmailNotFound
         Just token -> do
           _ <- liftIO $ sendEmail' email $ encode' token
@@ -137,10 +78,7 @@ handleReset conn req sendEmail' = do
     encode' = T.pack . encode . T.unpack
     formInvalid = passwordResetLayout . ResetEmailForm.form . Just
 
--- GET handler that just shows a simple email input field
-showResetForm ::
-  (MonadIO m) =>
-  m LayoutStub
+showResetForm :: (MonadIO m) => m LayoutStub
 showResetForm = return $ passwordResetLayout (ResetEmailForm.form Nothing)
 
 -- I'm omitting the password length check and all that stuff. The browser will
@@ -161,9 +99,7 @@ makePassword ChangePasswordForm.FormInput {passwordInput = pw, passwordInputMatc
 -- password. Each has a different error message that is shown to the user.
 data TryResetError
   = InvalidPassword ChangePasswordForm.FormInput Text ChangePasswordForm.FormState
-  | TokenNotFound Text
-  | UserForTokenNotFound UserId
-  | TokenExpired Token
+  | ParseE Token.ParseError
   deriving (Show)
 
 -- Render the different variations of the TryResetError into Html that we can
@@ -174,37 +110,27 @@ renderTryResetError (InvalidPassword input token state) =
     div_
       [class_ "container p-3 d-flex justify-content-center"]
       $ ChangePasswordForm.form token input state
-renderTryResetError (TokenNotFound token) =
+renderTryResetError (ParseE (Token.NotFound token)) =
   passwordChangeLayout . warning . changePwTokenNotFound . T.pack $ show token
-renderTryResetError (UserForTokenNotFound userid) =
+renderTryResetError (ParseE (Token.NoUser userid)) =
   passwordChangeLayout . warning . changePwUserNotFound . T.pack $ show userid
-renderTryResetError (TokenExpired expired) =
+renderTryResetError (ParseE (Token.Expired expired)) =
   passwordChangeLayout . warning . changePwTokenExpired . T.pack $ show expired
 
--- Changes the password of a user in the database. Checks if provided passwords
--- are valid and that the token is valid.
-changePasswordForToken :: SQLite.Connection -> Text -> Text -> Text -> IO (Either TryResetError ())
-changePasswordForToken dbConn token pw pwMatch = do
+makeHashedPassword ::
+  ( MonadIO m,
+    E.MonadError TryResetError m,
+    MonadThrow m
+  ) =>
+  Text ->
+  Text ->
+  Text ->
+  m Hashed
+makeHashedPassword tokenInput pw pwMatch = do
   let input = ChangePasswordForm.FormInput pw pwMatch
-  case makePassword input of
-    Left state -> return $ Left $ InvalidPassword input token state
-    Right validPw -> do
-      getTokenByValue dbConn token >>= \case
-        Nothing -> return $ Left $ TokenNotFound token
-        Just tok@Token {..} -> do
-          ok <- hasUser dbConn tokenUserId
-          if not ok
-            then (return . Left $ UserForTokenNotFound tokenUserId)
-            else do
-              now <- Time.getCurrentTime
-              if now >= tokenExpires
-                then return $ Left $ TokenExpired tok
-                else do
-                  hashed <- hashPw (encodeUtf8 validPw)
-                  SQLite.withTransaction dbConn $ do
-                    deleteToken dbConn tokenUserId
-                    updatePassword dbConn hashed tokenUserId
-                  return $ Right ()
+  validPw <- E.withExceptT'' (InvalidPassword input tokenInput) $ makePassword input
+  hashed <- liftIO $ hashPw (encodeUtf8 validPw)
+  return hashed
   where
     hashPw unhashed =
       BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy unhashed >>= \case
@@ -213,22 +139,46 @@ changePasswordForToken dbConn token pw pwMatch = do
 
 -- POST handler that actually changes the user's password in the database.
 handleChangePw ::
-  (MonadIO m) =>
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader env m,
+    K.KatipContext m,
+    UnliftIO.MonadUnliftIO m,
+    App.HasDb env,
+    MonadThrow m
+  ) =>
   Wai.Request ->
   m LayoutStub
-handleChangePw conn req = do
+handleChangePw req = do
   params <- liftIO $ parseParams req
+
   case Map.lookup "token" params of
     Nothing -> return . passwordChangeLayout . warning $ changePwNoToken
     Just tok -> do
       let pw = (Map.findWithDefault "" "inputPassword" params)
           pwMatch = (Map.findWithDefault "" "inputPasswordMatch" params)
-      (liftIO $ changePasswordForToken conn tok pw pwMatch) >>= \case
-        Left e -> do
-          -- liftIO $ log $ T.pack $ show e
-          return $ renderTryResetError e
-        Right _ -> return . passwordChangeLayout $ success "Password erfolgreich geändert"
+
+      ( E.runExceptT $
+          (,)
+            <$> (E.withExceptT' ParseE $ Token.parse tok)
+            <*> makeHashedPassword tok pw pwMatch
+        )
+        >>= \case
+          Left e -> do
+            K.logLocM K.ErrorS $ K.ls $ show e
+            return $ renderTryResetError e
+          Right (Token.Valid (Token.Token {..}), hashed) -> do
+            updatePw tokenUserId hashed
+            return . passwordChangeLayout $ success "Password erfolgreich geändert"
+  where
+    updatePw userid hashed = do
+      dbConn <- asks App.getDb
+      UnliftIO.withRunInIO $ \runInIO ->
+        SQLite.withTransaction
+          dbConn
+          ( runInIO $ do
+              Token.delete userid
+              liftIO $ updatePassword dbConn hashed userid
+          )
 
 -- GET handler that shows the form that lets users enter a new password.
 -- Expects a token to be passed via query string parameters. That token is

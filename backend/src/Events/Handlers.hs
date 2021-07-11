@@ -31,7 +31,7 @@ import qualified Events.Attachments as A
 import qualified Events.DB
 import qualified Events.Form as EventForm
 import qualified Events.Preview
-import qualified Events.SingleEvent
+import qualified Events.Full
 import qualified Events.Types as Events
 import GHC.Exts (sortWith)
 import Layout (ActiveNavLink (..), LayoutStub (..), success)
@@ -47,7 +47,8 @@ import Network.Wai.Parse
     setMaxRequestFileSize,
     tempFileBackEnd,
   )
-import qualified Session.Session as Session
+import qualified Session.Auth as Session
+import qualified Session.Types as Session
 import qualified System.Directory
 import Text.Read (readEither)
 import User.Types (UserId (..), UserProfile (..))
@@ -158,7 +159,7 @@ get eventid auth = do
         . LayoutStub
           eventTitle
           (Just Events)
-        $ Events.SingleEvent.render (Events.SingleEvent.ShowAdminTools userIsAdmin) ownReply eventid e
+        $ Events.Full.render (Events.Full.ShowAdminTools userIsAdmin) ownReply eventid e
 
 getCreate :: (MonadIO m) => Session.AdminUser -> m LayoutStub
 getCreate _ = do
@@ -246,7 +247,7 @@ postCreate internalState req _ = do
   let params = paramsToMap $ fst body
       fromParams key = Map.findWithDefault "" key params
 
-  (A.FileActions {..}, encryptedFileInfos) <- A.parseRequest [] body
+  (Events.FileActions {..}, encryptedFileInfos) <- A.parseRequest [] body
 
   let notSavedAndDeleteCheckbox = map (\FileInfo {..} -> (decodeUtf8 fileName, False)) fileActionsDontUpload
       uploadCheckbox = zip (map (decodeUtf8 . fileName) fileActionsUpload) (repeat True)
@@ -328,7 +329,7 @@ postUpdate internalState req eid@(Events.Id eventid) _ = do
   Events.DB.get eid >>= \case
     Nothing -> throwString $ "edit event but no event for id: " <> show eventid
     Just Events.Event {..} -> do
-      (A.FileActions {..}, encryptedFileInfos) <- A.parseRequest eventAttachments body
+      (Events.FileActions {..}, encryptedFileInfos) <- A.parseRequest eventAttachments body
 
       let params = paramsToMap $ fst body
           fromParams key = Map.findWithDefault "" key params

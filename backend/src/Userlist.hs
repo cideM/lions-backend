@@ -13,7 +13,8 @@ import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), LayoutStub (..), ariaLabel_)
 import Lucid
 import qualified Network.Wai as Wai
-import qualified Session.Session as Session
+import qualified Session.Auth as Session
+import qualified Session.Types as Session
 import User.DB (getUsers)
 import User.Types
 import Wai (parseQueryParams)

@@ -1,22 +1,9 @@
-module Logging (withKatip, withLogger, log, TimedFastLogger, Log) where
+module Logging (withKatip) where
 
 import Control.Exception.Safe
 import Control.Monad.IO.Class (liftIO)
-import Data.Text (Text)
 import qualified Katip as K
 import qualified System.IO
-import System.Log.FastLogger
-import Prelude hiding (log)
-
-type Log = Text -> IO ()
-
-log :: (ToLogStr s) => TimedFastLogger -> s -> IO ()
-log logger msg = logger (\time -> toLogStr (show time) <> " " <> toLogStr msg <> "\n")
-
-withLogger :: (TimedFastLogger -> IO b) -> IO b
-withLogger f = do
-  formattedTime <- newTimeCache simpleTimeFormat
-  withTimedFastLogger formattedTime (LogStdout defaultBufSize) f
 
 -- TODO: MyApp etc
 withKatip :: K.KatipContextT IO b -> IO b

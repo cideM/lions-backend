@@ -27,7 +27,9 @@ import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
 import qualified Request.Middleware as Request
-import qualified Session.Session as Session
+import qualified Session.Auth as Session
+import qualified Session.Middleware as Session
+import qualified Session.Types as Session
 import qualified System.Directory
 import System.Environment (getEnv)
 import Text.Read (readEither)
@@ -50,6 +52,7 @@ server ::
     App.HasRequestIdVaultKey env,
     App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
+    UnliftIO.MonadUnliftIO m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
@@ -95,11 +98,7 @@ server
         -- simplicity!
         layout' = layout routeData
 
-        -- Because every logger in the Haskell ecosystem insists on forcing
-        -- stupid Monads on me, I'm creating an ad-hoc, shoddily implemented,
-        -- 50% structured logger.
         requestId = maybe "" (Text.pack . show) $ Vault.lookup reqIdVaultKey vault
-        -- log' msg = Logging.log logger ([Interpolate.i|"request_id: #{(requestId :: Text.Text)} message: #{(msg :: Text.Text)}"|] :: Text.Text)
 
         -- TODO: The resetHost should probably be passed in as an argument from the outside
         resetHost =
@@ -261,12 +260,12 @@ server
         ["passwort", "aendern"] ->
           case Wai.requestMethod req of
             "GET" -> PasswordReset.showChangePwForm req >>= send200 . layout'
-            "POST" -> PasswordReset.handleChangePw dbConn req >>= send200 . layout'
+            "POST" -> PasswordReset.handleChangePw req >>= send200 . layout'
             _ -> send404
         ["passwort", "link"] ->
           case Wai.requestMethod req of
             "GET" -> PasswordReset.showResetForm >>= send200 . layout'
-            "POST" -> PasswordReset.handleReset dbConn req sendMail' >>= send200 . layout'
+            "POST" -> PasswordReset.handleReset req sendMail' >>= send200 . layout'
             _ -> send404
         _ -> send404
 

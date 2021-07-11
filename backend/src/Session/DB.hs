@@ -10,6 +10,29 @@ import qualified Database.SQLite.Simple as SQLite
 import Session.Types
 import User.Types (UserId (..))
 
+save ::
+  ( MonadIO m,
+    App.HasDb env,
+    MonadReader env m
+  ) =>
+  ValidSession ->
+  m ()
+save (ValidSession (Session (SessionId key) expires (UserId uid))) = do
+  conn <- asks App.getDb
+  liftIO $ SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (key, expires, uid)
+
+-- Delete all sessions for the given User ID
+deleteUser ::
+  ( MonadIO m,
+    App.HasDb env,
+    MonadReader env m
+  ) =>
+  UserId ->
+  m ()
+deleteUser (UserId uid) = do
+  conn <- asks App.getDb
+  liftIO $ SQLite.execute conn "delete from sessions where userid = ?" [uid]
+
 get ::
   ( MonadIO m,
     App.HasDb env,

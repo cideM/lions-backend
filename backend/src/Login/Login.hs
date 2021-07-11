@@ -21,13 +21,14 @@ import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Scrypt (verifyPassword)
-import Session.Session
+import qualified Session.DB as Session
+import Session.Types
   ( Authentication (..),
     Session (..),
     SessionId (..),
     ValidSession (..),
   )
-import qualified Session.Session as Session
+import qualified Session.Valid as Session
 import User.DB (getCredentials)
 import User.Types (Role, UserId (..))
 import Wai (parseParams)
@@ -174,11 +175,7 @@ postLogin req send = do
           formPw
           (Just "Ungültige Kombination aus Email und Passwort")
 
--- GET handler for showing the login form
-getLogin ::
-  (MonadIO m) =>
-  Authentication ->
-  m (Html ())
+getLogin :: (MonadIO m) => Authentication -> m (Html ())
 getLogin (IsNotAuthenticated) =
   return . layout IsNotAuthenticated . LoginForm.form $ LoginForm.NotLoggedInNotValidated
 getLogin auth = return . layout auth . LoginForm.form $ LoginForm.LoggedIn

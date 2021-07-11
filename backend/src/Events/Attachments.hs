@@ -3,7 +3,6 @@ module Events.Attachments
     removeAll,
     remove,
     parseRequest,
-    FileActions (..),
   )
 where
 
@@ -94,14 +93,6 @@ encryptFileInfo encrypt =
 getCheckedFromBody :: ([Param], [(ByteString, FileInfo FilePath)]) -> [Text]
 getCheckedFromBody = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) . fst
 
-data FileActions = FileActions
-  { fileActionsKeep :: [Events.Attachment],
-    fileActionsDelete :: [Events.Attachment],
-    fileActionsDontUpload :: [FileInfo FilePath],
-    fileActionsUpload :: [FileInfo FilePath]
-  }
-  deriving (Show, Eq)
-
 parseRequest ::
   ( MonadIO m,
     App.HasSessionEncryptionKey env,
@@ -110,7 +101,7 @@ parseRequest ::
   ) =>
   [Events.Attachment] ->
   ([Param], [(ByteString, FileInfo FilePath)]) ->
-  m (FileActions, [ByteString])
+  m (Events.FileActions, [ByteString])
 parseRequest alreadySaved body = do
   sessionKey <- asks App.getSessionEncryptionKey
   let clientEncrypt = ClientSession.encryptIO sessionKey
@@ -129,6 +120,6 @@ parseRequest alreadySaved body = do
 
   encryptedFileInfos <- liftIO $ encryptFileInfo clientEncrypt $ pastFileInfos ++ newFileInfos
 
-  let actions = FileActions keep savedButDelete notSavedAndDelete upload
+  let actions = Events.FileActions keep savedButDelete notSavedAndDelete upload
 
   return (actions, encryptedFileInfos)
