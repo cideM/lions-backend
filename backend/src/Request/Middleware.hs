@@ -1,12 +1,15 @@
-module Request.Middleware (middleware) where
+module Request.Middleware (middleware, IdVaultKey) where
 
 import qualified App
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import Data.UUID (UUID)
 import Data.UUID.V4 (nextRandom)
 import qualified Data.Vault.Lazy as Vault
 import qualified Network.Wai as Wai
 import qualified Wai.Class as Wai
+
+type IdVaultKey = Vault.Key UUID
 
 middleware ::
   ( MonadIO m,

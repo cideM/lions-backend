@@ -130,7 +130,8 @@ library
     Events.Types
     Error
     Events.Preview
-    Events.EventForm
+    Events.Attachments
+    Events.Form
     Events.Handlers
     Events.SingleEvent
     Form
@@ -144,8 +145,8 @@ library
     Session.Types
     Session.Middleware
     Session.DB
-    Request.Middleware
     Request.Types
+    Request.Middleware
     PasswordReset.ChangePasswordForm
     Wai.Class
     App

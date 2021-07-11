@@ -11,7 +11,6 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import qualified Events.DB
 import qualified Events.Handlers
 import qualified Events.Types as Events
 import qualified Katip as K
@@ -27,7 +26,7 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
-import qualified Request.Middleware
+import qualified Request.Middleware as Request
 import qualified Session.Session as Session
 import qualified System.Directory
 import System.Environment (getEnv)
@@ -51,29 +50,27 @@ server ::
     App.HasRequestIdVaultKey env,
     App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
+    App.HasEventStorage env,
+    App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
     App.HasDb env,
     MonadReader env m
   ) =>
   SQLite.Connection ->
-  ClientSession.Key ->
   AWS.Env ->
   Int ->
   App.Environment ->
   Session.SessionDataVaultKey ->
   InternalState ->
-  FilePath ->
   Wai.ApplicationT m
 server
   dbConn
-  sessionKey
   awsEnv
   port
   appEnv
   sessionDataVaultKey
   internalState
-  storageDir
   req
   send = do
     reqIdVaultKey <- asks App.getRequestIdVaultKey
@@ -115,13 +112,7 @@ server
         -- with integration tests because interactions with the DB are one of
         -- my primary sources of bugs. But it helps me focus on the clean.
         -- TODO: Make this more ergonomic maybe by bundling stuff in a record
-        Events.DB.EventDb {..} = Events.DB.newEventDb dbConn
         sendMail' = SendEmail.sendMail awsEnv resetHost
-        saveAttachment' = Events.Handlers.saveAttachment storageDir
-        removeAllAttachments' = Events.Handlers.removeAllAttachments storageDir
-        removeAttachment' = Events.Handlers.removeAttachment storageDir
-        clientEncrypt = ClientSession.encryptIO sessionKey
-        clientDecrypt = ClientSession.decrypt sessionKey
         getUser = User.DB.getUser dbConn
         -- Some helpers related to rendering content. I could look into
         -- bringing back Snap or something similar so I don't need to
@@ -142,22 +133,14 @@ server
             _ -> send404
         ["veranstaltungen"] ->
           case Wai.requestMethod req of
-            "GET" -> authenticatedOnly' $ Events.Handlers.showAllEvents eventDbAll >=> send200 . layout'
+            "GET" -> authenticatedOnly' $ Events.Handlers.getAll >=> send200 . layout'
             -- TODO: Send unsupported method 405
             _ -> send404
         ["veranstaltungen", "neu"] ->
           case Wai.requestMethod req of
-            "GET" -> adminOnly' $ Events.Handlers.showCreateEvent >=> send200 . layout'
+            "GET" -> adminOnly' $ Events.Handlers.getCreate >=> send200 . layout'
             "POST" ->
-              adminOnly' $
-                Events.Handlers.handleCreateEvent
-                  clientEncrypt
-                  clientDecrypt
-                  eventDbCreate
-                  internalState
-                  saveAttachment'
-                  req
-                  >=> send200 . layout'
+              adminOnly' $ Events.Handlers.postCreate internalState req >=> send200 . layout'
             -- TODO: Send unsupported method 405
             _ -> send404
         ["veranstaltungen", i] ->
@@ -167,7 +150,7 @@ server
               case Wai.requestMethod req of
                 "GET" ->
                   authenticatedOnly' $
-                    Events.Handlers.showEvent eventDbGet (Events.Id parsed) >=> \case
+                    Events.Handlers.get (Events.Id parsed) >=> \case
                       Nothing -> send404
                       Just stub -> send200 $ layout' stub
                 _ -> send404
@@ -178,34 +161,25 @@ server
               case Wai.requestMethod req of
                 "POST" ->
                   authenticatedOnly' $
-                    Events.Handlers.replyToEvent getUser eventDbDeleteReply eventDbUpsertReply req send (Events.Id parsed)
+                    Events.Handlers.postReply getUser req send (Events.Id parsed)
                 _ -> send404
         ["veranstaltungen", i, "loeschen"] ->
           case readEither (Text.unpack i) of
             Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
             Right (parsed :: Int) ->
               case Wai.requestMethod req of
-                "GET" -> adminOnly' $ Events.Handlers.showDeleteEventConfirmation eventDbGet (Events.Id parsed) >=> send200 . layout'
-                "POST" -> adminOnly' $ Events.Handlers.handleDeleteEvent eventDbGet eventDbDelete removeAllAttachments' (Events.Id parsed) >=> send200 . layout'
+                "GET" -> adminOnly' $ Events.Handlers.getConfirmDelete (Events.Id parsed) >=> send200 . layout'
+                "POST" -> adminOnly' $ Events.Handlers.postDelete (Events.Id parsed) >=> send200 . layout'
                 _ -> send404
         ["veranstaltungen", i, "editieren"] ->
           case readEither (Text.unpack i) of
             Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
             Right (parsed :: Int) ->
               case Wai.requestMethod req of
-                "GET" -> adminOnly' $ Events.Handlers.showEditEventForm eventDbGet (Events.Id parsed) >=> send200 . layout'
+                "GET" -> adminOnly' $ Events.Handlers.getEdit (Events.Id parsed) >=> send200 . layout'
                 "POST" ->
                   adminOnly' $
-                    Events.Handlers.handleUpdateEvent
-                      eventDbUpdate
-                      eventDbGet
-                      clientEncrypt
-                      clientDecrypt
-                      removeAttachment'
-                      saveAttachment'
-                      internalState
-                      req
-                      (Events.Id parsed)
+                    Events.Handlers.postUpdate internalState req (Events.Id parsed)
                       >=> send200 . layout'
                 _ -> send404
         ["loeschen", i] ->
@@ -350,13 +324,11 @@ main = do
                       app' =
                         server
                           conn
-                          sessionKey
                           awsEnv
                           port
                           appEnv
                           sessionDataVaultKey
                           internalState
-                          storageDir
 
                   K.katipAddContext (K.sl "port" port) $ do
                     K.logLocM K.InfoS "starting server"
@@ -369,7 +341,7 @@ main = do
                         allMiddlewares =
                           assetMiddleware
                             . (Wai.liftMiddleware logStdout)
-                            . Request.Middleware.middleware
+                            . Request.middleware
                             . Session.middleware
                             . (Wai.liftMiddleware (staticPolicy (addBase storageDir)))
                             . storageStaticMiddleware

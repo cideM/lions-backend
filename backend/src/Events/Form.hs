@@ -1,4 +1,4 @@
-module Events.EventForm
+module Events.Form
   ( render,
     FormState (..),
     FormInput (..),
