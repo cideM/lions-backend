@@ -152,7 +152,7 @@ library
     PasswordReset.SendEmail
     DB
     Scrypt
-    Session
+    Session.Session
     Time
     User.DB
     User.Types

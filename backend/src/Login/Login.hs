@@ -1,50 +1,69 @@
-module Login.Login (logout, login, showLoginForm) where
+module Login.Login (postLogout, postLogin, getLogin) where
 
 import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Crypto.BCrypt as BCrypt
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
+import Data.String.Interpolate (i)
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
+import qualified Error as E
 import Layout (layout)
 import qualified Login.LoginForm as LoginForm
 import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
-import Session.Types (Authentication (..))
+import Scrypt (verifyPassword)
+import Session.Session
+  ( Authentication (..),
+    Session (..),
+    SessionId (..),
+    ValidSession (..),
+  )
+import qualified Session.Session as Session
+import User.DB (getCredentials)
 import User.Types (Role, UserId (..))
 import Wai (parseParams)
+import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id)
 
-logout ::
-  (MonadIO m, MonadThrow m) =>
-  (UserId -> IO ()) ->
+postLogout ::
+  ( MonadIO m,
+    MonadThrow m,
+    App.HasDb env,
+    App.HasEnvironment env,
+    MonadReader env m
+  ) =>
   (Vault.Vault -> Maybe ([Role], UserId)) ->
-  App.Environment ->
   Wai.Request ->
   (Wai.Response -> m a) ->
   m a
-logout deleteSessions vaultLookup env req send =
+postLogout vaultLookup req send = do
   case vaultLookup $ Wai.vault req of
     Nothing -> throwString "logout request but no session in vault"
     Just (_, userId) -> do
-      liftIO $ deleteSessions userId
+      Session.deleteUser userId
+      cookie <- logoutCookie
       send
         . Wai.responseLBS
           status302
           [ ("Content-Type", "text/html; charset=UTF-8"),
-            ("Set-Cookie", logoutCookie env),
+            ("Set-Cookie", cookie),
             ("Location", "/login")
           ]
         $ renderBS ""
   where
-    logoutCookie _ =
-      LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
+    logoutCookie = do
+      env <- asks App.getEnv
+      return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
         Cookie.defaultSetCookie
           { Cookie.setCookieName = "lions_session",
             Cookie.setCookieValue = "",
@@ -55,27 +74,84 @@ logout deleteSessions vaultLookup env req send =
             Cookie.setCookieHttpOnly = True
           }
 
+-- Checks if credentials are valid and then generates a new session, stores it
+-- in the DB and returns it to the caller. This function tries two different
+-- hashing algorithms. One for old password hashes exported from Firebase and
+-- the other is a standard BCrypt algorithm for any new passwords.
+login ::
+  ( MonadIO m,
+    MonadThrow m,
+    E.MonadError Text m,
+    App.HasEnvironment env,
+    App.HasSessionEncryptionKey env,
+    App.HasScryptSignerKey env,
+    App.HasScryptSaltSeparator env,
+    App.HasDb env,
+    MonadReader env m
+  ) =>
+  Text ->
+  Text ->
+  m (ByteString, Time.UTCTime)
+login email formPw = do
+  conn <- asks App.getDb
+  signerKey <- asks App.getScryptSignerKey
+  saltSep <- asks App.getScryptSaltSeparator
+  sessionKey <- asks App.getSessionEncryptionKey
+
+  let verifyPassword' = verifyPassword signerKey saltSep
+      clientEncrypt = ClientSession.encryptIO sessionKey
+
+  (userId, userSalt, dbPw) <- (liftIO $ getCredentials conn email) >>= E.note' "no user found"
+
+  let formPw' = encodeUtf8 formPw
+  let dbPw' = encodeUtf8 dbPw
+
+  _ <- case encodeUtf8 <$> userSalt of
+    -- Firebase credentials
+    Just salt -> do
+      case verifyPassword' salt dbPw' formPw' of
+        Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
+        Right ok -> E.unless ok $ E.throwError "incorrect password"
+    -- BCrypt, new credentials
+    Nothing ->
+      E.unless (BCrypt.validatePassword dbPw' formPw') $ E.throwError "incorrect password"
+
+  newSession@(ValidSession (Session (SessionId sessionId) expires _)) <- Session.create userId
+  Session.save newSession
+  encryptedSessionId <- liftIO $ clientEncrypt (encodeUtf8 sessionId)
+  return (encryptedSessionId, expires)
+
 -- POST handler that creates a new session in the DB and sets a cookie with the
 -- encrypted session ID
-login ::
-  (MonadIO m) =>
-  (Text -> Text -> IO (Either Text (ByteString, Time.UTCTime))) ->
-  App.Environment ->
+postLogin ::
+  ( MonadIO m,
+    App.HasEnvironment env,
+    App.HasEnvironment env,
+    App.HasSessionEncryptionKey env,
+    App.HasScryptSignerKey env,
+    MonadThrow m,
+    App.HasScryptSaltSeparator env,
+    App.HasDb env,
+    MonadReader env m
+  ) =>
   Wai.Request ->
   (Wai.Response -> m a) ->
   m a
-login tryLogin env req send = do
+postLogin req send = do
   params <- liftIO $ parseParams req
+
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
-  (liftIO $ tryLogin email formPw) >>= \case
+
+  (E.runExceptT $ login email formPw) >>= \case
     Left _ -> renderFormInvalid email formPw
     Right (sessionId, expires) -> do
-      let cookie = makeCookie sessionId expires
+      cookie <- makeCookie sessionId expires
       send $ Wai.responseLBS status302 [("Set-Cookie", cookie), ("Location", "/")] mempty
   where
-    makeCookie sessionId expires =
-      LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
+    makeCookie sessionId expires = do
+      env <- asks App.getEnv
+      return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
         Cookie.defaultSetCookie
           { Cookie.setCookieName = "lions_session",
             Cookie.setCookieValue = sessionId,
@@ -85,6 +161,7 @@ login tryLogin env req send = do
             Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
             Cookie.setCookieHttpOnly = True
           }
+
     renderFormInvalid email formPw =
       send
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
@@ -98,10 +175,10 @@ login tryLogin env req send = do
           (Just "Ungültige Kombination aus Email und Passwort")
 
 -- GET handler for showing the login form
-showLoginForm ::
+getLogin ::
   (MonadIO m) =>
   Authentication ->
   m (Html ())
-showLoginForm (IsNotAuthenticated) =
+getLogin (IsNotAuthenticated) =
   return . layout IsNotAuthenticated . LoginForm.form $ LoginForm.NotLoggedInNotValidated
-showLoginForm auth = return . layout auth . LoginForm.form $ LoginForm.LoggedIn
+getLogin auth = return . layout auth . LoginForm.form $ LoginForm.LoggedIn

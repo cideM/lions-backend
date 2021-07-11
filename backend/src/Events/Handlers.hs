@@ -50,8 +50,7 @@ import Network.Wai.Parse
     setMaxRequestFileSize,
     tempFileBackEnd,
   )
-import qualified Session
-import qualified Session.Types as Session
+import qualified Session.Session as Session
 import qualified System.Directory
 import System.FilePath ((</>))
 import Text.Read (readEither)

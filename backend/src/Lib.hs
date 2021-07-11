@@ -7,7 +7,6 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.Trans.Resource (InternalState, runResourceT, withInternalState)
 import qualified DB
-import qualified Data.ByteString as BS
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
@@ -29,10 +28,7 @@ import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.PasswordReset as PasswordReset
 import qualified PasswordReset.SendEmail as SendEmail
 import qualified Request.Middleware
-import Scrypt (verifyPassword)
-import qualified Session
-import qualified Session.Types as Session
-import qualified Session.Middleware as Session
+import qualified Session.Session as Session
 import qualified System.Directory
 import System.Environment (getEnv)
 import Text.Read (readEither)
@@ -53,6 +49,10 @@ server ::
     MonadIO m,
     MonadThrow m,
     App.HasRequestIdVaultKey env,
+    App.HasEnvironment env,
+    App.HasSessionEncryptionKey env,
+    App.HasScryptSignerKey env,
+    App.HasScryptSaltSeparator env,
     App.HasDb env,
     MonadReader env m
   ) =>
@@ -62,8 +62,6 @@ server ::
   Int ->
   App.Environment ->
   Session.SessionDataVaultKey ->
-  BS.ByteString -> -- Project's base64_signer_key
-  BS.ByteString -> -- Project's base64_salt_separator
   InternalState ->
   FilePath ->
   Wai.ApplicationT m
@@ -74,8 +72,6 @@ server
   port
   appEnv
   sessionDataVaultKey
-  signerKey
-  saltSep
   internalState
   storageDir
   req
@@ -126,7 +122,6 @@ server
         removeAttachment' = Events.Handlers.removeAttachment storageDir
         clientEncrypt = ClientSession.encryptIO sessionKey
         clientDecrypt = ClientSession.decrypt sessionKey
-        tryLogin' = Session.tryLogin dbConn (verifyPassword signerKey saltSep) clientEncrypt
         getUser = User.DB.getUser dbConn
         -- Some helpers related to rendering content. I could look into
         -- bringing back Snap or something similar so I don't need to
@@ -282,12 +277,12 @@ server
                     _ -> send404
         ["login"] ->
           case Wai.requestMethod req of
-            "POST" -> Login.login tryLogin' appEnv req send
-            "GET" -> Login.showLoginForm routeData >>= send200
+            "POST" -> Login.postLogin req send
+            "GET" -> Login.getLogin routeData >>= send200
             _ -> send404
         ["logout"] ->
           case Wai.requestMethod req of
-            "POST" -> Login.logout (Session.deleteSessionsForUser dbConn) (Vault.lookup sessionDataVaultKey) appEnv req send
+            "POST" -> Login.postLogout (Vault.lookup sessionDataVaultKey) req send
             _ -> send404
         ["passwort", "aendern"] ->
           case Wai.requestMethod req of
@@ -360,8 +355,6 @@ main = do
                           port
                           appEnv
                           sessionDataVaultKey
-                          signerKey
-                          saltSep
                           internalState
                           storageDir
 
