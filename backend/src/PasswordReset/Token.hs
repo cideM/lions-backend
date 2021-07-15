@@ -1,6 +1,5 @@
 module PasswordReset.Token
-  ( get,
-    delete,
+  ( delete,
     update,
     parse,
     ParseError (..),

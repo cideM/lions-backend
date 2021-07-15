@@ -51,7 +51,7 @@ render (ShowAdminTools showAdminTools) ownReply (Events.Id eventId) Events.Event
                     eventAttachments
                     ( \Events.Attachment {..} ->
                         li_ [] $
-                          a_ [href_ [i|/#{eventId}/#{attachmentFileName}|]] $ toHtml attachmentFileName
+                          a_ [href_ [i|/events/#{eventId}/#{attachmentFileName}|]] $ toHtml attachmentFileName
                     )
             section_ [class_ "justify-content-center col-lg-4"] $ do
               div_ [class_ "card"] $ do

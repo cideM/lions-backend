@@ -17,7 +17,6 @@ import Control.Monad (forM_, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.Trans.Resource (InternalState)
-import qualified Data.ByteString.Char8 as C8
 import Data.Foldable (find)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
@@ -25,23 +24,23 @@ import Data.Ord (Down (..))
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Events.Attachments as A
 import qualified Events.DB
 import qualified Events.Form as EventForm
-import qualified Events.Preview
 import qualified Events.Full
+import qualified Events.Preview
 import qualified Events.Types as Events
 import GHC.Exts (sortWith)
+import qualified Katip as K
 import Layout (ActiveNavLink (..), LayoutStub (..), success)
 import Locale (german)
 import Lucid
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
 import Network.Wai.Parse
-  ( FileInfo (..),
-    ParseRequestBodyOptions,
+  ( ParseRequestBodyOptions,
     defaultParseRequestBodyOptions,
     parseRequestBodyEx,
     setMaxRequestFileSize,
@@ -225,6 +224,7 @@ postCreate ::
   ( MonadIO m,
     MonadReader env m,
     MonadThrow m,
+    K.KatipContext m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
     App.HasDb env
@@ -249,8 +249,11 @@ postCreate internalState req _ = do
 
   (Events.FileActions {..}, encryptedFileInfos) <- A.parseRequest [] body
 
-  let notSavedAndDeleteCheckbox = map (\FileInfo {..} -> (decodeUtf8 fileName, False)) fileActionsDontUpload
-      uploadCheckbox = zip (map (decodeUtf8 . fileName) fileActionsUpload) (repeat True)
+  let notSavedAndDeleteCheckbox =
+        map
+          (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False))
+          fileActionsDontUpload
+      uploadCheckbox = zip (map Events.attachmentInfoFileName fileActionsUpload) (repeat True)
       checkboxes = notSavedAndDeleteCheckbox ++ uploadCheckbox
       input =
         EventForm.FormInput
@@ -271,12 +274,17 @@ postCreate internalState req _ = do
     Right newEvent@Events.Create {..} -> do
       eid <- Events.DB.save newEvent
 
-      forM_ fileActionsUpload $ \FileInfo {..} -> do
-        A.save eid fileContent (C8.unpack fileName)
-        liftIO $ System.Directory.removeFile fileContent
+      forM_ fileActionsUpload $ \(Events.AttachmentInfo {..}) -> do
+        let fileName = Text.unpack attachmentInfoFileName
 
-      forM_ fileActionsDontUpload $ \FileInfo {..} -> do
-        liftIO $ System.Directory.removeFile fileContent
+        K.katipAddContext (K.sl "file_name" fileName) $ do
+          K.logLocM K.DebugS "saving file"
+
+          A.save eid attachmentInfoFilePath fileName
+          liftIO $ System.Directory.removeFile attachmentInfoFilePath
+
+      forM_ fileActionsDontUpload $ \(Events.AttachmentInfo {..}) -> do
+        liftIO $ System.Directory.removeFile attachmentInfoFilePath
 
       return . LayoutStub "Neue Veranstaltung" (Just Events) $
         success $ "Neue Veranstaltung " <> createTitle <> " erfolgreich erstellt!"
@@ -313,6 +321,7 @@ getEdit eid@(Events.Id eventid) _ = do
 postUpdate ::
   ( MonadThrow m,
     MonadIO m,
+    K.KatipContext m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
     MonadReader env m,
@@ -326,50 +335,57 @@ postUpdate ::
 postUpdate internalState req eid@(Events.Id eventid) _ = do
   body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
 
-  Events.DB.get eid >>= \case
-    Nothing -> throwString $ "edit event but no event for id: " <> show eventid
-    Just Events.Event {..} -> do
-      (Events.FileActions {..}, encryptedFileInfos) <- A.parseRequest eventAttachments body
+  K.katipAddNamespace "postUpdate" $ do
+    Events.DB.get eid >>= \case
+      Nothing -> throwString $ "edit event but no event for id: " <> show eventid
+      Just Events.Event {..} -> do
+        (Events.FileActions {..}, encryptedFileInfos) <- A.parseRequest eventAttachments body
 
-      let params = paramsToMap $ fst body
-          fromParams key = Map.findWithDefault "" key params
-          savedButDeleteCheckbox = zip (map Events.attachmentFileName fileActionsDelete) (repeat False)
-          keepCheckbox = zip (map Events.attachmentFileName fileActionsKeep) (repeat True)
-          notSavedAndDeleteCheckbox = map (\FileInfo {..} -> (decodeUtf8 fileName, False)) fileActionsDontUpload
-          uploadCheckbox = zip (map (decodeUtf8 . fileName) fileActionsUpload) (repeat True)
-          checkboxes = keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox ++ uploadCheckbox
-          input =
-            EventForm.FormInput
-              (fromParams "eventTitleInput")
-              (fromParams "eventDateInput")
-              (fromParams "eventLocationInput")
-              (fromParams "eventDescriptionInput")
-              (isJust $ Map.lookup "eventFamAllowedInput" params)
-              checkboxes
-              encryptedFileInfos
+        let params = paramsToMap $ fst body
+            fromParams key = Map.findWithDefault "" key params
+            savedButDeleteCheckbox = zip (map Events.attachmentFileName fileActionsDelete) (repeat False)
+            keepCheckbox = zip (map Events.attachmentFileName fileActionsKeep) (repeat True)
+            notSavedAndDeleteCheckbox = map (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False)) fileActionsDontUpload
+            uploadCheckbox = zip (map Events.attachmentInfoFileName fileActionsUpload) (repeat True)
+            checkboxes = keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox ++ uploadCheckbox
+            input =
+              EventForm.FormInput
+                (fromParams "eventTitleInput")
+                (fromParams "eventDateInput")
+                (fromParams "eventLocationInput")
+                (fromParams "eventDescriptionInput")
+                (isJust $ Map.lookup "eventFamAllowedInput" params)
+                checkboxes
+                encryptedFileInfos
 
-      case EventForm.makeEvent input of
-        Left state ->
-          return $
-            LayoutStub "Veranstaltung Editieren" (Just Events) $
-              div_ [class_ "container p-3 d-flex justify-content-center"] $
-                EventForm.render
-                  "Speichern"
-                  (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
-                  input
-                  state
-        Right event@Events.Create {..} -> do
-          forM_ fileActionsUpload $ \FileInfo {..} -> do
-            A.save eid fileContent (C8.unpack fileName)
-            liftIO $ System.Directory.removeFile fileContent
+        case EventForm.makeEvent input of
+          Left state ->
+            return $
+              LayoutStub "Veranstaltung Editieren" (Just Events) $
+                div_ [class_ "container p-3 d-flex justify-content-center"] $
+                  EventForm.render
+                    "Speichern"
+                    (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
+                    input
+                    state
+          Right event@Events.Create {..} -> do
+            forM_ fileActionsUpload $ \(Events.AttachmentInfo {..}) -> do
+              let fileName = Text.unpack attachmentInfoFileName
 
-          forM_ fileActionsDelete $ \Events.Attachment {..} -> do
-            A.remove eid (Text.unpack attachmentFileName)
+              K.katipAddContext (K.sl "file_name" fileName) $ do
+                K.logLocM K.DebugS "saving file"
 
-          forM_ fileActionsDontUpload $ \FileInfo {..} -> do
-            liftIO $ System.Directory.removeFile fileContent
+                A.save eid attachmentInfoFilePath fileName
+                liftIO $ System.Directory.removeFile attachmentInfoFilePath
 
-          Events.DB.update eid event
-          return $
-            LayoutStub "Veranstaltung Editieren" (Just Events) $
-              success $ "Veranstaltung " <> createTitle <> " erfolgreich editiert"
+            forM_ fileActionsDelete $ \Events.Attachment {..} -> do
+              A.remove eid (Text.unpack attachmentFileName)
+
+            forM_ fileActionsDontUpload $ \(Events.AttachmentInfo {..}) -> do
+              liftIO $ System.Directory.removeFile attachmentInfoFilePath
+
+            Events.DB.update eid event
+
+            return $
+              LayoutStub "Veranstaltung Editieren" (Just Events) $
+                success $ "Veranstaltung " <> createTitle <> " erfolgreich editiert"

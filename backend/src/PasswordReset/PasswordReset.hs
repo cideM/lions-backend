@@ -81,20 +81,6 @@ handleReset req sendEmail' = do
 showResetForm :: (MonadIO m) => m LayoutStub
 showResetForm = return $ passwordResetLayout (ResetEmailForm.form Nothing)
 
--- I'm omitting the password length check and all that stuff. The browser will
--- enforce a certain pattern and if someone wants to absolutely change their
--- password with a direct POST request and they submit a one length password
--- then so be it.
-makePassword :: ChangePasswordForm.FormInput -> Either ChangePasswordForm.FormState Text
-makePassword ChangePasswordForm.FormInput {passwordInput = pw, passwordInputMatch = pw2}
-  | pw /= pw2 = Left $ ChangePasswordForm.FormState (Invalid changePwNoMatch) (Invalid changePwNoMatch)
-  | otherwise = case ChangePasswordForm.FormState (notEmpty pw) (notEmpty pw2) of
-    ChangePasswordForm.FormState (Valid _) (Valid _) -> Right pw
-    state -> Left state
-  where
-    notEmpty "" = Invalid "Feld darf nicht leer sein"
-    notEmpty v = Valid v
-
 -- The various things that I expect to happen when trying to change a user's
 -- password. Each has a different error message that is shown to the user.
 data TryResetError
@@ -128,14 +114,29 @@ makeHashedPassword ::
   m Hashed
 makeHashedPassword tokenInput pw pwMatch = do
   let input = ChangePasswordForm.FormInput pw pwMatch
-  validPw <- E.withExceptT'' (InvalidPassword input tokenInput) $ makePassword input
-  hashed <- liftIO $ hashPw (encodeUtf8 validPw)
+  validPw <- E.withExceptT'' (InvalidPassword input tokenInput) $ parsePass input
+  hashed <- hashPw (encodeUtf8 validPw)
   return hashed
   where
     hashPw unhashed =
-      BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy unhashed >>= \case
+      (liftIO $ BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy unhashed) >>= \case
         Nothing -> throwString "hashing password failed"
         Just pw' -> return . Hashed $ decodeUtf8 pw'
+
+    -- I'm omitting the password length check and all that stuff. The browser will
+    -- enforce a certain pattern and if someone wants to absolutely change their
+    -- password with a direct POST request and they submit a one length password
+    -- then so be it.
+    parsePass ChangePasswordForm.FormInput {..}
+      | passwordInput /= passwordInputMatch =
+        Left $ ChangePasswordForm.FormState (Invalid changePwNoMatch) (Invalid changePwNoMatch)
+      | otherwise =
+        case ChangePasswordForm.FormState (notEmpty passwordInput) (notEmpty passwordInputMatch) of
+          ChangePasswordForm.FormState (Valid _) (Valid _) -> Right passwordInput
+          state -> Left state
+
+    notEmpty "" = Invalid "Feld darf nicht leer sein"
+    notEmpty v = Valid v
 
 -- POST handler that actually changes the user's password in the database.
 handleChangePw ::

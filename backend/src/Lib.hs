@@ -12,6 +12,7 @@ import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import qualified Events.Handlers
+import qualified Events.Attachments
 import qualified Events.Types as Events
 import qualified Katip as K
 import Layout (LayoutStub (..), layout, warning)
@@ -342,7 +343,7 @@ main = do
                             . (Wai.liftMiddleware logStdout)
                             . Request.middleware
                             . Session.middleware
-                            . (Wai.liftMiddleware (staticPolicy (addBase storageDir)))
+                            . Events.Attachments.middleware storageDir
                             . storageStaticMiddleware
                         appWithMiddlewares = allMiddlewares app'
 

@@ -2,6 +2,7 @@ module Events.Attachments
   ( save,
     removeAll,
     remove,
+    middleware,
     parseRequest,
   )
 where
@@ -14,11 +15,17 @@ import Data.ByteString (ByteString)
 import qualified Data.String.Interpolate as Interpolate
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import Data.Text.Encoding (decodeUtf8)
+import qualified Error as E
 import qualified Events.Types as Events
+import qualified Katip as K
+import Network.Wai.Middleware.Static ((>->))
+import qualified Network.Wai.Middleware.Static as Static
 import Network.Wai.Parse (FileInfo (..), Param)
 import qualified System.Directory
 import System.FilePath ((</>))
+import qualified UnliftIO
+import qualified Wai.Class as Wai
 import qualified Web.ClientSession as ClientSession
 
 save ::
@@ -62,39 +69,9 @@ remove (Events.Id eid) filename = do
   destinationDir <- asks App.getStorageDir
   liftIO $ System.Directory.removeFile $ destinationDir </> show eid </> filename
 
-parseDecryptedString :: ByteString -> (Text, Text, Text)
-parseDecryptedString s =
-  let [filename, filetype, filepath] = Text.split (':' ==) $ decodeUtf8 s
-   in (filename, filetype, filepath)
-
-getEncryptedFileInfo ::
-  (ByteString -> Maybe ByteString) ->
-  ([Param], [(ByteString, FileInfo FilePath)]) ->
-  Either Text.Text [(FileInfo FilePath)]
-getEncryptedFileInfo decrypt body =
-  let encryptedHiddenInputs = map snd . filter ((==) "allFiles" . fst) $ fst body
-   in case traverse decrypt encryptedHiddenInputs of
-        Nothing -> Left "couldn't decrypt hidden inputs"
-        Just decrypted ->
-          let parsed = map parseDecryptedString decrypted
-              fileinfos = map (\(name, filetype, path) -> FileInfo (encodeUtf8 name) (encodeUtf8 filetype) (Text.unpack path)) parsed
-           in Right fileinfos
-
-getNewFileInfo :: ([Param], [(ByteString, FileInfo FilePath)]) -> [(FileInfo FilePath)]
-getNewFileInfo = filter ((/=) "\"\"" . fileName) . map snd . snd
-
-encryptFileInfo ::
-  (ByteString -> IO ByteString) ->
-  [(FileInfo FilePath)] ->
-  IO [ByteString]
-encryptFileInfo encrypt =
-  traverse (\FileInfo {..} -> encrypt [Interpolate.i|#{fileName}:#{fileContentType}:#{fileContent}|])
-
-getCheckedFromBody :: ([Param], [(ByteString, FileInfo FilePath)]) -> [Text]
-getCheckedFromBody = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) . fst
-
 parseRequest ::
   ( MonadIO m,
+    K.KatipContext m,
     App.HasSessionEncryptionKey env,
     MonadReader env m,
     MonadThrow m
@@ -103,23 +80,109 @@ parseRequest ::
   ([Param], [(ByteString, FileInfo FilePath)]) ->
   m (Events.FileActions, [ByteString])
 parseRequest alreadySaved body = do
-  sessionKey <- asks App.getSessionEncryptionKey
-  let clientEncrypt = ClientSession.encryptIO sessionKey
-      clientDecrypt = ClientSession.decrypt sessionKey
+  pastFileInfos <-
+    E.runExceptT parseEncryptedFileInfo >>= \case
+      Left e -> throwString $ Text.unpack e
+      Right v -> return v
 
-  pastFileInfos <- case getEncryptedFileInfo clientDecrypt body of
-    Left e -> throwString $ Text.unpack e
-    Right v -> return v
+  K.katipAddContext (K.sl "file_infos" pastFileInfos) $ do
+    -- Turn the file upload params from the request body into AttachmentInfo,
+    -- after filtering out those weird empty string files
+    let newFileInfos =
+          map
+            ( \FileInfo {..} ->
+                Events.AttachmentInfo
+                  { attachmentInfoFileName = (decodeUtf8 fileName),
+                    attachmentInfoFileContentType = (decodeUtf8 fileContentType),
+                    attachmentInfoFilePath = fileContent
+                  }
+            )
+            . filter ((/=) "\"\"" . fileName)
+            . map snd
+            $ snd body
 
-  let newFileInfos = getNewFileInfo body
-      checked = getCheckedFromBody body
-      keep = filter (flip elem checked . Events.attachmentFileName) alreadySaved
-      savedButDelete = filter (flip notElem checked . Events.attachmentFileName) alreadySaved
-      notSavedAndDelete = filter (flip notElem checked . decodeUtf8 . fileName) pastFileInfos
-      upload = newFileInfos ++ (filter (flip elem checked . decodeUtf8 . fileName) pastFileInfos)
+        checked = map (decodeUtf8 . snd) . filter ((==) "newFileCheckbox" . fst) $ fst body
+        isChecked = flip elem checked
+        keep = filter (isChecked . Events.attachmentFileName) alreadySaved
+        savedButDelete = filter (not . isChecked . Events.attachmentFileName) alreadySaved
+        notSavedAndDelete = filter (not . isChecked . Events.attachmentInfoFileName) pastFileInfos
 
-  encryptedFileInfos <- liftIO $ encryptFileInfo clientEncrypt $ pastFileInfos ++ newFileInfos
+        upload =
+          newFileInfos
+            ++ ( filter
+                   (isChecked . Events.attachmentInfoFileName)
+                   pastFileInfos
+               )
 
-  let actions = Events.FileActions keep savedButDelete notSavedAndDelete upload
+    K.logLocM K.DebugS "inside parse request"
 
-  return (actions, encryptedFileInfos)
+    encryptedFileInfos <- makeEncryptedFileInfo $ pastFileInfos ++ newFileInfos
+
+    let actions = Events.FileActions keep savedButDelete notSavedAndDelete upload
+
+    return (actions, encryptedFileInfos)
+  where
+    -- The reverse of parseDecryptedFileInfo
+    makeEncryptedFileInfo unencrypted = do
+      sessionKey <- asks App.getSessionEncryptionKey
+      traverse
+        ( \( Events.AttachmentInfo
+               { attachmentInfoFileName = fileName,
+                 attachmentInfoFileContentType = fileContentType,
+                 attachmentInfoFilePath = filePath
+               }
+             ) ->
+              let s = [Interpolate.i|#{fileName}:#{fileContentType}:#{filePath}|]
+               in liftIO $ ClientSession.encryptIO sessionKey s
+        )
+        unencrypted
+
+    -- Input was already decrypted with session key, we just need to split on
+    -- colon more or less
+    parseDecryptedFileInfo s =
+      let [filename, filetype, filepath] = Text.split (':' ==) $ decodeUtf8 s
+       in (filename, filetype, filepath)
+
+    -- Decrypt the colon delimited strings with the session key, from the
+    -- request body
+    parseEncryptedFileInfo ::
+      ( MonadIO m,
+        E.MonadError Text m,
+        App.HasSessionEncryptionKey env,
+        MonadReader env m
+      ) =>
+      m [(Events.AttachmentInfo)]
+    parseEncryptedFileInfo = do
+      sessionKey <- asks App.getSessionEncryptionKey
+
+      -- Get the form parameters from body
+      let encryptedHiddenInputs = map snd . filter ((==) "allFiles" . fst) $ fst body
+
+      -- Decrypt the hidden input field values, parse the special strings into
+      -- proper data types
+      case traverse (ClientSession.decrypt sessionKey) encryptedHiddenInputs of
+        Nothing -> E.throwError "couldn't decrypt hidden inputs"
+        Just decrypted ->
+          return
+            . map
+              ( \(name, filetype, path) ->
+                  Events.AttachmentInfo name filetype (Text.unpack path)
+              )
+            $ map parseDecryptedFileInfo decrypted
+
+middleware :: (UnliftIO.MonadUnliftIO m) => String -> Wai.MiddlewareT m
+middleware storageDir = do
+  Wai.liftMiddleware
+    ( Static.staticPolicy
+        ( Static.policy rewriteEvents >-> Static.addBase storageDir
+        )
+    )
+  where
+    -- Turn /events/2/foo.pdf -> /2/foo.pdf
+    -- since that's the actual path inside the event attachment storage folder
+    rewriteEvents :: String -> Maybe String
+    rewriteEvents s =
+      let t = Text.pack s
+       in if "events/" `Text.isPrefixOf` t
+            then Just (Text.unpack $ Text.replace "events/" "" t)
+            else Nothing
