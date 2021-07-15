@@ -34,7 +34,7 @@ import qualified Events.Preview
 import qualified Events.Types as Events
 import GHC.Exts (sortWith)
 import qualified Katip as K
-import Layout (ActiveNavLink (..), LayoutStub (..), success)
+import Layout (ActiveNavLink (..), LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
 import Network.HTTP.Types (status303)
@@ -51,6 +51,15 @@ import qualified Session.Types as Session
 import Text.Read (readEither)
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
+
+page :: Bool -> Html () -> Html ()
+page userIsAdmin content = do
+  div_ [class_ "container"] $ do
+    when userIsAdmin $
+      a_ [class_ "mb-1 mb-3 btn btn-sm btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
+    h1_ [class_ "h3 mb-4"] "Veranstaltungen"
+    div_ [class_ "my-3"] $ infoBox "Zum Öffnen einer Veranstaltung einfach auf den Titel klicken"
+    div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] content
 
 getAll ::
   (MonadIO m, MonadReader env m, MonadThrow m, App.HasDb env) =>
@@ -77,12 +86,7 @@ getAll auth = do
     eventPreviewsHtml :: [(Events.Id, Events.Event, Maybe Events.Reply)] -> Html ()
     eventPreviewsHtml events =
       let userIsAdmin = Session.isUserAdmin auth
-       in div_ [class_ "container"] $ do
-            when userIsAdmin $
-              a_ [class_ "mb-1 mb-2 btn btn-sm btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
-            h1_ [class_ "h3 mb-3"] "Veranstaltungen"
-            div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] $
-              mapM_ (div_ [class_ "col"] . Events.Preview.render) events
+       in page userIsAdmin (mapM_ (div_ [class_ "col"] . Events.Preview.render) events)
 
 postReply ::
   ( MonadIO m,
