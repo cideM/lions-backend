@@ -13,7 +13,7 @@ where
 
 import qualified App
 import Control.Exception.Safe
-import Control.Monad (forM_, when)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader)
 import Control.Monad.Trans.Resource (InternalState)
@@ -48,7 +48,6 @@ import Network.Wai.Parse
   )
 import qualified Session.Auth as Session
 import qualified Session.Types as Session
-import qualified System.Directory
 import Text.Read (readEither)
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
@@ -61,6 +60,10 @@ getAll auth = do
   events <- toEventList <$> Events.DB.getAll
   return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml events
   where
+    -- Every event includes all replies but the view functions shouldn't have
+    -- to do that logic, so we just extract it. This technically introduces
+    -- redundancy. Maybe it would be better to just define a lens for that.
+    -- TODO: Read the optics book and apply it
     getOwnReplyFromEvent (eventid, event@Events.Event {..}) =
       let Session.UserSession {..} = Session.getSessionFromAuth auth
           reply = find ((==) userSessionUserId . Events.replyUserId) eventReplies
@@ -68,6 +71,9 @@ getAll auth = do
 
     toEventList = map getOwnReplyFromEvent . sortWith (Down . Events.eventDate . snd)
 
+    -- Ideally there's zero markup in the handler files.
+    -- TODO: If you're super bored with lots of time on your hands extract the
+    -- markup
     eventPreviewsHtml :: [(Events.Id, Events.Event, Maybe Events.Reply)] -> Html ()
     eventPreviewsHtml events =
       let userIsAdmin = Session.isUserAdmin auth
@@ -113,11 +119,14 @@ postReply getUser req send eventid@(Events.Id eid) auth = do
 
   send $ Wai.responseLBS status303 [("Location", encodeUtf8 [i|/veranstaltungen/#{eid}|])] mempty
   where
+    -- 10 lines of code that say two params are required
     parseParams' :: IO (Maybe Bool, Int)
     parseParams' = do
       params <- parseParams req
+
       let replyParam = Map.findWithDefault "" "reply" params
           numGuestsParam = Map.findWithDefault "" "numberOfGuests" params
+
       case parseComing replyParam of
         Left e -> throwString $ Text.unpack e
         Right coming -> case parseNumGuests numGuestsParam of
@@ -242,52 +251,54 @@ postCreate internalState req _ = do
   -- but also show nice errors that means always reading the entire request
   -- payload and then doing a check for its size. For now I just won't enforce
   -- any file limit other than the hard 100MB.
-  body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
+  K.katipAddNamespace "postCreate" $ do
+    body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
 
-  let params = paramsToMap $ fst body
-      fromParams key = Map.findWithDefault "" key params
+    let params = paramsToMap $ fst body
+        fromParams key = Map.findWithDefault "" key params
 
-  (Events.FileActions {..}, encryptedFileInfos) <- A.parseRequest [] body
+    (actions@Events.FileActions {..}, encryptedFileInfos) <- A.makeFileActions [] body
 
-  let notSavedAndDeleteCheckbox =
-        map
-          (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False))
-          fileActionsDontUpload
-      uploadCheckbox = zip (map Events.attachmentInfoFileName fileActionsUpload) (repeat True)
-      checkboxes = notSavedAndDeleteCheckbox ++ uploadCheckbox
-      input =
-        EventForm.FormInput
-          (fromParams "eventTitleInput")
-          (fromParams "eventDateInput")
-          (fromParams "eventLocationInput")
-          (fromParams "eventDescriptionInput")
-          (isJust $ Map.lookup "eventFamAllowedInput" params)
-          checkboxes
-          encryptedFileInfos
+    -- Most of this code shows up in the postUpdate handler as well, at least
+    -- in some form. Not sure if I want to further extract shared code.
+    -- Dependencies are always a double-edged sword.
+    -- makeFileActions includes all the logic for combining the various sources of input:
+    --   - New files
+    --   - Checkboxes from previous request
+    --   - Files already uploaded and stored in DB
+    --  The code here is then just to turn that state into UI
+    let notSavedAndDeleteCheckbox =
+          map
+            (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False))
+            fileActionsDontUpload
 
-  case EventForm.makeEvent input of
-    Left state -> do
-      return . LayoutStub "Neue Veranstaltung" (Just Events) $
-        div_ [class_ "container p-2"] $ do
-          h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
-          EventForm.render "Speichern" "/veranstaltungen/neu" input state
-    Right newEvent@Events.Create {..} -> do
-      eid <- Events.DB.save newEvent
+        uploadCheckbox = zip (map Events.attachmentInfoFileName fileActionsUpload) (repeat True)
 
-      forM_ fileActionsUpload $ \(Events.AttachmentInfo {..}) -> do
-        let fileName = Text.unpack attachmentInfoFileName
+        checkboxes = notSavedAndDeleteCheckbox ++ uploadCheckbox
 
-        K.katipAddContext (K.sl "file_name" fileName) $ do
-          K.logLocM K.DebugS "saving file"
+        input =
+          EventForm.FormInput
+            (fromParams "eventTitleInput")
+            (fromParams "eventDateInput")
+            (fromParams "eventLocationInput")
+            (fromParams "eventDescriptionInput")
+            (isJust $ Map.lookup "eventFamAllowedInput" params)
+            checkboxes
+            encryptedFileInfos
 
-          A.save eid attachmentInfoFilePath fileName
-          liftIO $ System.Directory.removeFile attachmentInfoFilePath
+    case EventForm.makeEvent input of
+      Left state -> do
+        return . LayoutStub "Neue Veranstaltung" (Just Events) $
+          div_ [class_ "container p-2"] $ do
+            h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
+            EventForm.render "Speichern" "/veranstaltungen/neu" input state
+      Right newEvent@Events.Create {..} -> do
+        eid <- Events.DB.save newEvent
 
-      forM_ fileActionsDontUpload $ \(Events.AttachmentInfo {..}) -> do
-        liftIO $ System.Directory.removeFile attachmentInfoFilePath
+        A.processFileActions eid actions
 
-      return . LayoutStub "Neue Veranstaltung" (Just Events) $
-        success $ "Neue Veranstaltung " <> createTitle <> " erfolgreich erstellt!"
+        return . LayoutStub "Neue Veranstaltung" (Just Events) $
+          success $ "Neue Veranstaltung " <> createTitle <> " erfolgreich erstellt!"
 
 getEdit ::
   ( MonadIO m,
@@ -339,15 +350,26 @@ postUpdate internalState req eid@(Events.Id eventid) _ = do
     Events.DB.get eid >>= \case
       Nothing -> throwString $ "edit event but no event for id: " <> show eventid
       Just Events.Event {..} -> do
-        (Events.FileActions {..}, encryptedFileInfos) <- A.parseRequest eventAttachments body
+        (actions@Events.FileActions {..}, encryptedFileInfos) <- A.makeFileActions eventAttachments body
 
         let params = paramsToMap $ fst body
             fromParams key = Map.findWithDefault "" key params
+
             savedButDeleteCheckbox = zip (map Events.attachmentFileName fileActionsDelete) (repeat False)
+
             keepCheckbox = zip (map Events.attachmentFileName fileActionsKeep) (repeat True)
-            notSavedAndDeleteCheckbox = map (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False)) fileActionsDontUpload
+
+            notSavedAndDeleteCheckbox =
+              map
+                (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False))
+                fileActionsDontUpload
+
             uploadCheckbox = zip (map Events.attachmentInfoFileName fileActionsUpload) (repeat True)
-            checkboxes = keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox ++ uploadCheckbox
+
+            checkboxes =
+              keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox
+                ++ uploadCheckbox
+
             input =
               EventForm.FormInput
                 (fromParams "eventTitleInput")
@@ -369,20 +391,7 @@ postUpdate internalState req eid@(Events.Id eventid) _ = do
                     input
                     state
           Right event@Events.Create {..} -> do
-            forM_ fileActionsUpload $ \(Events.AttachmentInfo {..}) -> do
-              let fileName = Text.unpack attachmentInfoFileName
-
-              K.katipAddContext (K.sl "file_name" fileName) $ do
-                K.logLocM K.DebugS "saving file"
-
-                A.save eid attachmentInfoFilePath fileName
-                liftIO $ System.Directory.removeFile attachmentInfoFilePath
-
-            forM_ fileActionsDelete $ \Events.Attachment {..} -> do
-              A.remove eid (Text.unpack attachmentFileName)
-
-            forM_ fileActionsDontUpload $ \(Events.AttachmentInfo {..}) -> do
-              liftIO $ System.Directory.removeFile attachmentInfoFilePath
+            A.processFileActions eid actions
 
             Events.DB.update eid event
 

@@ -31,6 +31,9 @@ data AttachmentInfo = AttachmentInfo
 instance ToJSON AttachmentInfo where
   toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 14}
 
+instance FromJSON AttachmentInfo where
+  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 14}
+
 -- This is an attachment that's already stored in the database. I didn't store
 -- the content type together with the files and the file name is in this case
 -- equal to the file path.
@@ -45,13 +48,20 @@ instance FromJSON Attachment where
 
 instance ToJSON Attachment where
   toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
+
 data FileActions = FileActions
   { fileActionsKeep :: [Attachment],
     fileActionsDelete :: [Attachment],
     fileActionsDontUpload :: [AttachmentInfo],
     fileActionsUpload :: [AttachmentInfo]
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance FromJSON FileActions where
+  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 11}
+
+instance ToJSON FileActions where
+  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 11}
 
 -- Now that I'm writing tests that involve this data type I find it a bit weird
 -- that it doesn't have the event ID. Strictly speaking a reply is meaningless

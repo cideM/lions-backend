@@ -3,12 +3,14 @@ module Events.Attachments
     removeAll,
     remove,
     middleware,
-    parseRequest,
+    makeFileActions,
+    processFileActions,
   )
 where
 
 import qualified App
 import Control.Exception.Safe
+import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.ByteString (ByteString)
@@ -69,7 +71,35 @@ remove (Events.Id eid) filename = do
   destinationDir <- asks App.getStorageDir
   liftIO $ System.Directory.removeFile $ destinationDir </> show eid </> filename
 
-parseRequest ::
+-- This is the dual to makeFileActions, which makes the necessary changes
+processFileActions ::
+  ( MonadIO m,
+    K.KatipContext m,
+    App.HasEventStorage env,
+    MonadReader env m,
+    MonadThrow m
+  ) =>
+  Events.Id ->
+  Events.FileActions ->
+  m ()
+processFileActions eid actions@Events.FileActions {..} = do
+  K.katipAddContext (K.sl "file_actions" actions) $ do
+    forM_ fileActionsUpload $ \(Events.AttachmentInfo {..}) -> do
+      K.logLocM K.DebugS "saving file"
+      save eid attachmentInfoFilePath $ Text.unpack attachmentInfoFileName
+
+      K.logLocM K.DebugS "removing temp file"
+      liftIO $ System.Directory.removeFile attachmentInfoFilePath
+
+    forM_ fileActionsDelete $ \Events.Attachment {..} -> do
+      K.logLocM K.DebugS "removing attachment"
+      remove eid $ Text.unpack attachmentFileName
+
+    forM_ fileActionsDontUpload $ \(Events.AttachmentInfo {..}) -> do
+      K.logLocM K.DebugS "removing temp file"
+      liftIO $ System.Directory.removeFile attachmentInfoFilePath
+
+makeFileActions ::
   ( MonadIO m,
     K.KatipContext m,
     App.HasSessionEncryptionKey env,
@@ -79,7 +109,7 @@ parseRequest ::
   [Events.Attachment] ->
   ([Param], [(ByteString, FileInfo FilePath)]) ->
   m (Events.FileActions, [ByteString])
-parseRequest alreadySaved body = do
+makeFileActions alreadySaved body = do
   pastFileInfos <-
     E.runExceptT parseEncryptedFileInfo >>= \case
       Left e -> throwString $ Text.unpack e
