@@ -10,7 +10,6 @@ module App
     HasAwsSecretAccessKey (..),
     HasScryptSignerKey (..),
     HasScryptSaltSeparator (..),
-    HasSessionKeyFile (..),
     HasSessionDataVaultKey (..),
     HasRequestIdVaultKey (..),
     HasSessionEncryptionKey (..),
@@ -53,7 +52,6 @@ parseEnv s = throwString $ "unknown environment: " <> show s
 data Env = Env
   { envDatabaseConnection :: SQLite.Connection,
     envEnvironment :: Environment,
-    envSessionKeyFile :: FilePath,
     envAwsAccessKey :: AWS.AccessKey,
     envAwsSecretAccessKey :: AWS.SecretKey,
     envScryptSignerKey :: ByteString,
@@ -93,15 +91,6 @@ instance HasEventStorage FilePath where
 
 instance HasEventStorage Env where
   getStorageDir = envEventAttachmentStorageDir
-
-class HasSessionKeyFile a where
-  getSessionKeyFile :: a -> FilePath
-
-instance HasSessionKeyFile FilePath where
-  getSessionKeyFile = id
-
-instance HasSessionKeyFile Env where
-  getSessionKeyFile = envSessionKeyFile
 
 class HasAwsAccessKey a where
   getAwsAccessKey :: a -> AWS.AccessKey

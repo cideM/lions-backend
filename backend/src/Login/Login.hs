@@ -126,14 +126,13 @@ login email formPw = do
 -- encrypted session ID
 postLogin ::
   ( MonadIO m,
-    App.HasEnvironment env,
+    MonadThrow m,
+    MonadReader env m,
     App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
-    MonadThrow m,
     App.HasScryptSaltSeparator env,
-    App.HasDb env,
-    MonadReader env m
+    App.HasDb env
   ) =>
   Wai.Request ->
   (Wai.Response -> m a) ->

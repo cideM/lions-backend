@@ -11,8 +11,8 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import qualified Events.Handlers
 import qualified Events.Attachments
+import qualified Events.Handlers
 import qualified Events.Types as Events
 import qualified Katip as K
 import Layout (LayoutStub (..), layout, warning)
@@ -52,7 +52,6 @@ server ::
     MonadThrow m,
     App.HasRequestIdVaultKey env,
     App.HasEnvironment env,
-    App.HasSessionEncryptionKey env,
     UnliftIO.MonadUnliftIO m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
@@ -297,64 +296,67 @@ main = do
         runResourceT $
           withInternalState
             ( \internalState -> do
-                Logging.withKatip $ do
-                  ctx <- K.getKatipContext
-                  ns <- K.getKatipNamespace
-                  logEnv <- K.getLogEnv
+                Logging.withKatip
+                  K.DebugS
+                  "main"
+                  (K.Environment . Text.pack $ show appEnv)
+                  $ do
+                    ctx <- K.getKatipContext
+                    ns <- K.getKatipNamespace
+                    logEnv <- K.getLogEnv
 
-                  let env =
-                        App.Env
-                          { envDatabaseConnection = conn,
-                            envEnvironment = appEnv,
-                            envSessionKeyFile = sessionKeyFile,
-                            envAwsAccessKey = aKey,
-                            envAwsSecretAccessKey = sKey,
-                            envScryptSignerKey = signerKey,
-                            envScryptSaltSeparator = saltSep,
-                            envEventAttachmentStorageDir = storageDir,
-                            envSessionDataVaultKey = sessionDataVaultKey,
-                            envRequestIdVaultKey = requestIdVaultKey,
-                            envSessionEncryptionKey = sessionKey,
-                            envLogNamespace = ns,
-                            envLogContext = ctx,
-                            envLogEnv = logEnv
-                          }
+                    let env =
+                          App.Env
+                            { envDatabaseConnection = conn,
+                              envEnvironment = appEnv,
+                              envAwsAccessKey = aKey,
+                              envAwsSecretAccessKey = sKey,
+                              envScryptSignerKey = signerKey,
+                              envScryptSaltSeparator = saltSep,
+                              envEventAttachmentStorageDir = storageDir,
+                              envSessionDataVaultKey = sessionDataVaultKey,
+                              envRequestIdVaultKey = requestIdVaultKey,
+                              envSessionEncryptionKey = sessionKey,
+                              envLogNamespace = ns,
+                              envLogContext = ctx,
+                              envLogEnv = logEnv
+                            }
 
-                  let port = (3000 :: Int)
-                      app' =
-                        server
-                          conn
-                          awsEnv
-                          port
-                          appEnv
-                          sessionDataVaultKey
-                          internalState
+                    let port = (3000 :: Int)
+                        app' =
+                          server
+                            conn
+                            awsEnv
+                            port
+                            appEnv
+                            sessionDataVaultKey
+                            internalState
 
-                  K.katipAddContext (K.sl "port" port) $ do
-                    K.logLocM K.InfoS "starting server"
+                    K.katipAddContext (K.sl "port" port) $ do
+                      K.logLocM K.InfoS "starting server"
 
-                    let assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
-                        assetMiddleware = Wai.liftMiddleware $ staticPolicy (addBase "public")
-                        -- Must come after sessionMiddleware because these files shouldn't be public
-                        storageStaticMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
-                        storageStaticMiddleware = Wai.liftMiddleware $ staticPolicy (addBase storageDir)
-                        allMiddlewares =
-                          assetMiddleware
-                            . (Wai.liftMiddleware logStdout)
-                            . Request.middleware
-                            . Session.middleware
-                            . Events.Attachments.middleware storageDir
-                            . storageStaticMiddleware
-                        appWithMiddlewares = allMiddlewares app'
+                      let assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
+                          assetMiddleware = Wai.liftMiddleware $ staticPolicy (addBase "public")
+                          -- Must come after sessionMiddleware because these files shouldn't be public
+                          storageStaticMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
+                          storageStaticMiddleware = Wai.liftMiddleware $ staticPolicy (addBase storageDir)
+                          allMiddlewares =
+                            assetMiddleware
+                              . (Wai.liftMiddleware logStdout)
+                              . Request.middleware
+                              . Session.middleware
+                              . Events.Attachments.middleware storageDir
+                              . storageStaticMiddleware
+                          appWithMiddlewares = allMiddlewares app'
 
-                    let settings = setPort port $ setHost "localhost" defaultSettings
-                    liftIO . runSettings settings $
-                      ( \r s ->
-                          let send = liftIO . s
-                           in flip App.unApp env
-                                . handleAny (\_ -> send500 send)
-                                $ appWithMiddlewares r send
-                      )
+                      let settings = setPort port $ setHost "localhost" defaultSettings
+                      liftIO . runSettings settings $
+                        ( \r s ->
+                            let send = liftIO . s
+                             in flip App.unApp env
+                                  . handleAny (\_ -> send500 send)
+                                  $ appWithMiddlewares r send
+                        )
             )
     )
   where
