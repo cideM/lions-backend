@@ -1,4 +1,4 @@
-module PasswordReset.SendEmail (sendMail) where
+module PasswordReset.Mail (send) where
 
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -38,8 +38,8 @@ makeEmail host token =
 -- Function for sending email through AWS. This is exported because it's
 -- partially applied in Main and then passed to the handler, so the handler can
 -- be tested without sending emails.
-sendMail :: AWS.Env -> Text -> Text -> Text -> IO SES.SendEmailResponse
-sendMail awsEnv resetHost email token =
+send :: AWS.Env -> Text -> Text -> Text -> IO SES.SendEmailResponse
+send awsEnv resetHost email token =
   let (textMail, htmlMail) = makeEmail resetHost token
       message =
         SES.message

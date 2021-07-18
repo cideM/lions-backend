@@ -26,7 +26,7 @@ import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified PasswordReset.PasswordReset as PasswordReset
-import qualified PasswordReset.SendEmail as SendEmail
+import qualified PasswordReset.Mail as Mail
 import qualified Request.Middleware as Request
 import qualified Session.Auth as Session
 import qualified Session.Middleware as Session
@@ -111,7 +111,7 @@ server
         -- with integration tests because interactions with the DB are one of
         -- my primary sources of bugs. But it helps me focus on the clean.
         -- TODO: Make this more ergonomic maybe by bundling stuff in a record
-        sendMail' = SendEmail.sendMail awsEnv resetHost
+        send' = Mail.send awsEnv resetHost
         getUser = User.DB.getUser dbConn
         -- Some helpers related to rendering content. I could look into
         -- bringing back Snap or something similar so I don't need to
@@ -265,7 +265,7 @@ server
         ["passwort", "link"] ->
           case Wai.requestMethod req of
             "GET" -> PasswordReset.showResetForm >>= send200 . layout'
-            "POST" -> PasswordReset.handleReset req sendMail' >>= send200 . layout'
+            "POST" -> PasswordReset.handleReset req send' >>= send200 . layout'
             _ -> send404
         _ -> send404
 
