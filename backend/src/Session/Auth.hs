@@ -45,8 +45,7 @@ data Authenticated = IsUser User.Session | IsAdmin Admin deriving (Show, Eq)
 newtype Admin = Admin User.Session deriving (Show, Eq)
 
 get :: Authentication -> Maybe User.Session
-get (IsAuthenticated auth) = Just $ get' auth
-get _ = Nothing
+get = fmap get' . getAuth
 
 isAdmin :: Authentication -> Bool
 isAdmin = isJust . getAdmin

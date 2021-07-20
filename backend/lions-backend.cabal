@@ -35,6 +35,7 @@ common shared-props
     FlexibleInstances
     FlexibleContexts
     OverloadedStrings
+    TupleSections
     ScopedTypeVariables
 
 

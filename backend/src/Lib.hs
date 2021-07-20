@@ -2,7 +2,7 @@ module Lib (server, main) where
 
 import qualified App
 import Control.Exception.Safe
-import Control.Monad ((>=>))
+import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Control.Monad.Trans.Resource (InternalState, runResourceT, withInternalState)
@@ -81,14 +81,12 @@ server
 
         -- TODO: Test this
         adminOnlyOrOwn id next =
-          case Session.getAuth authInfo of
-            Nothing -> send403
-            Just auth ->
-              if Session.isAdmin authInfo
-                then next (id, auth)
-                else
-                  let User.Session {..} = Session.get' auth
-                   in if sessionUserId == id then next (id, auth) else send403
+          maybe send403 (next . (id,)) $ do
+            auth <- Session.getAuth authInfo
+            unless (Session.isAdmin authInfo) Nothing
+            let User.Session {..} = Session.get' auth
+            unless (sessionUserId /= id) Nothing
+            pure auth
 
         adminOnly' next = maybe send403 next (Session.getAdmin authInfo)
 
