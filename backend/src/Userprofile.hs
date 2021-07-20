@@ -8,7 +8,7 @@ import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
-import Session.Types (Authenticated (..), UserSession (..))
+import Session.Auth (Authenticated)
 import qualified Session.Auth as Session
 import User.DB (getUser)
 import User.Types
@@ -18,6 +18,7 @@ import User.Types
     UserProfile (..),
     showEmail,
   )
+import qualified User.Types as User
 
 newtype CanDelete = CanDelete Bool
 
@@ -93,9 +94,9 @@ get ::
   m (Maybe LayoutStub)
 get conn paramId auth = do
   let userIdToShow = UserId paramId
-      userIsAdmin = Session.isUserAdmin auth
-      UserSession {..} = Session.getSessionFromAuth auth
-      isOwnProfile = userSessionUserId == userIdToShow
+      userIsAdmin = Session.isAdmin auth
+      User.Session {..} = Session.get' auth
+      isOwnProfile = sessionUserId == userIdToShow
   user <- liftIO $ getUser conn userIdToShow
   return $ case user of
     Nothing -> Nothing

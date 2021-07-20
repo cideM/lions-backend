@@ -26,7 +26,6 @@ import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Session.Auth as Session
-import qualified Session.Types as Session
 import Wai (parseParams)
 import Prelude hiding (id)
 
@@ -192,7 +191,7 @@ saveNewMessage ::
   (MonadIO m) =>
   SQLite.Connection ->
   Wai.Request ->
-  Session.AdminUser ->
+  Session.Admin ->
   m LayoutStub
 saveNewMessage conn req _ = do
   params <- liftIO $ parseParams req
@@ -212,7 +211,7 @@ handleEditMessage ::
   SQLite.Connection ->
   Wai.Request ->
   WelcomeMsgId ->
-  Session.AdminUser ->
+  Session.Admin ->
   m LayoutStub
 handleEditMessage conn req mid@(WelcomeMsgId msgid) _ = do
   params <- liftIO $ parseParams req
@@ -231,7 +230,7 @@ showDeleteConfirmation ::
   (MonadIO m, MonadThrow m) =>
   SQLite.Connection ->
   WelcomeMsgId ->
-  Session.AdminUser ->
+  Session.Admin ->
   m LayoutStub
 showDeleteConfirmation conn mid@(WelcomeMsgId msgid) _ = do
   (liftIO $ getWelcomeMsgFromDb conn mid) >>= \case
@@ -247,7 +246,7 @@ handleDeleteMessage ::
   (MonadIO m) =>
   SQLite.Connection ->
   WelcomeMsgId ->
-  Session.AdminUser ->
+  Session.Admin ->
   m LayoutStub
 handleDeleteMessage conn msgid _ = do
   liftIO $ deleteMessage conn msgid
@@ -255,14 +254,14 @@ handleDeleteMessage conn msgid _ = do
 
 showAddMessageForm ::
   (MonadIO m) =>
-  Session.AdminUser ->
+  Session.Admin ->
   m LayoutStub
 showAddMessageForm _ = do
   now <- liftIO $ Time.getCurrentTime
   let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ now
   return . createPageLayout $ form (FormInput formatted "") emptyState "/neu"
 
-showMessageEditForm :: (MonadIO m, MonadThrow m) => SQLite.Connection -> WelcomeMsgId -> Session.AdminUser -> m LayoutStub
+showMessageEditForm :: (MonadIO m, MonadThrow m) => SQLite.Connection -> WelcomeMsgId -> Session.Admin -> m LayoutStub
 showMessageEditForm conn mid@(WelcomeMsgId msgid) _ = do
   (liftIO $ getWelcomeMsgFromDb conn mid) >>= \case
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
@@ -272,7 +271,6 @@ showMessageEditForm conn mid@(WelcomeMsgId msgid) _ = do
 
 showFeed :: (MonadIO m) => SQLite.Connection -> Session.Authenticated -> m LayoutStub
 showFeed conn auth = do
-  let userIsAdmin = Session.isUserAdmin auth
   msgs <- liftIO $ getAllWelcomeMsgsFromDb conn
   zone <- liftIO $ Time.getCurrentTimeZone
-  return $ renderFeed zone userIsAdmin msgs
+  return $ renderFeed zone (Session.isAdmin auth) msgs

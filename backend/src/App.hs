@@ -28,7 +28,7 @@ import qualified Katip as K
 import qualified Network.AWS as AWS
 import qualified Password.Reset.Mail.Types
 import qualified Request.Types
-import qualified Session.Types
+import qualified Session.Auth as Auth
 import qualified UnliftIO
 import qualified Web.ClientSession as ClientSession
 
@@ -62,7 +62,7 @@ data Env = Env
     envScryptSignerKey :: ByteString,
     envScryptSaltSeparator :: ByteString,
     envEventAttachmentStorageDir :: FilePath,
-    envSessionDataVaultKey :: Session.Types.VaultKey,
+    envSessionDataVaultKey :: Auth.VaultKey,
     envRequestIdVaultKey :: Request.Types.IdVaultKey,
     envSessionEncryptionKey :: ClientSession.Key,
     envLogNamespace :: K.Namespace,
@@ -152,9 +152,9 @@ instance HasScryptSaltSeparator Env where
   getScryptSaltSeparator = envScryptSaltSeparator
 
 class HasSessionDataVaultKey a where
-  getSessionDataVaultKey :: a -> Session.Types.VaultKey
+  getSessionDataVaultKey :: a -> Auth.VaultKey
 
-instance HasSessionDataVaultKey Session.Types.VaultKey where
+instance HasSessionDataVaultKey Auth.VaultKey where
   getSessionDataVaultKey = id
 
 instance HasSessionDataVaultKey Env where

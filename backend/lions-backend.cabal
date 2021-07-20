@@ -27,6 +27,7 @@ common shared-props
   default-extensions:
     DerivingVia
     RecordWildCards
+    GADTs
     QuasiQuotes
     DeriveGeneric
     NamedFieldPuns
@@ -149,7 +150,6 @@ library
     Password.Reset.Form
     Password.Change.Handlers
     Password.Change.Form
-    Session.Types
     Session.Middleware
     Session.Session
     Session.Auth

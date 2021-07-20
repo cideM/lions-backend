@@ -46,9 +46,9 @@ import Network.Wai.Parse
     setMaxRequestFileSize,
     tempFileBackEnd,
   )
-import qualified Session.Auth as Session
-import qualified Session.Types as Session
+import qualified Session.Auth as Auth
 import Text.Read (readEither)
+import qualified User.Types as User
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
 
@@ -63,7 +63,7 @@ page userIsAdmin content = do
 
 getAll ::
   (MonadIO m, MonadReader env m, MonadThrow m, App.HasDb env) =>
-  Session.Authenticated ->
+  Auth.Authenticated ->
   m LayoutStub
 getAll auth = do
   events <- toEventList <$> Events.DB.getAll
@@ -74,8 +74,8 @@ getAll auth = do
     -- redundancy. Maybe it would be better to just define a lens for that.
     -- TODO: Read the optics book and apply it
     getOwnReplyFromEvent (eventid, event@Events.Event {..}) =
-      let Session.UserSession {..} = Session.getSessionFromAuth auth
-          reply = find ((==) userSessionUserId . Events.replyUserId) eventReplies
+      let User.Session {..} = Auth.get' auth
+          reply = find ((==) sessionUserId . Events.replyUserId) eventReplies
        in (eventid, event, reply)
 
     toEventList = map getOwnReplyFromEvent . sortWith (Down . Events.eventDate . snd)
@@ -85,7 +85,7 @@ getAll auth = do
     -- markup
     eventPreviewsHtml :: [(Events.Id, Events.Event, Maybe Events.Reply)] -> Html ()
     eventPreviewsHtml events =
-      let userIsAdmin = Session.isUserAdmin auth
+      let userIsAdmin = Auth.isAdmin auth
        in page userIsAdmin (mapM_ (div_ [class_ "col"] . Events.Preview.render) events)
 
 postReply ::
@@ -98,14 +98,14 @@ postReply ::
   Wai.Request ->
   (Wai.Response -> m a) ->
   Events.Id ->
-  Session.Authenticated ->
+  Auth.Authenticated ->
   m a
 postReply getUser req send eventid@(Events.Id eid) auth = do
-  let Session.UserSession {..} = Session.getSessionFromAuth auth
+  let User.Session {..} = Auth.get' auth
 
   UserProfile {userEmail = userEmail} <-
-    (liftIO $ getUser userSessionUserId) >>= \case
-      Nothing -> throwString [i|"no user for userid from session #{userSessionUserId}"|]
+    (liftIO $ getUser sessionUserId) >>= \case
+      Nothing -> throwString [i|"no user for userid from session #{sessionUserId}"|]
       Just v -> return v
 
   (coming, numberOfGuests) <- liftIO $ parseParams'
@@ -116,10 +116,10 @@ postReply getUser req send eventid@(Events.Id eid) auth = do
   -- as having no reply. The "Just" case is then either yes or no, which
   -- doesn't matter. What matters is that I now store that repl.
   case coming of
-    Nothing -> Events.DB.deleteReply eventid userSessionUserId
+    Nothing -> Events.DB.deleteReply eventid sessionUserId
     Just yesno ->
       Events.DB.upsertReply eventid $
-        (Events.Reply yesno userEmail userSessionUserId numberOfGuests)
+        (Events.Reply yesno userEmail sessionUserId numberOfGuests)
 
   send $ Wai.responseLBS status303 [("Location", encodeUtf8 [i|/veranstaltungen/#{eid}|])] mempty
   where
@@ -157,23 +157,23 @@ get ::
     MonadReader env m
   ) =>
   Events.Id ->
-  Session.Authenticated ->
+  Auth.Authenticated ->
   m (Maybe LayoutStub)
 get eventid auth = do
-  let userIsAdmin = Session.isUserAdmin auth
-      Session.UserSession {..} = Session.getSessionFromAuth auth
+  let userIsAdmin = Auth.isAdmin auth
+      User.Session {..} = Auth.get' auth
 
   Events.DB.get eventid >>= \case
     Nothing -> return Nothing
     Just e@Events.Event {..} -> do
-      let ownReply = find ((==) userSessionUserId . Events.replyUserId) eventReplies
+      let ownReply = find ((==) sessionUserId . Events.replyUserId) eventReplies
       return . Just
         . LayoutStub
           eventTitle
           (Just Events)
         $ Events.Full.render (Events.Full.ShowAdminTools userIsAdmin) ownReply eventid e
 
-getCreate :: (MonadIO m) => Session.AdminUser -> m LayoutStub
+getCreate :: (MonadIO m) => Auth.Admin -> m LayoutStub
 getCreate _ = do
   return . LayoutStub "Neue Veranstaltung" (Just Events) $
     div_ [class_ "container p-2"] $ do
@@ -188,7 +188,7 @@ postDelete ::
     MonadReader env m
   ) =>
   Events.Id ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 postDelete eventid _ = do
   maybeEvent <- Events.DB.get eventid
@@ -211,7 +211,7 @@ getConfirmDelete ::
     MonadThrow m
   ) =>
   Events.Id ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 getConfirmDelete eid@(Events.Id eventid) _ = do
   -- TODO: Duplicated
@@ -244,7 +244,7 @@ postCreate ::
   ) =>
   InternalState ->
   Wai.Request ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 postCreate internalState req _ = do
   -- There's no point in trying to catch an exception arising from a payload
@@ -311,7 +311,7 @@ getEdit ::
     MonadThrow m
   ) =>
   Events.Id ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 getEdit eid@(Events.Id eventid) _ = do
   (Events.DB.get eid) >>= \case
@@ -345,7 +345,7 @@ postUpdate ::
   InternalState ->
   Wai.Request ->
   Events.Id ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 postUpdate internalState req eid@(Events.Id eventid) _ = do
   body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req

@@ -23,7 +23,7 @@ import qualified Network.Wai as Wai
 import Scrypt (verifyPassword)
 import Session.Session (Session (..))
 import qualified Session.Session as Session
-import Session.Types (Authentication (..))
+import qualified Session.Auth as Auth
 import qualified Session.Valid
 import User.DB (getCredentials)
 import User.Types (Role, UserId (..))
@@ -163,7 +163,7 @@ postLogin req send = do
       send
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-        . layout IsNotAuthenticated
+        . layout Auth.notAuthenticated
         . LoginForm.form
         $ LoginForm.NotLoggedInValidated
           email
@@ -171,7 +171,9 @@ postLogin req send = do
           formPw
           (Just "Ungültige Kombination aus Email und Passwort")
 
-getLogin :: (MonadIO m) => Authentication -> m (Html ())
-getLogin (IsNotAuthenticated) =
-  return . layout IsNotAuthenticated . LoginForm.form $ LoginForm.NotLoggedInNotValidated
-getLogin auth = return . layout auth . LoginForm.form $ LoginForm.LoggedIn
+getLogin :: (MonadIO m) => Auth.Authentication -> m (Html ())
+getLogin auth =
+  return . layout auth . LoginForm.form $
+    if Auth.isAuthenticated auth
+      then LoginForm.LoggedIn
+      else LoginForm.NotLoggedInNotValidated

@@ -18,13 +18,8 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
-import Session.Types
-  ( AdminUser (..),
-    Authenticated (..),
-    Authentication (..),
-    UserSession (..),
-  )
-import User.Types (UserId (..))
+import qualified User.Types as User
+import qualified Session.Auth as Session
 
 data LayoutStub = LayoutStub
   { layoutStubTitle :: Text,
@@ -43,7 +38,7 @@ ariaLabel_ = makeAttribute "aria-label"
 ariaLabelledBy_ = makeAttribute "aria-labelledby"
 ariaHidden_ = makeAttribute "aria-hidden"
 
-layout :: Authentication -> LayoutStub -> Html ()
+layout :: Session.Authentication -> LayoutStub -> Html ()
 layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = activeNavLink, layoutStubContent = pageContent}) =
   doctype_ *> do
     html_ [lang_ "de-DE"] $ do
@@ -87,22 +82,15 @@ layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = 
                           ("/nutzer", "Mitglieder", Just Members),
                           ("/login", "Login", Just Login)
                         ]
-                          ++ ( case getUserId auth of
+                          ++ ( case Session.get auth of
                                  Nothing -> []
-                                 Just uid -> [([i|/nutzer/#{uid}|], "Mein Profil", Just Profile)]
+                                 Just User.Session {..} -> [([i|/nutzer/#{sessionUserId}|], "Mein Profil", Just Profile)]
                              )
                       )
           div_ [class_ "py-4 content"] pageContent
           script_ [src_ "/index.js"] ("" :: Text.Text)
           script_ [src_ "/bootstrap.bundle.min.js"] ("" :: Text.Text)
   where
-    getUserId (IsAuthenticated (IsUser (UserSession {..}))) =
-      let (UserId uid) = userSessionUserId
-       in Just uid
-    getUserId (IsAuthenticated (IsAdmin (AdminUser (UserSession {..})))) =
-      let (UserId uid) = userSessionUserId
-       in Just uid
-    getUserId _ = Nothing
     f :: (Text, Text, Maybe ActiveNavLink) -> Html ()
     f (href, label, route) =
       let classes = Text.unwords $ "nav-link" : (["active text-decoration-underline" | route == activeNavLink])
@@ -137,4 +125,3 @@ infoBox msg = do
       |] ::
             Text
         )
-

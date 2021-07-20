@@ -20,8 +20,7 @@ import qualified Database.SQLite.Simple as SQLite
 import Layout (LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
-import qualified Session.Types as Session
-import qualified Session.Auth as Session
+import qualified Session.Auth as Auth
 import User.DB
   ( deleteUserById,
     getRolesFromDb,
@@ -43,7 +42,7 @@ import Wai (parseParams)
 
 createGet ::
   (MonadIO m) =>
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 createGet _ =
   return $
@@ -60,7 +59,7 @@ createPost ::
   (MonadIO m) =>
   SQLite.Connection ->
   Wai.Request ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 createPost conn req _ = do
   params <- liftIO $ parseParams req
@@ -113,7 +112,7 @@ deletePost ::
   (MonadIO m, MonadThrow m) =>
   SQLite.Connection ->
   UserId ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 deletePost conn userId _ = do
   user <- liftIO $ getUser conn userId
@@ -132,7 +131,7 @@ deleteGet ::
   (MonadIO m, MonadThrow m) =>
   SQLite.Connection ->
   UserId ->
-  Session.AdminUser ->
+  Auth.Admin ->
   m LayoutStub
 deleteGet conn userId@(UserId uid) _ = do
   user <- liftIO $ getUser conn userId
@@ -155,7 +154,7 @@ editGet ::
   (MonadIO m) =>
   SQLite.Connection ->
   UserId ->
-  Session.Authenticated ->
+  Auth.Authenticated ->
   m LayoutStub
 editGet conn userIdToEdit@(UserId uid) auth = do
   user <- liftIO $ getUser conn userIdToEdit
@@ -169,7 +168,7 @@ editGet conn userIdToEdit@(UserId uid) auth = do
        in LayoutStub "Nutzer Editieren" Nothing $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
               User.Form.render
-                (CanEditRoles $ Session.isUserAdmin auth)
+                (CanEditRoles $ Auth.isAdmin auth)
                 "Nutzer editieren"
                 [i|/nutzer/#{uid}/editieren|]
                 ( FormInput
@@ -201,7 +200,7 @@ editPost ::
   SQLite.Connection ->
   Wai.Request ->
   UserId ->
-  Session.Authenticated ->
+  Auth.Authenticated ->
   m LayoutStub
 editPost conn req userId auth = do
   rolesForUserToUpdate <- getRolesFromDb userId
@@ -261,4 +260,4 @@ editPost conn req userId auth = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> showEmail email <> " erfolgreich editiert"
   where
-    userIsAdmin = Session.isUserAdmin auth
+    userIsAdmin = Auth.isAdmin auth

@@ -25,19 +25,19 @@ import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
-import qualified Password.Reset.Mail.Send as Mail
-import qualified Password.Reset.Handlers
 import qualified Password.Change.Handlers
+import qualified Password.Reset.Handlers
+import qualified Password.Reset.Mail.Send as Mail
 import qualified Request.Middleware as Request
 import qualified Session.Auth as Session
 import qualified Session.Middleware as Session
-import qualified Session.Types as Session
 import qualified System.Directory
 import System.Environment (getEnv)
 import Text.Read (readEither)
 import qualified UnliftIO
 import qualified User.DB
 import User.Types (UserId (..))
+import qualified User.Types as User
 import qualified User.User
 import qualified Userlist
 import qualified Userprofile
@@ -64,7 +64,7 @@ server ::
     MonadReader env m
   ) =>
   SQLite.Connection ->
-  Session.SessionDataVaultKey ->
+  Session.VaultKey ->
   InternalState ->
   Wai.ApplicationT m
 server
@@ -77,23 +77,27 @@ server
 
     let vault = Wai.vault req
         -- Create some helpers for doing things based on the user's auth status.
-        routeData = Session.getAuthFromVault sessionDataVaultKey vault
-        adminOnlyOrOwn id next = case routeData of
-          Session.IsAuthenticated auth@(Session.IsAdmin _) -> next (id, auth)
-          Session.IsAuthenticated auth@(Session.IsUser Session.UserSession {Session.userSessionUserId = userId}) ->
-            if userId == id then next (id, auth) else send403
-          _ -> send403
-        adminOnly' next = case routeData of
-          Session.IsAuthenticated (Session.IsAdmin auth) -> next auth
-          _ -> send403
-        authenticatedOnly' next = case routeData of
-          Session.IsAuthenticated auth -> next auth
-          _ -> send403
+        authInfo = Session.fromVault sessionDataVaultKey vault
+
+        -- TODO: Test this
+        adminOnlyOrOwn id next =
+          case Session.getAuth authInfo of
+            Nothing -> send403
+            Just auth ->
+              if Session.isAdmin' authInfo
+                then next (id, auth)
+                else
+                  let User.Session {..} = Session.get' auth
+                   in if sessionUserId == id then next (id, auth) else send403
+
+        adminOnly' next = maybe send403 next (Session.getAdmin authInfo)
+
+        authenticatedOnly' next = maybe send403 next (Session.getAuth authInfo)
 
         -- The layout changes depending on whether you're logged in or not, so
         -- we dependency inversion through partial application. Witness the
         -- simplicity!
-        layout' = layout routeData
+        layout' = layout authInfo
 
         requestId = maybe "" (Text.pack . show) $ Vault.lookup reqIdVaultKey vault
 
@@ -236,7 +240,7 @@ server
         ["login"] ->
           case Wai.requestMethod req of
             "POST" -> Login.postLogin req send
-            "GET" -> Login.getLogin routeData >>= send200
+            "GET" -> Login.getLogin authInfo >>= send200
             _ -> send404
         ["logout"] ->
           case Wai.requestMethod req of
@@ -349,7 +353,7 @@ main = do
       send
         . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-        . layout Session.IsNotAuthenticated
+        . layout Session.notAuthenticated
         . LayoutStub "Fehler" Nothing
         $ div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
