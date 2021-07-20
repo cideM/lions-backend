@@ -9,6 +9,9 @@
 -- example, they both have a userId field
 --
 -- I'm not exporting the constructors on purpose.
+--
+-- Functions marked with ' work on Authenticated, whereas functions without '
+-- work on Authentication
 module Session.Auth
   ( isAdmin,
     isAdmin',
@@ -30,18 +33,23 @@ import Data.Maybe (isJust)
 import qualified Data.Vault.Lazy as Vault
 import qualified User.Types as User
 
+type VaultKey = Vault.Key ([User.Role], User.UserId)
+
 -- These aren't exported on purpose so I don't have nested destructuring
 -- everywhere that would be tedious to refactor in case I ever figure out a
 -- better way of modeling this.
 data Authentication = IsNotAuthenticated | IsAuthenticated Authenticated deriving (Show, Eq)
 
+data Authenticated = IsUser User.Session | IsAdmin Admin deriving (Show, Eq)
+
+newtype Admin = Admin User.Session deriving (Show, Eq)
+
 get :: Authentication -> Maybe User.Session
 get (IsAuthenticated auth) = Just $ get' auth
 get _ = Nothing
 
--- TODO: Fix the naming inconsistency
-isAdmin' :: Authentication -> Bool
-isAdmin' = maybe False isAdmin . getAuth
+isAdmin :: Authentication -> Bool
+isAdmin = isJust . getAdmin
 
 getAdmin :: Authentication -> Maybe Admin
 getAdmin auth =
@@ -59,8 +67,6 @@ isAuthenticated = isJust . get
 notAuthenticated :: Authentication
 notAuthenticated = IsNotAuthenticated
 
-type VaultKey = Vault.Key ([User.Role], User.UserId)
-
 fromVault :: Vault.Key ([User.Role], User.UserId) -> Vault.Vault -> Authentication
 fromVault sessionDataVaultKey vault =
   case Vault.lookup sessionDataVaultKey vault of
@@ -71,14 +77,10 @@ fromVault sessionDataVaultKey vault =
           then IsAdmin . Admin $ User.Session userid roles
           else IsUser $ User.Session userid roles
 
-data Authenticated = IsUser User.Session | IsAdmin Admin deriving (Show, Eq)
-
-isAdmin :: Authenticated -> Bool
-isAdmin (IsAdmin _) = True
-isAdmin _ = False
+isAdmin' :: Authenticated -> Bool
+isAdmin' (IsAdmin _) = True
+isAdmin' _ = False
 
 get' :: Authenticated -> User.Session
 get' (IsAdmin (Admin session)) = session
 get' (IsUser session) = session
-
-newtype Admin = Admin User.Session deriving (Show, Eq)

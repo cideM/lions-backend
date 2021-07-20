@@ -273,4 +273,4 @@ showFeed :: (MonadIO m) => SQLite.Connection -> Session.Authenticated -> m Layou
 showFeed conn auth = do
   msgs <- liftIO $ getAllWelcomeMsgsFromDb conn
   zone <- liftIO $ Time.getCurrentTimeZone
-  return $ renderFeed zone (Session.isAdmin auth) msgs
+  return $ renderFeed zone (Session.isAdmin' auth) msgs

@@ -168,7 +168,7 @@ editGet conn userIdToEdit@(UserId uid) auth = do
        in LayoutStub "Nutzer Editieren" Nothing $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
               User.Form.render
-                (CanEditRoles $ Auth.isAdmin auth)
+                (CanEditRoles $ Auth.isAdmin' auth)
                 "Nutzer editieren"
                 [i|/nutzer/#{uid}/editieren|]
                 ( FormInput
@@ -260,4 +260,4 @@ editPost conn req userId auth = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> showEmail email <> " erfolgreich editiert"
   where
-    userIsAdmin = Auth.isAdmin auth
+    userIsAdmin = Auth.isAdmin' auth

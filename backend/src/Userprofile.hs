@@ -94,7 +94,7 @@ get ::
   m (Maybe LayoutStub)
 get conn paramId auth = do
   let userIdToShow = UserId paramId
-      userIsAdmin = Session.isAdmin auth
+      userIsAdmin = Session.isAdmin' auth
       User.Session {..} = Session.get' auth
       isOwnProfile = sessionUserId == userIdToShow
   user <- liftIO $ getUser conn userIdToShow

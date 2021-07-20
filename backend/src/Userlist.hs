@@ -162,7 +162,7 @@ get conn req auth = do
   return $
     LayoutStub "Mitglieder" (Just Members) $
       div_ [class_ "container p-2"] $ do
-        when (Session.isAdmin auth) $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
+        when (Session.isAdmin' auth) $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
         h1_ [class_ "h4 mb-5"] "Mitgliederliste"
         div_ [class_ "row row-cols-1 g-2"] $
           render (formatDataForView usersToShow) dropdown

@@ -84,7 +84,7 @@ server
           case Session.getAuth authInfo of
             Nothing -> send403
             Just auth ->
-              if Session.isAdmin' authInfo
+              if Session.isAdmin authInfo
                 then next (id, auth)
                 else
                   let User.Session {..} = Session.get' auth

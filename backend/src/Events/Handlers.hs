@@ -85,7 +85,7 @@ getAll auth = do
     -- markup
     eventPreviewsHtml :: [(Events.Id, Events.Event, Maybe Events.Reply)] -> Html ()
     eventPreviewsHtml events =
-      let userIsAdmin = Auth.isAdmin auth
+      let userIsAdmin = Auth.isAdmin' auth
        in page userIsAdmin (mapM_ (div_ [class_ "col"] . Events.Preview.render) events)
 
 postReply ::
@@ -160,7 +160,7 @@ get ::
   Auth.Authenticated ->
   m (Maybe LayoutStub)
 get eventid auth = do
-  let userIsAdmin = Auth.isAdmin auth
+  let userIsAdmin = Auth.isAdmin' auth
       User.Session {..} = Auth.get' auth
 
   Events.DB.get eventid >>= \case
