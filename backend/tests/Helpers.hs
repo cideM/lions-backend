@@ -7,31 +7,25 @@ module Helpers
   ( withDB,
     withFormRequest,
     withQueryString,
-    withoutLogging,
     as200,
   )
 where
 
+import qualified App
+import qualified App.Test
 import Control.Monad (forM_)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as LB
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as SQLite
+import Layout (LayoutStub (..))
 import Lucid
-import Layout (LayoutStub(..))
 import Network.HTTP.Types (hContentType, status200)
 import qualified Network.Wai as Wai
 import Network.Wai.Test
-import qualified Logging
+import qualified System.Directory
+import System.FilePath ((</>))
 import System.FilePattern.Directory
-import System.Log.FastLogger
-  ( LogType' (..),
-    TimedFastLogger,
-    defaultBufSize,
-    newTimeCache,
-    simpleTimeFormat,
-    withTimedFastLogger,
-  )
 
 -- Run a computation with an SQLite memory DB that has all migrations applied
 -- to it
@@ -66,6 +60,35 @@ withFormRequest body handler =
       session = srequest $ SRequest req body
    in (runSession session $ \r send -> handler r send)
 
-withoutLogging :: (Logging.Log -> IO ()) -> IO ()
-withoutLogging = return . const ()
+-- Essentially the App env but without AWS.
+withTestEnv :: App.Environment -> _
+withTestEnv env f = do
+  tempDir <- System.Directory.getTemporaryDirectory
+  let storageDir = tempDir </> "lions_tests_event_storage"
 
+  withDB $ \conn -> do
+    ctx <- K.getKatipContext
+    ns <- K.getKatipNamespace
+    logEnv <- K.getLogEnv
+
+    let env =
+          App.Test.Env
+            { envDatabaseConnection = conn,
+              envEnvironment = env,
+              envScryptSignerKey = signerKey,
+              envScryptSaltSeparator = saltSep,
+              envEventAttachmentStorageDir = storageDir,
+              envSessionDataVaultKey = sessionDataVaultKey,
+              envRequestIdVaultKey = requestIdVaultKey,
+              envSessionEncryptionKey = sessionKey,
+              envLogNamespace = ns,
+              envLogContext = ctx,
+              envLogEnv = logEnv
+            }
+     in undefined
+  where
+    signerKey :: B.ByteString
+    signerKey = "jxspr8Ki0RYycVU8zykbdLGjFQ3McFUH0uiiTvC8pVMXAn210wjLNmdZJzxUECKbm0QsEmYUSDzZvpjeJ9WmXA=="
+
+    saltSep :: B.ByteString
+    saltSep = "Bw=="

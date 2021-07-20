@@ -1,4 +1,4 @@
-module PasswordReset.ChangePasswordForm
+module Password.Change.Form
   ( form,
     emptyForm,
     emptyState,

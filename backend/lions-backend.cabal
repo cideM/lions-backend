@@ -67,6 +67,9 @@ test-suite tests
     , uri-encode
     , cookie
     , email-validate
+    , katip
+    , filepath
+    , directory
     , lens
     , lucid
     , time
@@ -140,9 +143,12 @@ library
     Logging
     Login.Login
     Login.LoginForm
-    PasswordReset.PasswordReset
-    PasswordReset.ResetEmailForm
-    PasswordReset.Token
+    Password.Password
+    Password.Reset.Token
+    Password.Reset.Handlers
+    Password.Reset.Form
+    Password.Change.Handlers
+    Password.Change.Form
     Session.Types
     Session.Middleware
     Session.DB
@@ -150,10 +156,10 @@ library
     Session.Valid
     Request.Types
     Request.Middleware
-    PasswordReset.ChangePasswordForm
     Wai.Class
     App
-    PasswordReset.Mail
+    Password.Reset.Mail.Types
+    Password.Reset.Mail.Send
     DB
     Scrypt
     Time

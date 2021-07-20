@@ -23,7 +23,7 @@ tests =
         "handleReset"
         [ testCase "no email body param returns message" $ do
             withDB $ \conn -> do
-              out <- simpleBody' <$> withFormRequest "" (\r s -> handleReset conn r sendMail >>= s . as200)
+              out <- simpleBody' <$> withFormRequest "" (\r s -> handleReset conn r send >>= s . as200)
               B.isInfixOf "Email darf nicht leer sein" out @?= True,
           testCase "email not found returns message" $ do
             withDB $ \conn -> do
@@ -31,14 +31,14 @@ tests =
                 simpleBody'
                   <$> withFormRequest
                     "email=foo@bar.com"
-                    (\r s -> handleReset conn r sendMail >>= s . as200)
+                    (\r s -> handleReset conn r send >>= s . as200)
               B.isInfixOf "Diese Email-Adresse ist nicht beim Lions Club Achern registiert" out @?= True,
           testCase "inserts new token in DB and passes that token to send email" $ do
             withDB $ \conn -> do
               tokenRef <- newIORef ""
               SQLite.execute_ conn "insert into users (password_digest, email) values ('foo', 'foo@bar.com')"
-              let sendMail' = sendMailWithRef tokenRef
-              _ <- withFormRequest "email=foo@bar.com" (\r s -> handleReset conn r sendMail' >>= s . as200)
+              let send' = sendWithRef tokenRef
+              _ <- withFormRequest "email=foo@bar.com" (\r s -> handleReset conn r send' >>= s . as200)
               rows <- SQLite.query_ conn "select token,expires,userid from reset_tokens"
               case rows of
                 [(token, _, userid) :: (T.Text, T.Text, Integer)] -> do
@@ -74,11 +74,11 @@ tests =
   where
     simpleBody' = B.concat . LB.toChunks . simpleBody
 
-sendMailWithRef :: IORef T.Text -> T.Text -> T.Text -> IO SendEmailResponse
-sendMailWithRef ref _ token = do
+sendWithRef :: IORef T.Text -> T.Text -> T.Text -> IO SendEmailResponse
+sendWithRef ref _ token = do
   writeIORef ref (T.pack . decode $ T.unpack token)
   return $ sendEmailResponse 1 "foo"
 
-sendMail :: T.Text -> T.Text -> IO SendEmailResponse
-sendMail _ _ = do
+send :: T.Text -> T.Text -> IO SendEmailResponse
+send _ _ = do
   return $ sendEmailResponse 1 "foo"

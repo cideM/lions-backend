@@ -7,6 +7,8 @@ module App
     HasEventStorage (..),
     HasAwsAccessKey (..),
     HasEnvironment (..),
+    HasMail (..),
+    HasPort (..),
     HasAwsSecretAccessKey (..),
     HasScryptSignerKey (..),
     HasScryptSaltSeparator (..),
@@ -24,6 +26,7 @@ import Data.ByteString (ByteString)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
 import qualified Network.AWS as AWS
+import qualified Password.Reset.Mail.Types
 import qualified Request.Types
 import qualified Session.Types
 import qualified UnliftIO
@@ -54,6 +57,8 @@ data Env = Env
     envEnvironment :: Environment,
     envAwsAccessKey :: AWS.AccessKey,
     envAwsSecretAccessKey :: AWS.SecretKey,
+    envMail :: Password.Reset.Mail.Types.SendMail IO,
+    envPort :: Int,
     envScryptSignerKey :: ByteString,
     envScryptSaltSeparator :: ByteString,
     envEventAttachmentStorageDir :: FilePath,
@@ -64,6 +69,24 @@ data Env = Env
     envLogContext :: K.LogContexts,
     envLogEnv :: K.LogEnv
   }
+
+class HasPort a where
+  getPort :: a -> Int
+
+instance HasPort Int where
+  getPort = id
+
+instance HasPort Env where
+  getPort = envPort
+
+class HasMail a where
+  getMail :: a -> Password.Reset.Mail.Types.SendMail IO
+
+instance HasMail (Password.Reset.Mail.Types.SendMail IO) where
+  getMail = id
+
+instance HasMail Env where
+  getMail = envMail
 
 class HasEnvironment a where
   getEnv :: a -> Environment

@@ -1,4 +1,4 @@
-module PasswordReset.Token
+module Password.Reset.Token
   ( delete,
     update,
     parse,

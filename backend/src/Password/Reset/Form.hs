@@ -1,11 +1,10 @@
-module PasswordReset.ResetEmailForm (form) where
+module Password.Reset.Form (render) where
 
 import Data.Text (Text)
 import Lucid
 
--- Form that is shown when users want to reset their passwords
-form :: Maybe Text -> Html ()
-form errMsg = do
+render :: Maybe Text -> Html ()
+render errMsg = do
   div_ [class_ "container p-2"] $ do
     div_ [class_ "row d-flex justify-content-center"] $ do
       div_ [class_ "col-md-6"] $ do
@@ -18,3 +17,4 @@ form errMsg = do
           label_ [for_ "emailInput", class_ "form-label"] "Email Adresse"
           input_ [required_ "required", class_ "form-control", name_ "email", id_ "emailInput", placeholder_ "platzhalter@email.de"]
           button_ [class_ "mt-3 btn btn-primary", type_ "submit"] "Absenden"
+
