@@ -151,7 +151,7 @@ library
     Password.Change.Form
     Session.Types
     Session.Middleware
-    Session.DB
+    Session.Session
     Session.Auth
     Session.Valid
     Request.Types

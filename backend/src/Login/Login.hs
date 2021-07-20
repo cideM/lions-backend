@@ -21,14 +21,10 @@ import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Scrypt (verifyPassword)
-import qualified Session.DB as Session
-import Session.Types
-  ( Authentication (..),
-    Session (..),
-    SessionId (..),
-    ValidSession (..),
-  )
-import qualified Session.Valid as Session
+import Session.Session (Session (..))
+import qualified Session.Session as Session
+import Session.Types (Authentication (..))
+import qualified Session.Valid
 import User.DB (getCredentials)
 import User.Types (Role, UserId (..))
 import Wai (parseParams)
@@ -117,8 +113,9 @@ login email formPw = do
     Nothing ->
       E.unless (BCrypt.validatePassword dbPw' formPw') $ E.throwError "incorrect password"
 
-  newSession@(ValidSession (Session (SessionId sessionId) expires _)) <- Session.create userId
-  Session.save newSession
+  newSession <- Session.Valid.create userId
+  let (Session (Session.Id sessionId) expires _) = Session.Valid.unvalid newSession
+  Session.Valid.save newSession
   encryptedSessionId <- liftIO $ clientEncrypt (encodeUtf8 sessionId)
   return (encryptedSessionId, expires)
 

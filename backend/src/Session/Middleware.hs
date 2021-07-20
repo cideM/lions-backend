@@ -2,19 +2,18 @@ module Session.Middleware (middleware) where
 
 import qualified App
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
-import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Error as E
 import qualified Katip as K
 import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
-import qualified Session.DB
-import Session.Types
+import Session.Session (Session (..))
+import qualified Session.Session as Session
+import qualified Session.Valid
 import User.DB (getRolesFromDb)
 import qualified Wai.Class as Wai
 import qualified Web.ClientSession as ClientSession
@@ -64,8 +63,8 @@ login ::
 login req = do
   sessionDataVaultKey <- asks App.getSessionDataVaultKey
   sessionId <- getSessionId
-  session@(Session _ _ userId) <- Session.DB.get sessionId >>= E.note' "no session found"
-  _ <- makeValidSession session
+  session@(Session _ _ userId) <- Session.get sessionId >>= E.note' "no session found"
+  _ <- Session.Valid.parse session
   roles <- (getRolesFromDb userId) >>= E.note' "no roles found"
   let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
   return $ req {Wai.vault = vault'}
@@ -75,10 +74,4 @@ login req = do
       cookie <- E.note' "no cookie header" . lookup "cookie" $ Wai.requestHeaders req
       session <- E.note' "no session cookie" . lookup "lions_session" $ Cookie.parseCookies cookie
       decrypted <- E.note' "empty session cookie" $ ClientSession.decrypt sessionKey session
-      return . SessionId $ decodeUtf8 decrypted
-
-    makeValidSession s@(Session _ expires _) = do
-      now <- liftIO $ Time.getCurrentTime
-      if now >= expires
-        then E.throwError $ ([i|session expired at: #{expires}|] :: Text)
-        else return $ ValidSession s
+      return . Session.Id $ decodeUtf8 decrypted
