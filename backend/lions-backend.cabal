@@ -47,9 +47,10 @@ test-suite tests
   other-modules:
     Helpers
     Scrypt.Test
-    -- Session.Test
+    Session.Test
     Login.Test
-    -- PasswordReset.Test
+    Password.Reset.Test
+    Password.Change.Test
     -- -- Events.DB.Test
     -- Events.Handlers.Test
   build-depends:

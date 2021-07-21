@@ -28,17 +28,17 @@ tests = do
     [ testGroup
         "login"
         [ testCase "render form with message if email is missing" $ do
-            withTestEnvProd $ do
+            withTestEnvProd $ \_ -> do
               sresponse <- withFormRequest "" Login.postLogin
               let actual = T.decodeUtf8 . B.concat . LB.toChunks $ simpleBody sresponse
               liftIO $ T.isInfixOf "Ungültige Kombination aus Email und Passwort" actual @?= True,
           testCase "render form with message if password is missing" $ do
-            withTestEnvProd $ do
+            withTestEnvProd $ \_ -> do
               sresponse <- withFormRequest "email=foo@bar.com" Login.postLogin
               let actual = T.decodeUtf8 . B.concat . LB.toChunks $ simpleBody sresponse
               liftIO $ T.isInfixOf "Ungültige Kombination aus Email und Passwort" actual @?= True,
           testCase "render form with message if credentials don't match" $ do
-            withTestEnvProd $ do
+            withTestEnvProd $ \_ -> do
               conn <- asks App.getDb
               liftIO $ SQLite.execute_ conn "insert into users (password_digest, email) values ('foo', 'foo@bar.com')"
 
@@ -48,7 +48,7 @@ tests = do
 
               liftIO $ T.isInfixOf "Ungültige Kombination aus Email und Passwort" actual @?= True,
           testCase "returns encrypted session cookie upon successful login" $ do
-            withTestEnvProd $ do
+            withTestEnvProd $ \_ -> do
               conn <- asks App.getDb
               sessionKey <- asks App.getSessionEncryptionKey
 
@@ -80,7 +80,7 @@ tests = do
                   storedSessionId @?= T.decodeUtf8 sessionIdFromCookie
                 r -> assertFailure $ "unexpected DB result: " <> show r,
           testCase "can also verify firebase passwords" $ do
-            withTestEnvProd $ do
+            withTestEnvProd $ \_ -> do
               conn <- asks App.getDb
               sessionKey <- asks App.getSessionEncryptionKey
 

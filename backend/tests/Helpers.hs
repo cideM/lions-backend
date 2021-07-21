@@ -8,8 +8,10 @@ module Helpers
     withFormRequest,
     withTestEnv,
     withTestEnvProd,
+    runSession',
+    withRender200,
     withQueryString,
-    as200,
+    renderLayoutStub200,
   )
 where
 
@@ -51,8 +53,20 @@ withDB f = do
         f conn
     )
 
-as200 :: LayoutStub -> Wai.Response
-as200 = Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")] . renderBS . layoutStubContent
+renderLayoutStub200 :: LayoutStub -> Wai.Response
+renderLayoutStub200 = Wai.responseLBS status200 [("Content-Type", "text/html; charset=UTF-8")] . renderBS . layoutStubContent
+
+-- standing for ‘Network.Wai.Internal.Request
+--               -> (Network.Wai.Internal.Response -> App.App App.Env b)
+--               -> App.App App.Env b’
+
+withRender200 ::
+  (MonadIO m) =>
+  (Wai.Request -> m LayoutStub) ->
+  Wai.Request ->
+  (Wai.Response -> m b) ->
+  m b
+withRender200 handler req send = handler req >>= send . renderLayoutStub200
 
 withQueryString ::
   B.ByteString ->
@@ -62,6 +76,15 @@ withQueryString qs handler =
   let req = setPath defaultRequest qs
       session = srequest $ SRequest req ""
    in (runSession session $ \r send -> handler r send)
+
+runSession' ::
+  (UnliftIO.MonadUnliftIO m, MonadIO m) =>
+  Session b ->
+  (Wai.Request -> (Wai.Response -> m Wai.ResponseReceived) -> m Wai.ResponseReceived) ->
+  m b
+runSession' session handler =
+  UnliftIO.withRunInIO $ \runInIO ->
+    runSession session $ \r send -> runInIO $ handler r (liftIO . send)
 
 withFormRequest ::
   (MonadIO m, UnliftIO.MonadUnliftIO m) =>
@@ -87,7 +110,7 @@ sendMail ref recipient mail = do
 
 -- I'm sure there's some overlap with the actual instantiation in Lib.hs which
 -- I could get rid of.
-withTestEnv :: App.Environment -> App.App App.Env a -> IO a
+withTestEnv :: App.Environment -> (IORef (Maybe Text, Maybe Mail.Mail) -> App.App App.Env a) -> IO a
 withTestEnv appEnv f = do
   tempDir <- System.Directory.getTemporaryDirectory
   let storageDir = tempDir </> "lions_tests_event_storage"
@@ -120,7 +143,7 @@ withTestEnv appEnv f = do
                 envLogContext = ctx,
                 envLogEnv = logEnv
               }
-       in liftIO $ App.unApp f env
+       in liftIO $ App.unApp (f mailRef) env
   where
     signerKey :: B.ByteString
     signerKey = "jxspr8Ki0RYycVU8zykbdLGjFQ3McFUH0uiiTvC8pVMXAn210wjLNmdZJzxUECKbm0QsEmYUSDzZvpjeJ9WmXA=="
@@ -128,5 +151,5 @@ withTestEnv appEnv f = do
     saltSep :: B.ByteString
     saltSep = "Bw=="
 
-withTestEnvProd :: App.App App.Env a -> IO a
+withTestEnvProd :: (IORef (Maybe Text, Maybe Mail.Mail) -> App.App App.Env a) -> IO a
 withTestEnvProd = withTestEnv App.Production
