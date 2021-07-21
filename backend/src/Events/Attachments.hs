@@ -19,8 +19,9 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import qualified Error as E
-import Events.FileActions (FileActions (..))
+import Events.Attachment as Events
 import qualified Events.AttachmentInfo as Events
+import Events.FileActions (FileActions (..))
 import qualified Events.Types as Events
 import qualified Katip as K
 import Network.Wai.Middleware.Static ((>->))

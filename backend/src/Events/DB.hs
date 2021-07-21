@@ -12,6 +12,7 @@ where
 import qualified App
 import Control.Arrow (left)
 import Control.Exception.Safe
+import Events.Attachment as Events
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)

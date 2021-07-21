@@ -5,6 +5,7 @@ import Data.Function ((&))
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
 import qualified Data.Text as Text
+import qualified Events.Attachment as Events
 import qualified Data.Time as Time
 import qualified Events.Types as Events
 import Layout (ariaLabel_)

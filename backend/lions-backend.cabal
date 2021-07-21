@@ -139,6 +139,7 @@ library
     Events.DB
     Events.FileActions
     Events.AttachmentInfo
+    Events.Attachment
     Events.Types
     Error
     Events.Preview

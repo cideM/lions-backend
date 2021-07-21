@@ -32,6 +32,7 @@ import qualified Events.DB
 import Events.FileActions (FileActions (..))
 import qualified Events.Form as EventForm
 import qualified Events.Full
+import qualified Events.Attachment as Events
 import qualified Events.Preview
 import qualified Events.Types as Events
 import GHC.Exts (sortWith)
