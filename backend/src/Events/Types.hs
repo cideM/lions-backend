@@ -2,7 +2,6 @@ module Events.Types
   ( Reply (..),
     Event (..),
     Create (..),
-    AttachmentInfo (..),
     Id (..),
     Attachment (..),
   )
@@ -16,22 +15,6 @@ import Data.Text (Text)
 import qualified Data.Time as Time
 import GHC.Generics
 import User.Types (UserEmail (..), UserId (..))
-
--- This is an attachment in temporary storage that was just uploaded. The file
--- path is something temporary and that's why file path and file name are kept
--- separately.
-data AttachmentInfo = AttachmentInfo
-  { attachmentInfoFileName :: Text,
-    attachmentInfoFileContentType :: Text,
-    attachmentInfoFilePath :: FilePath
-  }
-  deriving (Show, Eq, Generic)
-
-instance ToJSON AttachmentInfo where
-  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 14}
-
-instance FromJSON AttachmentInfo where
-  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 14}
 
 -- This is an attachment that's already stored in the database. I didn't store
 -- the content type together with the files and the file name is in this case

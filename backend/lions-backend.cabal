@@ -138,6 +138,7 @@ library
     Env
     Events.DB
     Events.FileActions
+    Events.AttachmentInfo
     Events.Types
     Error
     Events.Preview

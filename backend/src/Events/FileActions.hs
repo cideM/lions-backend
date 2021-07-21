@@ -7,7 +7,8 @@ import Data.Aeson (FromJSON, ToJSON, defaultOptions, genericToEncoding, toEncodi
 import qualified Data.Aeson as A
 import qualified Data.Aeson as Aeson
 import qualified Data.Char as Char
-import Events.Types (Attachment, AttachmentInfo)
+import Events.AttachmentInfo (AttachmentInfo)
+import Events.Types (Attachment)
 import GHC.Generics
 
 lower1 :: String -> String

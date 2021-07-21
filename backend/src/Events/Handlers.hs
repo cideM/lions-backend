@@ -26,8 +26,10 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
+import qualified Events.AttachmentInfo as Events
 import qualified Events.Attachments as A
 import qualified Events.DB
+import Events.FileActions (FileActions (..))
 import qualified Events.Form as EventForm
 import qualified Events.Full
 import qualified Events.Preview
@@ -48,9 +50,8 @@ import Network.Wai.Parse
   )
 import qualified Session.Auth as Auth
 import Text.Read (readEither)
-import qualified User.Types as User
-import Events.FileActions (FileActions (..))
 import User.Types (UserId (..), UserProfile (..))
+import qualified User.Types as User
 import Wai (paramsToMap, parseParams)
 
 page :: Bool -> Html () -> Html ()
