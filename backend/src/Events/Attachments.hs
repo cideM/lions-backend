@@ -19,6 +19,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import qualified Error as E
+import Events.FileActions (FileActions (..))
 import qualified Events.Types as Events
 import qualified Katip as K
 import Network.Wai.Middleware.Static ((>->))
@@ -80,9 +81,9 @@ processFileActions ::
     MonadThrow m
   ) =>
   Events.Id ->
-  Events.FileActions ->
+  FileActions ->
   m ()
-processFileActions eid actions@Events.FileActions {..} = do
+processFileActions eid actions@FileActions {..} = do
   K.katipAddContext (K.sl "file_actions" actions) $ do
     forM_ fileActionsUpload $ \(Events.AttachmentInfo {..}) -> do
       K.logLocM K.DebugS "saving file"
@@ -108,7 +109,7 @@ makeFileActions ::
   ) =>
   [Events.Attachment] ->
   ([Param], [(ByteString, FileInfo FilePath)]) ->
-  m (Events.FileActions, [ByteString])
+  m (FileActions, [ByteString])
 makeFileActions alreadySaved body = do
   pastFileInfos <-
     E.runExceptT parseEncryptedFileInfo >>= \case
@@ -148,7 +149,7 @@ makeFileActions alreadySaved body = do
 
     encryptedFileInfos <- makeEncryptedFileInfo $ pastFileInfos ++ newFileInfos
 
-    let actions = Events.FileActions keep savedButDelete notSavedAndDelete upload
+    let actions = FileActions keep savedButDelete notSavedAndDelete upload
 
     return (actions, encryptedFileInfos)
   where

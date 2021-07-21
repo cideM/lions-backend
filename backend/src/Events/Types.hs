@@ -3,7 +3,6 @@ module Events.Types
     Event (..),
     Create (..),
     AttachmentInfo (..),
-    FileActions (..),
     Id (..),
     Attachment (..),
   )
@@ -48,20 +47,6 @@ instance FromJSON Attachment where
 
 instance ToJSON Attachment where
   toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
-
-data FileActions = FileActions
-  { fileActionsKeep :: [Attachment],
-    fileActionsDelete :: [Attachment],
-    fileActionsDontUpload :: [AttachmentInfo],
-    fileActionsUpload :: [AttachmentInfo]
-  }
-  deriving (Show, Eq, Generic)
-
-instance FromJSON FileActions where
-  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 11}
-
-instance ToJSON FileActions where
-  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 11}
 
 -- Now that I'm writing tests that involve this data type I find it a bit weird
 -- that it doesn't have the event ID. Strictly speaking a reply is meaningless

@@ -49,6 +49,7 @@ import Network.Wai.Parse
 import qualified Session.Auth as Auth
 import Text.Read (readEither)
 import qualified User.Types as User
+import Events.FileActions (FileActions (..))
 import User.Types (UserId (..), UserProfile (..))
 import Wai (paramsToMap, parseParams)
 
@@ -261,7 +262,7 @@ postCreate internalState req _ = do
     let params = paramsToMap $ fst body
         fromParams key = Map.findWithDefault "" key params
 
-    (actions@Events.FileActions {..}, encryptedFileInfos) <- A.makeFileActions [] body
+    (actions@FileActions {..}, encryptedFileInfos) <- A.makeFileActions [] body
 
     -- Most of this code shows up in the postUpdate handler as well, at least
     -- in some form. Not sure if I want to further extract shared code.
@@ -354,7 +355,7 @@ postUpdate internalState req eid@(Events.Id eventid) _ = do
     Events.DB.get eid >>= \case
       Nothing -> throwString $ "edit event but no event for id: " <> show eventid
       Just Events.Event {..} -> do
-        (actions@Events.FileActions {..}, encryptedFileInfos) <- A.makeFileActions eventAttachments body
+        (actions@FileActions {..}, encryptedFileInfos) <- A.makeFileActions eventAttachments body
 
         let params = paramsToMap $ fst body
             fromParams key = Map.findWithDefault "" key params
