@@ -12,7 +12,7 @@ import Layout (LayoutStub (..), success)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Password.Reset.Form
-import qualified Password.Reset.Mail.Types as Mail
+import qualified Password.Reset.Mail as Mail
 import qualified Password.Reset.Token as Token
 import qualified UnliftIO
 import Wai (parseParams)

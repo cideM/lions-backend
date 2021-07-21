@@ -27,7 +27,7 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Password.Change.Handlers
 import qualified Password.Reset.Handlers
-import qualified Password.Reset.Mail.Send as Mail
+import qualified Password.Reset.Mail as Mail
 import qualified Request.Middleware as Request
 import qualified Session.Auth as Session
 import qualified Session.Middleware as Session
@@ -299,8 +299,6 @@ main = do
                           App.Env
                             { envDatabaseConnection = conn,
                               envEnvironment = appEnv,
-                              envAwsAccessKey = aKey,
-                              envAwsSecretAccessKey = sKey,
                               envScryptSignerKey = signerKey,
                               envMail = Mail.send awsEnv,
                               envScryptSaltSeparator = saltSep,

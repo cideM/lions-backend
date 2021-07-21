@@ -1,4 +1,11 @@
-module Password.Reset.Mail.Send (send) where
+module Password.Reset.Mail
+  ( send,
+    Mail (..),
+    SendMail,
+    PlainText (..),
+    Html (..),
+  )
+where
 
 import Control.Exception.Safe
 import Control.Lens
@@ -6,7 +13,18 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text)
 import qualified Network.AWS as AWS
 import qualified Network.AWS.SES as SES
-import Password.Reset.Mail.Types
+
+newtype PlainText = PlainText Text
+
+newtype Html = Html Text
+
+data Mail = Mail
+  { mailPlainText :: PlainText,
+    mailHtml :: Html,
+    mailTitle :: Text
+  }
+
+type SendMail m = Text -> Mail -> m SES.SendEmailResponse
 
 -- Function for sending email through AWS. This is exported because it's
 -- partially applied in Main and then passed to the handler, so the handler can

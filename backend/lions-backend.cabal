@@ -159,8 +159,7 @@ library
     Request.Middleware
     Wai.Class
     App
-    Password.Reset.Mail.Types
-    Password.Reset.Mail.Send
+    Password.Reset.Mail
     DB
     Scrypt
     Time

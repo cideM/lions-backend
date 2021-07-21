@@ -5,11 +5,9 @@ module App
     Env (..),
     HasDb (..),
     HasEventStorage (..),
-    HasAwsAccessKey (..),
     HasEnvironment (..),
     HasMail (..),
     HasPort (..),
-    HasAwsSecretAccessKey (..),
     HasScryptSignerKey (..),
     HasScryptSaltSeparator (..),
     HasSessionDataVaultKey (..),
@@ -25,8 +23,7 @@ import Control.Monad.Trans.Reader (ReaderT (..))
 import Data.ByteString (ByteString)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
-import qualified Network.AWS as AWS
-import qualified Password.Reset.Mail.Types
+import qualified Password.Reset.Mail as Mail
 import qualified Request.Types
 import qualified Session.Auth as Auth
 import qualified UnliftIO
@@ -55,9 +52,7 @@ parseEnv s = throwString $ "unknown environment: " <> show s
 data Env = Env
   { envDatabaseConnection :: SQLite.Connection,
     envEnvironment :: Environment,
-    envAwsAccessKey :: AWS.AccessKey,
-    envAwsSecretAccessKey :: AWS.SecretKey,
-    envMail :: Password.Reset.Mail.Types.SendMail IO,
+    envMail :: Mail.SendMail IO,
     envPort :: Int,
     envScryptSignerKey :: ByteString,
     envScryptSaltSeparator :: ByteString,
@@ -80,9 +75,9 @@ instance HasPort Env where
   getPort = envPort
 
 class HasMail a where
-  getMail :: a -> Password.Reset.Mail.Types.SendMail IO
+  getMail :: a -> Mail.SendMail IO
 
-instance HasMail (Password.Reset.Mail.Types.SendMail IO) where
+instance HasMail (Mail.SendMail IO) where
   getMail = id
 
 instance HasMail Env where
@@ -114,24 +109,6 @@ instance HasEventStorage FilePath where
 
 instance HasEventStorage Env where
   getStorageDir = envEventAttachmentStorageDir
-
-class HasAwsAccessKey a where
-  getAwsAccessKey :: a -> AWS.AccessKey
-
-instance HasAwsAccessKey AWS.AccessKey where
-  getAwsAccessKey = id
-
-instance HasAwsAccessKey Env where
-  getAwsAccessKey = envAwsAccessKey
-
-class HasAwsSecretAccessKey a where
-  getAwsSecretAccessKey :: a -> AWS.SecretKey
-
-instance HasAwsSecretAccessKey AWS.SecretKey where
-  getAwsSecretAccessKey = id
-
-instance HasAwsSecretAccessKey Env where
-  getAwsSecretAccessKey = envAwsSecretAccessKey
 
 class HasScryptSignerKey a where
   getScryptSignerKey :: a -> ByteString
