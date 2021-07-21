@@ -47,19 +47,23 @@ test-suite tests
   other-modules:
     Helpers
     Scrypt.Test
-    Session.Test
+    -- Session.Test
     Login.Test
-    PasswordReset.Test
-    Events.DB.Test
-    Events.Handlers.Test
+    -- PasswordReset.Test
+    -- -- Events.DB.Test
+    -- Events.Handlers.Test
   build-depends:
     , base
     , filepattern
     , lions-backend
+    , unliftio
     , containers
     , sqlite-simple
     , clientsession
     , bytestring
+    , mtl
+    , safe-exceptions
+    , transformers
     , wai-extra
     , wai
     , amazonka-ses
