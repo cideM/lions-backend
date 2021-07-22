@@ -5,9 +5,10 @@ import Data.Function ((&))
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
 import qualified Data.Text as Text
-import qualified Events.Attachment as Events
+import qualified Events.Reply as Events
+import qualified Events.Attachments.Saved as Saved
 import qualified Data.Time as Time
-import qualified Events.Types as Events
+import qualified Events.Event as Events
 import Layout (ariaLabel_)
 import Locale (german)
 import Lucid
@@ -50,7 +51,7 @@ render (ShowAdminTools showAdminTools) ownReply (Events.Id eventId) Events.Event
                 ul_ [] $ do
                   forM_
                     eventAttachments
-                    ( \Events.Attachment {..} ->
+                    ( \Saved.Attachment {..} ->
                         li_ [] $
                           a_ [href_ [i|/events/#{eventId}/#{attachmentFileName}|]] $ toHtml attachmentFileName
                     )

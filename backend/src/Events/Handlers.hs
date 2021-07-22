@@ -26,15 +26,16 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
-import qualified Events.AttachmentInfo as Events
-import qualified Events.Attachments as A
+import Events.Attachments.Actions (Actions (..))
+import qualified Events.Attachments.Attachments as A
+import qualified Events.Attachments.Saved as Saved
+import qualified Events.Attachments.Temporary as Temporary
 import qualified Events.DB
-import Events.FileActions (FileActions (..))
+import qualified Events.Event as Events
 import qualified Events.Form as EventForm
 import qualified Events.Full
-import qualified Events.Attachment as Events
 import qualified Events.Preview
-import qualified Events.Types as Events
+import qualified Events.Reply as Events
 import GHC.Exts (sortWith)
 import qualified Katip as K
 import Layout (ActiveNavLink (..), LayoutStub (..), infoBox, success)
@@ -264,22 +265,22 @@ postCreate internalState req _ = do
     let params = paramsToMap $ fst body
         fromParams key = Map.findWithDefault "" key params
 
-    (actions@FileActions {..}, encryptedFileInfos) <- A.makeFileActions [] body
+    (actions@Actions {..}, encryptedFileInfos) <- A.makeActions [] body
 
     -- Most of this code shows up in the postUpdate handler as well, at least
     -- in some form. Not sure if I want to further extract shared code.
     -- Dependencies are always a double-edged sword.
-    -- makeFileActions includes all the logic for combining the various sources of input:
+    -- makeActions includes all the logic for combining the various sources of input:
     --   - New files
     --   - Checkboxes from previous request
     --   - Files already uploaded and stored in DB
     --  The code here is then just to turn that state into UI
     let notSavedAndDeleteCheckbox =
           map
-            (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False))
-            fileActionsDontUpload
+            (\(Temporary.Attachment {..}) -> (attachmentFileName, False))
+            actionsDontUpload
 
-        uploadCheckbox = zip (map Events.attachmentInfoFileName fileActionsUpload) (repeat True)
+        uploadCheckbox = zip (map Temporary.attachmentFileName actionsUpload) (repeat True)
 
         checkboxes = notSavedAndDeleteCheckbox ++ uploadCheckbox
 
@@ -302,7 +303,7 @@ postCreate internalState req _ = do
       Right newEvent@Events.Create {..} -> do
         eid <- Events.DB.save newEvent
 
-        A.processFileActions eid actions
+        A.processActions eid actions
 
         return . LayoutStub "Neue Veranstaltung" (Just Events) $
           success $ "Neue Veranstaltung " <> createTitle <> " erfolgreich erstellt!"
@@ -327,7 +328,7 @@ getEdit eid@(Events.Id eventid) _ = do
               eventLocation
               eventDescription
               eventFamilyAllowed
-              (zip (map Events.attachmentFileName eventAttachments) (repeat True))
+              (zip (map Saved.attachmentFileName eventAttachments) (repeat True))
               []
        in return . LayoutStub "Veranstaltung Editieren" (Just Events) $
             div_ [class_ "container p-2"] $ do
@@ -357,21 +358,21 @@ postUpdate internalState req eid@(Events.Id eventid) _ = do
     Events.DB.get eid >>= \case
       Nothing -> throwString $ "edit event but no event for id: " <> show eventid
       Just Events.Event {..} -> do
-        (actions@FileActions {..}, encryptedFileInfos) <- A.makeFileActions eventAttachments body
+        (actions@Actions {..}, encryptedFileInfos) <- A.makeActions eventAttachments body
 
         let params = paramsToMap $ fst body
             fromParams key = Map.findWithDefault "" key params
 
-            savedButDeleteCheckbox = zip (map Events.attachmentFileName fileActionsDelete) (repeat False)
+            savedButDeleteCheckbox = zip (map Saved.attachmentFileName actionsDelete) (repeat False)
 
-            keepCheckbox = zip (map Events.attachmentFileName fileActionsKeep) (repeat True)
+            keepCheckbox = zip (map Saved.attachmentFileName actionsKeep) (repeat True)
 
             notSavedAndDeleteCheckbox =
               map
-                (\(Events.AttachmentInfo {..}) -> (attachmentInfoFileName, False))
-                fileActionsDontUpload
+                (\(Temporary.Attachment {..}) -> (attachmentFileName, False))
+                actionsDontUpload
 
-            uploadCheckbox = zip (map Events.attachmentInfoFileName fileActionsUpload) (repeat True)
+            uploadCheckbox = zip (map Temporary.attachmentFileName actionsUpload) (repeat True)
 
             checkboxes =
               keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox
@@ -398,7 +399,7 @@ postUpdate internalState req eid@(Events.Id eventid) _ = do
                     input
                     state
           Right event@Events.Create {..} -> do
-            A.processFileActions eid actions
+            A.processActions eid actions
 
             Events.DB.update eid event
 

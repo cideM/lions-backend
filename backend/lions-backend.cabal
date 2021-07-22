@@ -137,13 +137,15 @@ library
     Lib
     Env
     Events.DB
-    Events.FileActions
-    Events.AttachmentInfo
-    Events.Attachment
-    Events.Types
+    Events.Reply
+    Events.Attachments.Actions
+    Events.Attachments.Temporary
+    Events.Attachments.Attachments
+    Events.Attachments.Middleware
+    Events.Attachments.Saved
+    Events.Event
     Error
     Events.Preview
-    Events.Attachments
     Events.Form
     Events.Handlers
     Events.Full

@@ -2,11 +2,12 @@ module Events.Preview (render) where
 
 import Control.Monad (when)
 import Data.Function ((&))
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import Data.String.Interpolate (i)
-import qualified Events.Types as Events
+import qualified Events.Reply as Events
+import qualified Events.Event as Events
 import Locale (german)
 import Lucid
 
@@ -25,7 +26,7 @@ render (Events.Id eventid, Events.Event {..}, ownReply) = do
     div_ [class_ "card-body"] $ do
       a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle
       h2_ [class_ "card-subtitle fs-6 mb-3 text-muted"] $ toHtml $ "Ort: " <> eventLocation
-      -- p_ [class_ "card-text"] $ toHtml eventDescription
+    -- p_ [class_ "card-text"] $ toHtml eventDescription
     div_ [class_ "row g-0 border-top"] $ do
       replyThing "Zusagen" (Text.pack $ show coming)
       replyThing "Absagen" (Text.pack $ show notComing)

@@ -10,7 +10,7 @@ import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.QQ (sql)
 import Events.DB
-import qualified Events.Types as Events
+import qualified Events.Event as Events
 import Helpers (as200, withDB, withFormRequest, withQueryString, withoutLogging)
 import Network.AWS.SES.SendEmail
 import Network.HTTP.Types.Status (status200)

@@ -12,7 +12,7 @@ where
 import qualified App
 import Control.Arrow (left)
 import Control.Exception.Safe
-import Events.Attachment as Events
+import Events.Attachments.Saved as Saved
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
@@ -22,8 +22,9 @@ import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
+import qualified Events.Reply as Events
 import Database.SQLite.Simple.QQ (sql)
-import qualified Events.Types as Events
+import qualified Events.Event as Events
 import User.Types (UserId (..))
 import Prelude hiding (id)
 
@@ -66,7 +67,7 @@ save Events.Create {..} = do
 
 parseRow :: EventRow -> Either Text (Events.Id, Events.Event)
 parseRow (id, title, date, family, desc, loc, replies, attachments) = do
-  (attachments' :: [Events.Attachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
+  (attachments' :: [Saved.Attachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
   (replies' :: [Events.Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
   return (Events.Id id, Events.Event title date family desc loc replies' attachments')
 

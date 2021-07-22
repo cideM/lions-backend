@@ -11,9 +11,9 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import qualified Events.Attachments
 import qualified Events.Handlers
-import qualified Events.Types as Events
+import qualified Events.Attachments.Middleware as AttachmentsMiddleware
+import qualified Events.Event as Events
 import qualified Katip as K
 import Layout (LayoutStub (..), layout, warning)
 import qualified Logging
@@ -331,7 +331,7 @@ main = do
                               . (Wai.liftMiddleware logStdout)
                               . Request.middleware
                               . Session.middleware
-                              . Events.Attachments.middleware storageDir
+                              . AttachmentsMiddleware.middleware storageDir
                               . storageStaticMiddleware
                           appWithMiddlewares = allMiddlewares app'
 

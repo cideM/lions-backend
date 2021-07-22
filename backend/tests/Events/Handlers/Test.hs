@@ -1,6 +1,6 @@
 module Events.Handlers.Test where
 
-import qualified Events.Types as Events
+import qualified Events.Event as Events
 import Events.Handlers (FileActions (..), getFileActions)
 import Network.Wai.Parse
 import Test.Tasty

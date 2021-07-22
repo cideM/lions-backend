@@ -13,7 +13,7 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
-import qualified Events.Types as Events
+import qualified Events.Event as Events
 import Form (FormFieldState (..), notEmpty, processField, validDate)
 import Layout (describedBy_)
 import Lucid

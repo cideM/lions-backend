@@ -1,4 +1,4 @@
-module Events.Attachment (Attachment (..)) where
+module Events.Attachments.Saved (Attachment (..)) where
 
 import Data.Aeson (FromJSON, ToJSON, defaultOptions, genericToEncoding, toEncoding)
 import qualified Data.Aeson as A
