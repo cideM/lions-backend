@@ -1,23 +1,53 @@
-module Events.Attachments.Saved (Attachment (..)) where
+module Events.Attachments.Saved
+  ( unFileName,
+    FileName (..),
+    remove,
+    removeAll,
+  )
+where
 
+import qualified App
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (FromJSON, ToJSON, defaultOptions, genericToEncoding, toEncoding)
-import qualified Data.Aeson as A
-import qualified Data.Aeson as Aeson
-import qualified Data.Char as Char
 import Data.Text (Text)
 import GHC.Generics
+import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Events.Event.Id as Event
+import qualified System.Directory
+import System.FilePath ((</>))
 
--- This is an attachment that's already stored in the database. I didn't store
--- the content type together with the files and the file name is in this case
--- equal to the file path.
-data Attachment = Attachment {attachmentFileName :: Text} deriving (Show, Generic, Eq)
+-- An attachment that's stored permanently is just a string representing a file
+-- name in the database and a file with that same name on disk.
+newtype FileName = FileName Text
+  deriving (Show, Eq, Generic)
 
-instance FromJSON Attachment where
-  parseJSON = Aeson.genericParseJSON defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
+instance ToJSON FileName where
+  toEncoding = genericToEncoding defaultOptions
 
-instance ToJSON Attachment where
-  toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 10}
+instance FromJSON FileName
 
-lower1 :: String -> String
-lower1 (c : cs) = Char.toLower c : cs
-lower1 [] = []
+unFileName :: FileName -> Text
+unFileName (FileName s) = s
+
+removeAll ::
+  ( MonadIO m,
+    App.HasEventStorage env,
+    MonadReader env m
+  ) =>
+  Event.Id ->
+  m ()
+removeAll (Event.Id eid) = do
+  destinationDir <- asks App.getStorageDir
+  liftIO $ System.Directory.removeDirectoryRecursive $ destinationDir </> show eid
+
+remove ::
+  ( MonadIO m,
+    App.HasEventStorage env,
+    MonadReader env m
+  ) =>
+  Event.Id ->
+  FilePath ->
+  m ()
+remove (Event.Id eid) filename = do
+  destinationDir <- asks App.getStorageDir
+  liftIO $ System.Directory.removeFile $ destinationDir </> show eid </> filename

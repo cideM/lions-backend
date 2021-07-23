@@ -1,14 +1,21 @@
-module Events.Full (render, ShowAdminTools (..)) where
+module Events.Event.Html
+  ( preview,
+    full,
+    ShowAdminTools(..)
+  )
+where
 
 import Control.Monad (forM_, when)
 import Data.Function ((&))
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
+import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Events.Reply as Events
-import qualified Events.Attachments.Saved as Saved
 import qualified Data.Time as Time
-import qualified Events.Event as Events
+import qualified Events.Attachments.Saved as Saved
+import qualified Events.Event.Event as Events
+import qualified Events.Event.Id as Event
+import qualified Events.Reply.Reply as Event
 import Layout (ariaLabel_)
 import Locale (german)
 import Lucid
@@ -16,12 +23,12 @@ import User.Types (UserEmail (..), UserId (..), showEmail)
 
 newtype ShowAdminTools = ShowAdminTools Bool deriving (Show)
 
-render :: ShowAdminTools -> Maybe Events.Reply -> Events.Id -> Events.Event -> Html ()
-render (ShowAdminTools showAdminTools) ownReply (Events.Id eventId) Events.Event {..} =
+full :: ShowAdminTools -> Maybe Event.Reply -> Event.Id -> Events.Event Saved.FileName -> Html ()
+full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {..} =
   let date = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
-      coming = eventReplies & filter Events.replyComing & length
-      notComing = eventReplies & filter (not . Events.replyComing) & length
-      guests = eventReplies & filter Events.replyComing & map Events.replyGuests & sum
+      coming = eventReplies & filter Event.replyComing & length
+      notComing = eventReplies & filter (not . Event.replyComing) & length
+      guests = eventReplies & filter Event.replyComing & map Event.replyGuests & sum
    in do
         div_ [class_ "container"] $ do
           div_ [class_ "row gy-3 gx-lg-4 mb-5"] $ do
@@ -51,9 +58,9 @@ render (ShowAdminTools showAdminTools) ownReply (Events.Id eventId) Events.Event
                 ul_ [] $ do
                   forM_
                     eventAttachments
-                    ( \Saved.Attachment {..} ->
+                    ( \(Saved.FileName filename) ->
                         li_ [] $
-                          a_ [href_ [i|/events/#{eventId}/#{attachmentFileName}|]] $ toHtml attachmentFileName
+                          a_ [href_ [i|/events/#{eventId}/#{filename}|]] $ toHtml filename
                     )
             section_ [class_ "justify-content-center col-lg-4"] $ do
               div_ [class_ "card"] $ do
@@ -112,14 +119,14 @@ render (ShowAdminTools showAdminTools) ownReply (Events.Id eventId) Events.Event
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Events.Reply {Events.replyUserEmail = UserEmail email, Events.replyUserId = UserId userid, ..} -> do
+                      ( \Event.Reply {Event.replyUserEmail = UserEmail email, Event.replyUserId = UserId userid, ..} -> do
                           tr_ $ do
                             td_ [] $ toHtml $ showEmail email
                             td_ [] $ toHtml $ show replyGuests
                             td_ [class_ "d-flex justify-content-end"] $
                               a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
                       )
-                      (eventReplies & filter Events.replyComing)
+                      (eventReplies & filter Event.replyComing)
             div_ [class_ "col"] $ do
               when (notComing > 0) $ do
                 h2_ [class_ "h4"] "Absagen"
@@ -130,15 +137,42 @@ render (ShowAdminTools showAdminTools) ownReply (Events.Id eventId) Events.Event
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Events.Reply {Events.replyUserEmail = UserEmail email, Events.replyUserId = UserId userid} -> do
+                      ( \Event.Reply {Event.replyUserEmail = UserEmail email, Event.replyUserId = UserId userid} -> do
                           tr_ $ do
                             td_ [] $ toHtml $ showEmail email
                             td_ [class_ "d-flex justify-content-end"] $
                               a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
                       )
-                      (eventReplies & filter (not . Events.replyComing))
+                      (eventReplies & filter (not . Event.replyComing))
   where
     replyGuests' = case replyComing' of
-      Just True -> maybe mempty (Text.pack . show . Events.replyGuests) ownReply
+      Just True -> maybe mempty (Text.pack . show . Event.replyGuests) ownReply
       _ -> mempty
-    replyComing' = fmap Events.replyComing ownReply
+    replyComing' = fmap Event.replyComing ownReply
+
+preview :: (Event.Id, Events.Event Saved.FileName, Maybe Event.Reply) -> Html ()
+preview (Event.Id eventid, Events.Event {..}, ownReply) = do
+  let formatted = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
+      coming = eventReplies & filter Event.replyComing & length
+      notComing = eventReplies & filter (not . Event.replyComing) & length
+      guests = eventReplies & filter Event.replyComing & map Event.replyGuests & sum
+  div_ [class_ "card"] $ do
+    div_ [class_ "card-header"] $ do
+      span_ [class_ "me-2"] $ toHtml formatted
+      when eventFamilyAllowed $ span_ [class_ "badge bg-success"] "Mit Familie"
+      when ((Event.replyComing <$> ownReply) == Just True) $ do span_ [class_ "ms-2 badge bg-success text-white"] "Zugesagt"
+      when ((Event.replyComing <$> ownReply) == Just False) $ do span_ [class_ "ms-2 badge bg-danger text-white"] "Abgesagt"
+    div_ [class_ "card-body"] $ do
+      a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle
+      h2_ [class_ "card-subtitle fs-6 mb-3 text-muted"] $ toHtml $ "Ort: " <> eventLocation
+    -- p_ [class_ "card-text"] $ toHtml eventDescription
+    div_ [class_ "row g-0 border-top"] $ do
+      replyThing "Zusagen" (Text.pack $ show coming)
+      replyThing "Absagen" (Text.pack $ show notComing)
+      replyThing "Teilnehmer" (Text.pack $ show (guests + coming))
+  where
+    replyThing :: Text -> Text -> Html ()
+    replyThing label num = do
+      div_ [class_ "col-4 border-end d-flex flex-column justify-content-center align-items-center p-2"] $ do
+        p_ [class_ "mb-0 text-muted"] $ toHtml label
+        p_ [class_ "fw-bolder mb-0"] $ toHtml num

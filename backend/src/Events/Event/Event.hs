@@ -1,10 +1,9 @@
-module Events.DB
-  ( save,
+module Events.Event.Event
+  ( Event (..),
     get,
-    update,
     getAll,
-    deleteReply,
-    upsertReply,
+    save,
+    update,
     delete,
   )
 where
@@ -12,64 +11,44 @@ where
 import qualified App
 import Control.Arrow (left)
 import Control.Exception.Safe
-import Events.Attachments.Saved as Saved
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import Data.Aeson (ToJSON, defaultOptions, genericToEncoding, toEncoding)
 import qualified Data.Aeson as Aeson
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import qualified Events.Reply as Events
 import Database.SQLite.Simple.QQ (sql)
-import qualified Events.Event as Events
-import User.Types (UserId (..))
+import qualified Events.Attachments.Saved as Saved
+import Events.Event.Id (Id (..))
+import Events.Reply.Reply (Reply)
+import GHC.Generics
 import Prelude hiding (id)
+
+data Event attachment = Event
+  { eventTitle :: Text,
+    eventDate :: Time.UTCTime,
+    eventFamilyAllowed :: Bool,
+    eventDescription :: Text,
+    eventLocation :: Text,
+    eventReplies :: [Reply],
+    eventAttachments :: [attachment]
+  }
+  deriving (Show, Eq, Generic)
+
+instance (ToJSON attachment) => ToJSON (Event attachment) where
+  toEncoding = genericToEncoding defaultOptions
 
 type EventRow = (Int, Text, Time.UTCTime, Bool, Text, Text, Text, Text)
 
-save ::
-  ( MonadIO m,
-    MonadReader env m,
-    App.HasDb env
-  ) =>
-  Events.Create ->
-  m Events.Id
-save Events.Create {..} = do
-  conn <- asks App.getDb
-
-  liftIO $
-    SQLite.execute
-      conn
-      [sql|
-            insert into events (
-              title,
-              date,
-              family_allowed,
-              description,
-              location
-            ) values (?,?,?,?,?)
-          |]
-      (createTitle, createDate, createFamilyAllowed, createDescription, createLocation)
-
-  id <- liftIO $ SQLite.lastInsertRowId conn
-
-  forM_ createFiles $ \filename ->
-    liftIO $
-      SQLite.execute
-        conn
-        [sql|insert into event_attachments (eventid, filename) values (?,?)|]
-        (id, filename)
-
-  return . Events.Id $ fromIntegral id
-
-parseRow :: EventRow -> Either Text (Events.Id, Events.Event)
+parseRow :: EventRow -> Either Text (Id, Event Saved.FileName)
 parseRow (id, title, date, family, desc, loc, replies, attachments) = do
-  (attachments' :: [Saved.Attachment]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
-  (replies' :: [Events.Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
-  return (Events.Id id, Events.Event title date family desc loc replies' attachments')
+  (replies' :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
+  (attachments' :: [Saved.FileName]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
+  return (Id id, Event title date family desc loc replies' attachments')
 
 get ::
   ( MonadIO m,
@@ -78,9 +57,9 @@ get ::
     MonadThrow m,
     App.HasDb env
   ) =>
-  Events.Id ->
-  m (Maybe Events.Event)
-get (Events.Id eventid) = do
+  Id ->
+  m (Maybe (Event Saved.FileName))
+get (Id eventid) = do
   conn <- asks App.getDb
   rows <-
     liftIO $
@@ -127,7 +106,7 @@ getAll ::
     MonadThrow m,
     App.HasDb env
   ) =>
-  m [(Events.Id, Events.Event)]
+  m [(Id, Event Saved.FileName)]
 getAll = do
   conn <- asks App.getDb
   rows <-
@@ -163,42 +142,63 @@ getAll = do
     Left e -> throwString $ "couldn't parse events from DB: " <> show e
     Right parsed -> return parsed
 
-deleteReply ::
-  ( MonadIO m,
-    Monad m,
-    MonadReader env m,
-    MonadThrow m,
-    App.HasDb env
-  ) =>
-  Events.Id ->
-  UserId ->
-  m ()
-deleteReply (Events.Id eventid) (UserId userid) = do
-  conn <- asks App.getDb
-  liftIO $ SQLite.execute conn "delete from event_replies where userid = ? and eventid = ?" [userid, eventid]
-
 delete ::
   ( MonadIO m,
     MonadReader env m,
     App.HasDb env
   ) =>
-  Events.Id ->
+  Id ->
   m ()
-delete (Events.Id eventid) = do
+delete (Id eventid) = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "delete from event_replies where eventid = ?" [eventid]
   liftIO $ SQLite.execute conn "delete from event_attachments where eventid = ?" [eventid]
   liftIO $ SQLite.execute conn "delete from events where id = ?" [eventid]
+
+save ::
+  ( MonadIO m,
+    MonadReader env m,
+    App.HasDb env
+  ) =>
+  Event Text ->
+  m Id
+save Event {..} = do
+  conn <- asks App.getDb
+
+  liftIO $
+    SQLite.execute
+      conn
+      [sql|
+            insert into events (
+              title,
+              date,
+              family_allowed,
+              description,
+              location
+            ) values (?,?,?,?,?)
+          |]
+      (eventTitle, eventDate, eventFamilyAllowed, eventDescription, eventLocation)
+
+  id <- liftIO $ SQLite.lastInsertRowId conn
+
+  forM_ eventAttachments $ \filename ->
+    liftIO $
+      SQLite.execute
+        conn
+        [sql|insert into event_attachments (eventid, filename) values (?,?)|]
+        (id, filename)
+
+  return . Id $ fromIntegral id
 
 update ::
   ( MonadIO m,
     MonadReader env m,
     App.HasDb env
   ) =>
-  Events.Id ->
-  Events.Create ->
+  Id ->
+  Event Text ->
   m ()
-update (Events.Id eventid) Events.Create {..} = do
+update (Id eventid) Event {..} = do
   conn <- asks App.getDb
 
   liftIO $ SQLite.execute conn [sql|delete from event_attachments where eventid = ?|] [eventid]
@@ -216,34 +216,11 @@ update (Events.Id eventid) Events.Create {..} = do
           location = ?
         where id = ?
       |]
-      (createTitle, createDate, createFamilyAllowed, createDescription, createLocation, eventid)
+      (eventTitle, eventDate, eventFamilyAllowed, eventDescription, eventLocation, eventid)
 
-  forM_ createFiles $ \filename ->
+  forM_ eventAttachments $ \filename ->
     liftIO $
       SQLite.execute
         conn
         [sql|insert into event_attachments (eventid, filename) values (?,?)|]
         (eventid, filename)
-
-upsertReply ::
-  ( MonadIO m,
-    MonadReader env m,
-    App.HasDb env
-  ) =>
-  Events.Id ->
-  Events.Reply ->
-  m ()
-upsertReply (Events.Id eventid) (Events.Reply coming _ (UserId userid) guests) = do
-  conn <- asks App.getDb
-  liftIO $
-    SQLite.execute
-      conn
-      [sql|
-    insert into event_replies (userid, eventid, coming, guests)
-    values (?,?,?,?)
-    on conflict (userid,eventid) do update set
-      coming=excluded.coming,
-      guests=excluded.guests
-    where userid = ? and eventid = ?
-  |]
-      [userid, eventid, if coming then 1 else 0, guests, userid, eventid]

@@ -11,9 +11,10 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
-import qualified Events.Handlers
+import qualified Events.Event.Handlers as Event.Handlers
+import qualified Events.Event.Id as Event
 import qualified Events.Attachments.Middleware as AttachmentsMiddleware
-import qualified Events.Event as Events
+import qualified Events.Reply.Handlers as Reply.Handlers
 import qualified Katip as K
 import Layout (LayoutStub (..), layout, warning)
 import qualified Logging
@@ -120,14 +121,14 @@ server dbConn sessionDataVaultKey internalState req send = do
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Events.Handlers.getAll >=> send200 . layout'
+          "GET" -> authenticatedOnly' $ Event.Handlers.getAll >=> send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", "neu"] ->
         case Wai.requestMethod req of
-          "GET" -> adminOnly' $ Events.Handlers.getCreate >=> send200 . layout'
+          "GET" -> adminOnly' $ Event.Handlers.getCreate >=> send200 . layout'
           "POST" ->
-            adminOnly' $ Events.Handlers.postCreate internalState req >=> send200 . layout'
+            adminOnly' $ Event.Handlers.postCreate internalState req >=> send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", i] ->
@@ -137,7 +138,7 @@ server dbConn sessionDataVaultKey internalState req send = do
             case Wai.requestMethod req of
               "GET" ->
                 authenticatedOnly' $
-                  Events.Handlers.get (Events.Id parsed) >=> \case
+                  Event.Handlers.get (Event.Id parsed) >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
               _ -> send404
@@ -148,25 +149,25 @@ server dbConn sessionDataVaultKey internalState req send = do
             case Wai.requestMethod req of
               "POST" ->
                 authenticatedOnly' $
-                  Events.Handlers.postReply getUser req send (Events.Id parsed)
+                  Reply.Handlers.post getUser req send (Event.Id parsed)
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.getConfirmDelete (Events.Id parsed) >=> send200 . layout'
-              "POST" -> adminOnly' $ Events.Handlers.postDelete (Events.Id parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Event.Handlers.getConfirmDelete (Event.Id parsed) >=> send200 . layout'
+              "POST" -> adminOnly' $ Event.Handlers.postDelete (Event.Id parsed) >=> send200 . layout'
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
           Right (parsed :: Int) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Events.Handlers.getEdit (Events.Id parsed) >=> send200 . layout'
+              "GET" -> adminOnly' $ Event.Handlers.getEdit (Event.Id parsed) >=> send200 . layout'
               "POST" ->
                 adminOnly' $
-                  Events.Handlers.postUpdate internalState req (Events.Id parsed)
+                  Event.Handlers.postUpdate internalState req (Event.Id parsed)
                     >=> send200 . layout'
               _ -> send404
       ["loeschen", i] ->

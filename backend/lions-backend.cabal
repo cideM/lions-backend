@@ -136,19 +136,18 @@ library
   exposed-modules:
     Lib
     Env
-    Events.DB
-    Events.Reply
+    Events.Reply.Reply
+    Events.Reply.Handlers
     Events.Attachments.Actions
     Events.Attachments.Temporary
-    Events.Attachments.Attachments
     Events.Attachments.Middleware
     Events.Attachments.Saved
-    Events.Event
+    Events.Event.Event
+    Events.Event.Handlers
+    Events.Event.Html
+    Events.Event.Id
+    Events.Event.Form
     Error
-    Events.Preview
-    Events.Form
-    Events.Handlers
-    Events.Full
     Form
     Layout
     Locale

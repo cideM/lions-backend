@@ -1,48 +1,43 @@
-module Events.Handlers
+module Events.Event.Handlers
   ( getAll,
-    getCreate,
     get,
     getConfirmDelete,
     postDelete,
+    getCreate,
     postCreate,
     postUpdate,
     getEdit,
-    postReply,
   )
 where
 
 import qualified App
 import Control.Exception.Safe
+import Data.Maybe (isJust)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.Trans.Resource (InternalState)
 import Data.Foldable (find)
+import qualified Katip as K
+import Control.Monad.Trans.Resource (InternalState)
+import qualified Network.Wai as Wai
 import qualified Data.Map.Strict as Map
-import Data.Maybe (isJust)
-import Data.Ord (Down (..))
-import Data.String.Interpolate (i)
-import Data.Text (Text)
-import qualified Data.Text as Text
-import Data.Text.Encoding (encodeUtf8)
-import qualified Data.Time as Time
 import Events.Attachments.Actions (Actions (..))
-import qualified Events.Attachments.Attachments as A
+import Data.Ord (Down (..))
+import qualified Data.Text as Text
+import qualified Data.Time as Time
+import qualified Events.Attachments.Actions as Attachments.Actions
 import qualified Events.Attachments.Saved as Saved
 import qualified Events.Attachments.Temporary as Temporary
-import qualified Events.DB
-import qualified Events.Event as Events
-import qualified Events.Form as EventForm
-import qualified Events.Full
-import qualified Events.Preview
-import qualified Events.Reply as Events
+import qualified Events.Event.Html as Event.Html
+import qualified Events.Event.Form as EventForm
+import qualified Events.Event.Event as Event
+import qualified Events.Event.Id as Event
+import Events.Reply.Reply (Reply (..))
+import qualified Events.Reply.Reply as Reply
 import GHC.Exts (sortWith)
-import qualified Katip as K
 import Layout (ActiveNavLink (..), LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
-import Network.HTTP.Types (status303)
-import qualified Network.Wai as Wai
 import Network.Wai.Parse
   ( ParseRequestBodyOptions,
     defaultParseRequestBodyOptions,
@@ -51,11 +46,10 @@ import Network.Wai.Parse
     tempFileBackEnd,
   )
 import qualified Session.Auth as Auth
-import Text.Read (readEither)
-import User.Types (UserId (..), UserProfile (..))
 import qualified User.Types as User
-import Wai (paramsToMap, parseParams)
+import Wai (paramsToMap)
 
+-- TODO: Extract
 page :: Bool -> Html () -> Html ()
 page userIsAdmin content = do
   div_ [class_ "container"] $ do
@@ -70,89 +64,27 @@ getAll ::
   Auth.Authenticated ->
   m LayoutStub
 getAll auth = do
-  events <- toEventList <$> Events.DB.getAll
+  events <- toEventList <$> Event.getAll
   return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml events
   where
     -- Every event includes all replies but the view functions shouldn't have
     -- to do that logic, so we just extract it. This technically introduces
     -- redundancy. Maybe it would be better to just define a lens for that.
     -- TODO: Read the optics book and apply it
-    getOwnReplyFromEvent (eventid, event@Events.Event {..}) =
+    getOwnReplyFromEvent (eventid, event@Event.Event {..}) =
       let User.Session {..} = Auth.get' auth
-          reply = find ((==) sessionUserId . Events.replyUserId) eventReplies
+          reply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
        in (eventid, event, reply)
 
-    toEventList = map getOwnReplyFromEvent . sortWith (Down . Events.eventDate . snd)
+    toEventList = map getOwnReplyFromEvent . sortWith (Down . Event.eventDate . snd)
 
     -- Ideally there's zero markup in the handler files.
     -- TODO: If you're super bored with lots of time on your hands extract the
     -- markup
-    eventPreviewsHtml :: [(Events.Id, Events.Event, Maybe Events.Reply)] -> Html ()
+    eventPreviewsHtml :: [(Event.Id, Event.Event Saved.FileName, Maybe Reply)] -> Html ()
     eventPreviewsHtml events =
       let userIsAdmin = Auth.isAdmin' auth
-       in page userIsAdmin (mapM_ (div_ [class_ "col"] . Events.Preview.render) events)
-
-postReply ::
-  ( MonadIO m,
-    MonadReader env m,
-    MonadThrow m,
-    App.HasDb env
-  ) =>
-  (UserId -> IO (Maybe UserProfile)) ->
-  Wai.Request ->
-  (Wai.Response -> m a) ->
-  Events.Id ->
-  Auth.Authenticated ->
-  m a
-postReply getUser req send eventid@(Events.Id eid) auth = do
-  let User.Session {..} = Auth.get' auth
-
-  UserProfile {userEmail = userEmail} <-
-    (liftIO $ getUser sessionUserId) >>= \case
-      Nothing -> throwString [i|"no user for userid from session #{sessionUserId}"|]
-      Just v -> return v
-
-  (coming, numberOfGuests) <- liftIO $ parseParams'
-
-  -- This is the core branching in this handler, everything else is just
-  -- necessary edge cases and parsing inputs. The "Nothing" case is for when
-  -- the user doesn't want commit to either coming or not coming, which I model
-  -- as having no reply. The "Just" case is then either yes or no, which
-  -- doesn't matter. What matters is that I now store that repl.
-  case coming of
-    Nothing -> Events.DB.deleteReply eventid sessionUserId
-    Just yesno ->
-      Events.DB.upsertReply eventid $
-        (Events.Reply yesno userEmail sessionUserId numberOfGuests)
-
-  send $ Wai.responseLBS status303 [("Location", encodeUtf8 [i|/veranstaltungen/#{eid}|])] mempty
-  where
-    -- 10 lines of code that say two params are required
-    parseParams' :: IO (Maybe Bool, Int)
-    parseParams' = do
-      params <- parseParams req
-
-      let replyParam = Map.findWithDefault "" "reply" params
-          numGuestsParam = Map.findWithDefault "" "numberOfGuests" params
-
-      case parseComing replyParam of
-        Left e -> throwString $ Text.unpack e
-        Right coming -> case parseNumGuests numGuestsParam of
-          Left e -> throwString $ Text.unpack e
-          Right numGuests -> return (coming, numGuests)
-
-    parseComing :: Text -> Either Text (Maybe Bool)
-    parseComing "coming" = Right $ Just True
-    parseComing "notcoming" = Right $ Just False
-    parseComing "noreply" = Right Nothing
-    parseComing s = Left [i|unknown coming value '#{s :: Text.Text}'|]
-
-    parseNumGuests :: Text -> Either Text Int
-    parseNumGuests "" = Right 0
-    parseNumGuests s =
-      case readEither (Text.unpack s) of
-        Left e -> Left [i|couldn't parse '#{s}' as number: #{e}|]
-        Right i' -> Right i'
+       in page userIsAdmin (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
 
 get ::
   ( MonadIO m,
@@ -160,29 +92,48 @@ get ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  Events.Id ->
+  Event.Id ->
   Auth.Authenticated ->
   m (Maybe LayoutStub)
 get eventid auth = do
   let userIsAdmin = Auth.isAdmin' auth
       User.Session {..} = Auth.get' auth
 
-  Events.DB.get eventid >>= \case
+  Event.get eventid >>= \case
     Nothing -> return Nothing
-    Just e@Events.Event {..} -> do
-      let ownReply = find ((==) sessionUserId . Events.replyUserId) eventReplies
+    Just e@Event.Event {..} -> do
+      let ownReply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
       return . Just
         . LayoutStub
           eventTitle
           (Just Events)
-        $ Events.Full.render (Events.Full.ShowAdminTools userIsAdmin) ownReply eventid e
+        $ Event.Html.full (Event.Html.ShowAdminTools userIsAdmin) ownReply eventid e
 
-getCreate :: (MonadIO m) => Auth.Admin -> m LayoutStub
-getCreate _ = do
-  return . LayoutStub "Neue Veranstaltung" (Just Events) $
-    div_ [class_ "container p-2"] $ do
-      h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
-      EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
+getConfirmDelete ::
+  ( MonadIO m,
+    App.HasDb env,
+    MonadReader env m,
+    MonadThrow m
+  ) =>
+  Event.Id ->
+  Auth.Admin ->
+  m LayoutStub
+getConfirmDelete eid@(Event.Id eventid) _ = do
+  -- TODO: Duplicated
+  (Event.get eid) >>= \case
+    Nothing -> throwString $ "delete event but no event for id: " <> show eventid
+    Just event -> do
+      return . LayoutStub "Veranstaltung Löschen" (Just Events) $
+        div_ [class_ "container p-3 d-flex justify-content-center"] $
+          div_ [class_ "row col-6"] $ do
+            p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
+              toHtml ("Veranstaltung " <> Event.eventTitle event <> " wirklich löschen?")
+            form_
+              [ action_ . Text.pack $ "/veranstaltungen/" <> show eventid <> "/loeschen",
+                method_ "post",
+                class_ "d-flex justify-content-center"
+              ]
+              $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Veranstaltung löschen!"
 
 postDelete ::
   ( MonadIO m,
@@ -191,48 +142,58 @@ postDelete ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  Events.Id ->
+  Event.Id ->
   Auth.Admin ->
   m LayoutStub
 postDelete eventid _ = do
-  maybeEvent <- Events.DB.get eventid
+  maybeEvent <- Event.get eventid
   case maybeEvent of
     Nothing -> return . LayoutStub "Fehler" (Just Events) $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just event -> do
-      A.removeAll eventid
-      Events.DB.delete eventid
+      Saved.removeAll eventid
+      Event.delete eventid
       return $
         LayoutStub "Veranstaltung" (Just Events) $
-          success $ "Veranstaltung " <> Events.eventTitle event <> " erfolgreich gelöscht"
+          success $ "Veranstaltung " <> Event.eventTitle event <> " erfolgreich gelöscht"
 
-getConfirmDelete ::
+getEdit ::
   ( MonadIO m,
     App.HasDb env,
     MonadReader env m,
     MonadThrow m
   ) =>
-  Events.Id ->
+  Event.Id ->
   Auth.Admin ->
   m LayoutStub
-getConfirmDelete eid@(Events.Id eventid) _ = do
-  -- TODO: Duplicated
-  (Events.DB.get eid) >>= \case
-    Nothing -> throwString $ "delete event but no event for id: " <> show eventid
-    Just event -> do
-      return . LayoutStub "Veranstaltung Löschen" (Just Events) $
-        div_ [class_ "container p-3 d-flex justify-content-center"] $
-          div_ [class_ "row col-6"] $ do
-            p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
-              toHtml ("Veranstaltung " <> Events.eventTitle event <> " wirklich löschen?")
-            form_
-              [ action_ . Text.pack $ "/veranstaltungen/" <> show eventid <> "/loeschen",
-                method_ "post",
-                class_ "d-flex justify-content-center"
-              ]
-              $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Veranstaltung löschen!"
+getEdit eid@(Event.Id eventid) _ = do
+  (Event.get eid) >>= \case
+    Nothing -> throwString $ "edit event but no event for id: " <> show eventid
+    Just Event.Event {..} ->
+      let input =
+            EventForm.FormInput
+              eventTitle
+              (renderDateForInput eventDate)
+              eventLocation
+              eventDescription
+              eventFamilyAllowed
+              (zip (map Saved.unFileName eventAttachments) (repeat True))
+              []
+       in return . LayoutStub "Veranstaltung Editieren" (Just Events) $
+            div_ [class_ "container p-2"] $ do
+              h1_ [class_ "h4 mb-3"] "Veranstaltung editieren"
+              EventForm.render "Speichern" (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren") input EventForm.emptyState
+  where
+    renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
+
+getCreate :: (MonadIO m) => Auth.Admin -> m LayoutStub
+getCreate _ = do
+  return . LayoutStub "Neue Veranstaltung" (Just Events) $
+    div_ [class_ "container p-2"] $ do
+      h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
+      EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
 
 fileUploadOpts :: ParseRequestBodyOptions
 fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
@@ -265,7 +226,7 @@ postCreate internalState req _ = do
     let params = paramsToMap $ fst body
         fromParams key = Map.findWithDefault "" key params
 
-    (actions@Actions {..}, encryptedFileInfos) <- A.makeActions [] body
+    (actions@Actions {..}, encryptedFileInfos) <- Attachments.Actions.make [] body
 
     -- Most of this code shows up in the postUpdate handler as well, at least
     -- in some form. Not sure if I want to further extract shared code.
@@ -300,42 +261,13 @@ postCreate internalState req _ = do
           div_ [class_ "container p-2"] $ do
             h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
             EventForm.render "Speichern" "/veranstaltungen/neu" input state
-      Right newEvent@Events.Create {..} -> do
-        eid <- Events.DB.save newEvent
+      Right newEvent@Event.Event {..} -> do
+        eid <- Event.save newEvent
 
-        A.processActions eid actions
+        Attachments.Actions.apply eid actions
 
         return . LayoutStub "Neue Veranstaltung" (Just Events) $
-          success $ "Neue Veranstaltung " <> createTitle <> " erfolgreich erstellt!"
-
-getEdit ::
-  ( MonadIO m,
-    App.HasDb env,
-    MonadReader env m,
-    MonadThrow m
-  ) =>
-  Events.Id ->
-  Auth.Admin ->
-  m LayoutStub
-getEdit eid@(Events.Id eventid) _ = do
-  (Events.DB.get eid) >>= \case
-    Nothing -> throwString $ "edit event but no event for id: " <> show eventid
-    Just Events.Event {..} ->
-      let input =
-            EventForm.FormInput
-              eventTitle
-              (renderDateForInput eventDate)
-              eventLocation
-              eventDescription
-              eventFamilyAllowed
-              (zip (map Saved.attachmentFileName eventAttachments) (repeat True))
-              []
-       in return . LayoutStub "Veranstaltung Editieren" (Just Events) $
-            div_ [class_ "container p-2"] $ do
-              h1_ [class_ "h4 mb-3"] "Veranstaltung editieren"
-              EventForm.render "Speichern" (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren") input EventForm.emptyState
-  where
-    renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
+          success $ "Neue Veranstaltung " <> eventTitle <> " erfolgreich erstellt!"
 
 postUpdate ::
   ( MonadThrow m,
@@ -348,24 +280,24 @@ postUpdate ::
   ) =>
   InternalState ->
   Wai.Request ->
-  Events.Id ->
+  Event.Id ->
   Auth.Admin ->
   m LayoutStub
-postUpdate internalState req eid@(Events.Id eventid) _ = do
+postUpdate internalState req eid@(Event.Id eventid) _ = do
   body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
 
   K.katipAddNamespace "postUpdate" $ do
-    Events.DB.get eid >>= \case
+    Event.get eid >>= \case
       Nothing -> throwString $ "edit event but no event for id: " <> show eventid
-      Just Events.Event {..} -> do
-        (actions@Actions {..}, encryptedFileInfos) <- A.makeActions eventAttachments body
+      Just Event.Event {..} -> do
+        (actions@Actions {..}, encryptedFileInfos) <- Attachments.Actions.make eventAttachments body
 
         let params = paramsToMap $ fst body
             fromParams key = Map.findWithDefault "" key params
 
-            savedButDeleteCheckbox = zip (map Saved.attachmentFileName actionsDelete) (repeat False)
+            savedButDeleteCheckbox = zip (map Saved.unFileName actionsDelete) (repeat False)
 
-            keepCheckbox = zip (map Saved.attachmentFileName actionsKeep) (repeat True)
+            keepCheckbox = zip (map Saved.unFileName actionsKeep) (repeat True)
 
             notSavedAndDeleteCheckbox =
               map
@@ -398,11 +330,11 @@ postUpdate internalState req eid@(Events.Id eventid) _ = do
                     (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
                     input
                     state
-          Right event@Events.Create {..} -> do
-            A.processActions eid actions
+          Right newEvent -> do
+            Attachments.Actions.apply eid actions
 
-            Events.DB.update eid event
+            Event.update eid newEvent
 
             return $
               LayoutStub "Veranstaltung Editieren" (Just Events) $
-                success $ "Veranstaltung " <> createTitle <> " erfolgreich editiert"
+                success $ "Veranstaltung " <> Event.eventTitle newEvent <> " erfolgreich editiert"
