@@ -153,6 +153,7 @@ hasUser conn (UserId id) = do
 -- TODO: Merge roles and ID into profile and then have separate version of profile for form create without ID
 -- I've spent about 2h debugging this GROUP BY NULL shit, fml
 -- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present
+-- TODO: Test
 getUser :: SQLite.Connection -> UserId -> IO (Maybe UserProfile)
 getUser conn (UserId userid) =
   handleAny
