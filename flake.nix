@@ -158,7 +158,7 @@
           {
             # TODO: This sucks, install the server systemwide or something
             config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
-            config.serverExe = "${allSystems.packages.x86_64-linux.server}/bin/migrate-and-serve";
+            config.serverExe = "${allSystems.packages.x86_64-linux.server}/server";
           }
           {
             environment.systemPackages = [ allSystems.packages.x86_64-linux.litestream ];
