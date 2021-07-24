@@ -49,10 +49,10 @@ test-suite tests
     Scrypt.Test
     Session.Test
     Login.Test
+    Events.Event.Event.Test
+    Events.Attachments.Actions.Test
     Password.Reset.Test
     Password.Change.Test
-    -- -- Events.DB.Test
-    -- Events.Handlers.Test
   build-depends:
     , base
     , filepattern

@@ -6,25 +6,18 @@ import Control.Monad.Reader.Class (asks)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as LB
 import Data.IORef
-import Data.String.Interpolate (i)
 import qualified Data.Text as T
-import Data.Text.Encoding as T
 import qualified Database.SQLite.Simple as SQLite
 import Helpers
-  ( renderLayoutStub200,
-    withFormRequest,
-    withQueryString,
+  ( withFormRequest,
     withRender200,
     withTestEnvProd,
   )
-import Network.AWS.SES.SendEmail
-import Network.URI.Encode (decode)
 import Network.Wai.Test
 import Password.Reset.Handlers as ResetHandlers
 import Password.Reset.Mail as Mail
 import Test.Tasty
 import Test.Tasty.HUnit
-import Time (timeDaysFromNow)
 
 tests :: TestTree
 tests =

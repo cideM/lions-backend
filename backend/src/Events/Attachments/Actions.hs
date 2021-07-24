@@ -47,7 +47,6 @@ instance FromJSON Actions where
 instance ToJSON Actions where
   toEncoding = genericToEncoding defaultOptions {Aeson.fieldLabelModifier = lower1 . drop 7}
 
--- TODO: Actions
 -- This is the dual to makeActions, which makes the necessary changes
 apply ::
   ( MonadIO m,
@@ -76,7 +75,6 @@ apply eid actions@Actions {..} = do
       K.logLocM K.DebugS "removing temp file"
       liftIO $ System.Directory.removeFile attachmentFilePath
 
--- TODO: Saved
 make ::
   ( MonadIO m,
     K.KatipContext m,
@@ -86,7 +84,11 @@ make ::
   ) =>
   [Saved.FileName] ->
   ([Param], [(ByteString, FileInfo FilePath)]) ->
-  m (Actions, [ByteString])
+  m
+    ( Actions,
+      -- Encrypted file infos as a string
+      [ByteString]
+    )
 make alreadySaved body = do
   pastFileInfos <-
     E.runExceptT parseEncryptedFileInfo >>= \case

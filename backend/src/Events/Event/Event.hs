@@ -82,7 +82,7 @@ get (Id eventid) = do
                end) as replies,
                (case (count(event_attachments.filename))
                   when 0 then "[]"
-                  else json_group_array(json_object('fileName',event_attachments.filename))
+                  else json_group_array(event_attachments.filename)
                end) as attachments
         from events
         left join event_attachments on events.id = event_attachments.eventid
@@ -130,7 +130,7 @@ getAll = do
                end) as replies,
                (case (count(event_attachments.filename))
                   when 0 then "[]"
-                  else json_group_array(json_object('fileName',event_attachments.filename))
+                  else json_group_array(event_attachments.filename)
                end) as attachments
         from events
         left join event_replies rep on events.id = rep.eventid

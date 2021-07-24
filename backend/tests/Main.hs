@@ -1,10 +1,10 @@
--- import qualified Events.DB.Test
--- import qualified Events.Handlers.Test
-import qualified Session.Test
+import qualified Events.Attachments.Actions.Test
+import qualified Events.Event.Event.Test
 import qualified Login.Test
 import qualified Password.Change.Test
 import qualified Password.Reset.Test
 import qualified Scrypt.Test
+import qualified Session.Test
 import Test.Tasty
 
 main :: IO ()
@@ -21,7 +21,10 @@ tests =
           Password.Change.Test.tests
         ],
       Login.Test.tests,
-      Session.Test.tests
-      -- Events.DB.Test.tests,
-      -- Events.Handlers.Test.tests
+      Session.Test.tests,
+      testGroup
+        "Events"
+        [ Events.Event.Event.Test.tests,
+          Events.Attachments.Actions.Test.tests
+        ]
     ]
