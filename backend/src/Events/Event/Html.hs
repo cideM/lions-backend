@@ -52,7 +52,7 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
                 when eventFamilyAllowed $ span_ [class_ "badge bg-success"] "Mit Familie"
               p_ [class_ "mb-1 text-muted"] $ toHtml $ "Ort: " <> eventLocation
               h1_ [class_ "mb-2 h3"] $ toHtml eventTitle
-              p_ [class_ "my-3"] $ toHtml eventDescription
+              p_ [class_ "my-3", style_ "white-space: pre-wrap"] $ toHtml eventDescription
               when (length eventAttachments > 0) $ do
                 p_ [class_ "m-0"] "Angehängte Dateien: "
                 ul_ [] $ do
