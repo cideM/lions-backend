@@ -12,32 +12,32 @@ where
 
 import qualified App
 import Control.Exception.Safe
-import Data.Maybe (isJust)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader)
-import Data.Foldable (find)
-import qualified Katip as K
 import Control.Monad.Trans.Resource (InternalState)
-import qualified Network.Wai as Wai
+import Data.Foldable (find)
 import qualified Data.Map.Strict as Map
-import Events.Attachments.Actions (Actions (..))
+import Data.Maybe (isJust)
 import Data.Ord (Down (..))
 import qualified Data.Text as Text
 import qualified Data.Time as Time
+import Events.Attachments.Actions (Actions (..))
 import qualified Events.Attachments.Actions as Attachments.Actions
 import qualified Events.Attachments.Saved as Saved
 import qualified Events.Attachments.Temporary as Temporary
-import qualified Events.Event.Html as Event.Html
-import qualified Events.Event.Form as EventForm
 import qualified Events.Event.Event as Event
+import qualified Events.Event.Form as EventForm
+import qualified Events.Event.Html as Event.Html
 import qualified Events.Event.Id as Event
 import Events.Reply.Reply (Reply (..))
 import qualified Events.Reply.Reply as Reply
 import GHC.Exts (sortWith)
+import qualified Katip as K
 import Layout (ActiveNavLink (..), LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
+import qualified Network.Wai as Wai
 import Network.Wai.Parse
   ( ParseRequestBodyOptions,
     defaultParseRequestBodyOptions,
@@ -49,7 +49,6 @@ import qualified Session.Auth as Auth
 import qualified User.Types as User
 import Wai (paramsToMap)
 
--- TODO: Extract
 page :: Bool -> Html () -> Html ()
 page userIsAdmin content = do
   div_ [class_ "container"] $ do
@@ -67,14 +66,9 @@ getAll auth = do
   events <- toEventList <$> Event.getAll
   return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml events
   where
-    -- Every event includes all replies but the view functions shouldn't have
-    -- to do that logic, so we just extract it. This technically introduces
-    -- redundancy. Maybe it would be better to just define a lens for that.
-    -- TODO: Read the optics book and apply it
     getOwnReplyFromEvent (eventid, event@Event.Event {..}) =
       let User.Session {..} = Auth.get' auth
-          reply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
-       in (eventid, event, reply)
+       in (eventid,event,) $ find ((==) sessionUserId . Reply.replyUserId) eventReplies
 
     toEventList = map getOwnReplyFromEvent . sortWith (Down . Event.eventDate . snd)
 
@@ -83,8 +77,7 @@ getAll auth = do
     -- markup
     eventPreviewsHtml :: [(Event.Id, Event.Event Saved.FileName, Maybe Reply)] -> Html ()
     eventPreviewsHtml events =
-      let userIsAdmin = Auth.isAdmin' auth
-       in page userIsAdmin (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
+      page (Auth.isAdmin' auth) (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
 
 get ::
   ( MonadIO m,
@@ -148,10 +141,7 @@ postDelete ::
 postDelete eventid _ = do
   maybeEvent <- Event.get eventid
   case maybeEvent of
-    Nothing -> return . LayoutStub "Fehler" (Just Events) $
-      div_ [class_ "container p-3 d-flex justify-content-center"] $
-        div_ [class_ "row col-6"] $ do
-          p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
+    Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
       Saved.removeAll eventid
       Event.delete eventid

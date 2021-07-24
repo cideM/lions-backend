@@ -2,14 +2,12 @@ module Password.Change.Handlers (get, post) where
 
 import qualified App
 import Control.Exception.Safe
-import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader.Class (MonadReader, asks)
+import Control.Monad.Reader.Class (MonadReader)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Database.SQLite.Simple as SQLite
 import qualified Error as E
 import Form (FormFieldState (..))
 import qualified Katip as K
@@ -27,39 +25,6 @@ import Prelude hiding (id, log)
 -- ... the continuation of the above comment. This is for actually typing in the new PW
 layout :: Html () -> LayoutStub
 layout = LayoutStub "Passwort Ändern" Nothing
-
--- TODO: inline this into handler
-makeHashedPassword ::
-  ( MonadIO m,
-    E.MonadError TryResetError m,
-    MonadThrow m
-  ) =>
-  Text ->
-  Text ->
-  Text ->
-  m Password.Hashed
-makeHashedPassword tokenInput pw pwMatch = do
-  let input = F.FormInput pw pwMatch
-
-  when (pw /= pwMatch) $
-    E.throwError
-      ( InvalidPassword
-          input
-          tokenInput
-          (F.FormState (Invalid changePwNoMatch) (Invalid changePwNoMatch))
-      )
-
-  let notEmptyMsg = "Feld darf nicht leer sein"
-
-  when ((pw == "") || (pwMatch == "")) $
-    E.throwError
-      ( InvalidPassword
-          input
-          tokenInput
-          (F.FormState (Invalid notEmptyMsg) (Invalid notEmptyMsg))
-      )
-
-  Password.hash pw
 
 post ::
   ( MonadIO m,
@@ -79,29 +44,45 @@ post req = do
     Just tok -> do
       let pw = (Map.findWithDefault "" "inputPassword" params)
           pwMatch = (Map.findWithDefault "" "inputPasswordMatch" params)
+          input = F.FormInput pw pwMatch
 
-      ( E.runExceptT $
-          (,)
-            <$> (E.withExceptT' ParseE $ Token.parse tok)
-            <*> makeHashedPassword tok pw pwMatch
-        )
-        >>= \case
-          Left e -> do
-            K.logLocM K.ErrorS $ K.ls $ show e
-            return $ renderTryResetError e
-          Right (Token.Valid (Token.Token {..}), hashed) -> do
-            updatePw tokenUserId hashed
-            return . layout $ success "Password erfolgreich geändert"
-  where
-    updatePw userid hashed = do
-      dbConn <- asks App.getDb
-      UnliftIO.withRunInIO $ \runInIO ->
-        SQLite.withTransaction
-          dbConn
-          ( runInIO $ do
-              Token.delete userid
-              Password.update hashed userid
-          )
+      if (pw /= pwMatch)
+        then
+          return $
+            page
+              (F.form tok input (F.FormState (Invalid changePwNoMatch) (Invalid changePwNoMatch)))
+        else do
+          let notEmptyMsg = "Feld darf nicht leer sein"
+
+          if ((pw == "") || (pwMatch == ""))
+            then
+              return $
+                page
+                  (F.form tok input (F.FormState (Invalid notEmptyMsg) (Invalid notEmptyMsg)))
+            else do
+              hashed <- Password.hash pw
+
+              E.runExceptT (Token.parse tok) >>= \case
+                Left (Token.NotFound token) -> do
+                  return . layout $
+                    warning
+                      [i|Der Verifizierungs-Code aus der Email wurde nicht gefunden, bitte an
+                         einen Administrator wenden: #{token}|]
+                Left (Token.NoUser userid) ->
+                  return . layout $
+                    warning
+                      [i|Kein Nutzer zu diesem Verifizierungs-Code registriert. Bitte an einen
+                         Administrator wenden: #{userid}|]
+                Left (Token.Expired expired) ->
+                  return . layout $
+                    warning
+                      [i|Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen
+                         neuen Link anfordern per 'Password vergessen' Knopf. Falls das Problem
+                         weiterhin besteht bitte an einen Administrator wenden. Der Code ist am
+                         #{expired} abgelaufen.|]
+                Right (Token.Valid (Token.Token {..})) -> do
+                  Password.update tokenUserId hashed
+                  return . layout $ success "Password erfolgreich geändert"
 
 -- GET handler that shows the form that lets users enter a new password.
 -- Expects a token to be passed via query string parameters. That token is
@@ -128,20 +109,8 @@ data TryResetError
   | ParseE Token.ParseError
   deriving (Show)
 
--- Render the different variations of the TryResetError into Html that we can
--- send to the user directly. The goal of functions like this one is to have less noise in the handler.
-renderTryResetError :: TryResetError -> LayoutStub
-renderTryResetError (InvalidPassword input token state) =
-  layout $
-    div_
-      [class_ "container p-3 d-flex justify-content-center"]
-      $ F.form token input state
-renderTryResetError (ParseE (Token.NotFound token)) =
-  layout . warning . changePwTokenNotFound . T.pack $ show token
-renderTryResetError (ParseE (Token.NoUser userid)) =
-  layout . warning . changePwUserNotFound . T.pack $ show userid
-renderTryResetError (ParseE (Token.Expired expired)) =
-  layout . warning . changePwTokenExpired . T.pack $ show expired
+page :: Html () -> LayoutStub
+page = layout . div_ [class_ "container p-3 d-flex justify-content-center"]
 
 -- Copy that I didn't want in the handler code because it distracts from the
 -- actual logic
@@ -152,23 +121,6 @@ changePwNoToken =
   Dieser Code fehlt jedoch. Das Password kann nur über den Link in der Email
   geändert werden. Falls der richtige Link verwendet wurde, bitte an einen
   Administrator wenden.|]
-
-changePwTokenExpired :: Text -> Text
-changePwTokenExpired expired =
-  [i|Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen
-  neuen Link anfordern per 'Password vergessen' Knopf. Falls das Problem
-  weiterhin besteht bitte an einen Administrator wenden. Der Code ist am
-  #{expired} abgelaufen.|]
-
-changePwUserNotFound :: Text -> Text
-changePwUserNotFound userid =
-  [i|Kein Nutzer zu diesem Verifizierungs-Code registriert. Bitte an einen
-  Administrator wenden: #{userid}|]
-
-changePwTokenNotFound :: Text -> Text
-changePwTokenNotFound token =
-  [i|Der Verifizierungs-Code aus der Email wurde nicht gefunden, bitte an
-  einen Administrator wenden: #{token}|]
 
 changePwNoMatch :: Text
 changePwNoMatch = "Passwörter stimmen nicht überein"
