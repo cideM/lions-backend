@@ -1,15 +1,5 @@
 { pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream, bootstrapSrc }:
 let
-  lions-dummy = pkgs.writeScriptBin "lions-dummy" ''
-    #!${pkgs.fish}/bin/fish
-    for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
-  '';
-
-  lions-ghcid = pkgs.writeScriptBin "lions-ghcid" ''
-    #!/bin/sh
-    ghcid --no-height-limit --clear --reverse
-  '';
-
   # If needed can also just forward arguments to sass here
   # TODO: Properly handle permissions for out path.
   # The things that "nix build" creates are put in the Nix store and then a
@@ -83,10 +73,7 @@ pkgs.mkShell {
       # Scripts
       pkgs.bash_5
       pkgs.jq
-      pkgs.parallel
       lions-vm
-      lions-ghcid
-      lions-dummy
       lions-vm-db
 
       # Infra
