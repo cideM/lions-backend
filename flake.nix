@@ -41,9 +41,14 @@
     , litestream-src
     }:
     let
-      allSystems = flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ]
-        (system:
+      allSystems = flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ]
+        (system':
           let
+            # This is a hopefully temporary workaround until GHC works with aarch64
+            system =
+              if system' == "aarch64-darwin" then "x86_64-darwin"
+              else "x86_64-linux";
+
             pkgs = import nixpkgs {
               inherit system;
               overlays = [ (import ./nix/migrate.nix) ];
