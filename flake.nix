@@ -47,7 +47,7 @@
             # This is a hopefully temporary workaround until GHC works with aarch64
             system =
               if system' == "aarch64-darwin" then "x86_64-darwin"
-              else "x86_64-linux";
+              else system';
 
             pkgs = import nixpkgs {
               inherit system;
