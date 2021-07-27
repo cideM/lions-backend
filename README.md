@@ -72,7 +72,20 @@ Rebuild and restart when source changes. This may or may not work reliably on Ma
 $ fd . -e hs -e purs | entr -cr ./scripts/dev.hs
 ```
 
+Check source files:
+```shell
+$ cd backend
+$ ghcid --no-height-limit --clear --reverse
+```
+
 ### Tests
+
+Check test files:
+
+```shell
+$ cd backend
+$ ghcid --no-height-limit --clear --reverse --target=test:tests
+```
 
 This will recompile and run the test binary, it's not using Cabal's test running facilities.
 
