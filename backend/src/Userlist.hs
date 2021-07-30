@@ -16,31 +16,21 @@ import Layout (ActiveNavLink (..), LayoutStub (..), ariaLabel_)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified User.Email as UserEmail
-import qualified User.Session
 import qualified User.Id as User
 import User.Role.Role (Role (..))
+import qualified User.Session
 import qualified User.User as User
 import Wai (parseQueryParams)
 
 data Option a = Option {optionLabel :: Text, optionValue :: a} deriving (Show, Eq)
 
-data Dropdown a = Dropdown {dropdownSelected :: Option a, dropdownOthers :: [Option a]} deriving (Show, Eq)
-
-data MemberlistProfile = MemberlistProfile
-  { memberlistProfileName :: Text,
-    memberlistProfileProfileLink :: Text,
-    memberlistProfileEmailLink :: Text,
-    memberlistProfileEmail :: Text,
-    memberlistProfileRoles :: [Text]
-  }
-
-render :: Show a => [MemberlistProfile] -> Dropdown a -> Html ()
-render users Dropdown {..} = do
+render :: Show a => [(User.Id, User.Profile)] -> Option a -> [Option a] -> Html ()
+render users selected others = do
   div_ [class_ "d-flex justify-content-between align-items-center mb-3 flex-wrap"] $ do
     form_ [method_ "get", action_ "/nutzer", class_ "d-flex mb-2"] $ do
       select_ [name_ "userselect", class_ "form-select form-select-sm me-1", ariaLabel_ "Nutzergruppe auswählen"] $ do
-        option_ [value_ (Text.pack . show $ optionValue dropdownSelected)] . toHtml $ optionLabel dropdownSelected
-        mapM_ (\Option {..} -> option_ [value_ . Text.pack $ show optionValue] $ toHtml optionLabel) dropdownOthers
+        option_ [value_ (Text.pack . show $ optionValue selected)] . toHtml $ optionLabel selected
+        mapM_ (\Option {..} -> option_ [value_ . Text.pack $ show optionValue] $ toHtml optionLabel) others
       button_ [class_ "btn btn-sm btn-secondary", type_ "submit"] "Ok"
     a_ [href_ "", class_ "btn btn-primary btn-sm disabled", role_ "button", id_ "email-button"] $ "Email abschicken"
   table_ [class_ "table mb-3", id_ "userslist"] $ do
@@ -53,16 +43,21 @@ render users Dropdown {..} = do
         th_ [scope_ "col", class_ "text-center"] $ envelopeSvg
     tbody_ [] $
       mapM_
-        ( \MemberlistProfile {..} -> do
+        ( \(User.Id uid, User.Profile {..}) -> do
+            let name = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
+                (UserEmail.Email email) = userEmail
+                emailLink = [i|mailto:#{UserEmail.show email}|]
+                profileLink = [i|/nutzer/#{uid}|]
+                email' = UserEmail.show email
             tr_ [] $ do
               td_ [class_ "text-center align-middle"] $
-                a_ [href_ memberlistProfileProfileLink] personCircleSvg
-              td_ [] $ a_ [href_ memberlistProfileEmailLink, class_ "text-break"] $ toHtml memberlistProfileEmail
+                a_ [href_ profileLink] personCircleSvg
+              td_ [] $ a_ [href_ emailLink, class_ "text-break"] $ toHtml email'
               td_ [class_ "d-none d-lg-table-cell"] $
-                unless (Text.null $ Text.strip memberlistProfileName) $ p_ [class_ "fw-bold m-0"] $ toHtml memberlistProfileName
-              td_ [class_ "text-muted d-none d-lg-table-cell"] . toHtml $ Text.intercalate "," memberlistProfileRoles
+                unless (Text.null $ Text.strip name) $ p_ [class_ "fw-bold m-0"] $ toHtml name
+              td_ [class_ "text-muted d-none d-lg-table-cell"] . toHtml $ Text.intercalate "," $ rolesToBadge userRoles
               td_ [class_ "text-center align-middle"] $
-                input_ [type_ "checkbox", value_ "", data_ "email" memberlistProfileEmail]
+                input_ [type_ "checkbox", value_ "", data_ "email" email']
         )
         users
   where
@@ -110,21 +105,6 @@ passiveOption = Option {optionLabel = "Nur Passiv", optionValue = Some Passive}
 allOptions :: [Option RoleOption]
 allOptions = [allOption, adminOption, boardOption, presidentOption, passiveOption]
 
--- Turn the selected value from the incoming request into an Option and then
--- filter the users accordingly and return a proper Dropdown where the
--- selection and the other options are separated.
-selectionLogic ::
-  [(User.Id, User.Profile)] ->
-  Text ->
-  Either Text ([(User.Id, User.Profile)], Dropdown RoleOption)
-selectionLogic allUsers selected = do
-  parsed <- makeOptionFromSelection selected
-  let others = filter (not . (==) parsed) allOptions
-      usersToShow = case optionValue parsed of
-        All -> allUsers
-        Some role -> filter (elem role . User.userRoles . snd) allUsers
-  return $ (usersToShow, Dropdown {dropdownSelected = parsed, dropdownOthers = others})
-
 -- Looks complicated but essentially turns Foo into "cool foo"
 rolesToBadge :: NonEmpty Role -> [Text]
 rolesToBadge = map showBadge . filter dropUser . toList
@@ -136,22 +116,6 @@ rolesToBadge = map showBadge . filter dropUser . toList
     showBadge Board = "Vorstand"
     showBadge Admin = "Administrator"
     showBadge User = "Nutzer"
-
-formatDataForView :: [(User.Id, User.Profile)] -> [MemberlistProfile]
-formatDataForView users =
-  map
-    ( \(uid, User.Profile {..}) ->
-        let name = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
-            (UserEmail.Email email) = userEmail
-         in MemberlistProfile
-              { memberlistProfileName = name,
-                memberlistProfileProfileLink = [i|/nutzer/#{uid}|],
-                memberlistProfileEmailLink = [i|mailto:#{UserEmail.show email}|],
-                memberlistProfileEmail = UserEmail.show email,
-                memberlistProfileRoles = rolesToBadge userRoles
-              }
-    )
-    users
 
 get ::
   ( MonadIO m,
@@ -165,14 +129,21 @@ get ::
   m LayoutStub
 get req auth = do
   let selectionRaw = Map.findWithDefault "all" "userselect" $ parseQueryParams req
+
   users <- User.getAll
-  (usersToShow, dropdown) <- case selectionLogic users selectionRaw of
+
+  selectedOption <- case makeOptionFromSelection selectionRaw of
     Left e -> throwString $ show e
     Right v -> return v
+
+  let usersToShow = case optionValue selectedOption of
+        All -> users
+        Some role -> filter (elem role . User.userRoles . snd) users
+
   return $
     LayoutStub "Mitglieder" (Just Members) $
       div_ [class_ "container p-2"] $ do
         when (User.Session.isAdmin' auth) $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
         h1_ [class_ "h4 mb-5"] "Mitgliederliste"
         div_ [class_ "row row-cols-1 g-2"] $
-          render (formatDataForView usersToShow) dropdown
+          render usersToShow selectedOption $ filter (/= selectedOption) allOptions

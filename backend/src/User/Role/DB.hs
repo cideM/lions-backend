@@ -4,6 +4,8 @@ module User.Role.DB
   )
 where
 
+-- See comment in the other file in this folder for why I had to split this up
+
 import qualified App
 import Control.Exception.Safe
 import Control.Monad (forM_)
