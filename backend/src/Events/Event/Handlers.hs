@@ -45,8 +45,7 @@ import Network.Wai.Parse
     setMaxRequestFileSize,
     tempFileBackEnd,
   )
-import qualified Session.Auth as Auth
-import qualified User.Session as User
+import qualified User.Session
 import Wai (paramsToMap)
 
 page :: Bool -> Html () -> Html ()
@@ -60,14 +59,14 @@ page userIsAdmin content = do
 
 getAll ::
   (MonadIO m, MonadReader env m, MonadThrow m, App.HasDb env) =>
-  Auth.Authenticated ->
+  User.Session.Authenticated ->
   m LayoutStub
 getAll auth = do
   events <- toEventList <$> Event.getAll
   return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml events
   where
     getOwnReplyFromEvent (eventid, event@Event.Event {..}) =
-      let User.Session {..} = Auth.get' auth
+      let User.Session.Session {..} = User.Session.get' auth
        in (eventid,event,) $ find ((==) sessionUserId . Reply.replyUserId) eventReplies
 
     toEventList = map getOwnReplyFromEvent . sortWith (Down . Event.eventDate . snd)
@@ -77,7 +76,7 @@ getAll auth = do
     -- markup
     eventPreviewsHtml :: [(Event.Id, Event.Event Saved.FileName, Maybe Reply)] -> Html ()
     eventPreviewsHtml events =
-      page (Auth.isAdmin' auth) (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
+      page (User.Session.isAdmin' auth) (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
 
 get ::
   ( MonadIO m,
@@ -86,11 +85,11 @@ get ::
     MonadReader env m
   ) =>
   Event.Id ->
-  Auth.Authenticated ->
+  User.Session.Authenticated ->
   m (Maybe LayoutStub)
 get eventid auth = do
-  let userIsAdmin = Auth.isAdmin' auth
-      User.Session {..} = Auth.get' auth
+  let userIsAdmin = User.Session.isAdmin' auth
+      User.Session.Session {..} = User.Session.get' auth
 
   Event.get eventid >>= \case
     Nothing -> return Nothing
@@ -109,7 +108,7 @@ getConfirmDelete ::
     MonadThrow m
   ) =>
   Event.Id ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 getConfirmDelete eid@(Event.Id eventid) _ = do
   -- TODO: Duplicated
@@ -136,7 +135,7 @@ postDelete ::
     MonadReader env m
   ) =>
   Event.Id ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 postDelete eventid _ = do
   maybeEvent <- Event.get eventid
@@ -156,7 +155,7 @@ getEdit ::
     MonadThrow m
   ) =>
   Event.Id ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 getEdit eid@(Event.Id eventid) _ = do
   (Event.get eid) >>= \case
@@ -178,7 +177,7 @@ getEdit eid@(Event.Id eventid) _ = do
   where
     renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
 
-getCreate :: (MonadIO m) => Auth.Admin -> m LayoutStub
+getCreate :: (MonadIO m) => User.Session.Admin -> m LayoutStub
 getCreate _ = do
   return . LayoutStub "Neue Veranstaltung" (Just Events) $
     div_ [class_ "container p-2"] $ do
@@ -199,7 +198,7 @@ postCreate ::
   ) =>
   InternalState ->
   Wai.Request ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 postCreate internalState req _ = do
   -- There's no point in trying to catch an exception arising from a payload
@@ -271,7 +270,7 @@ postUpdate ::
   InternalState ->
   Wai.Request ->
   Event.Id ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 postUpdate internalState req eid@(Event.Id eventid) _ = do
   body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req

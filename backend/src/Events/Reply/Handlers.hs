@@ -17,9 +17,8 @@ import Events.Reply.Reply (Reply (..))
 import qualified Events.Reply.Reply as Reply
 import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
-import qualified Session.Auth as Auth
 import Text.Read (readEither)
-import qualified User.Session as User
+import qualified User.Session
 import qualified User.User as User
 import Wai (parseParams)
 
@@ -32,10 +31,10 @@ post ::
   Wai.Request ->
   (Wai.Response -> m a) ->
   Event.Id ->
-  Auth.Authenticated ->
+  User.Session.Authenticated ->
   m a
 post req send eventid@(Event.Id eid) auth = do
-  let User.Session {..} = Auth.get' auth
+  let User.Session.Session {..} = User.Session.get' auth
 
   (_, User.Profile {userEmail = userEmail}) <-
     User.get sessionUserId >>= \case

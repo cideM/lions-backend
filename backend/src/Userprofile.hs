@@ -10,12 +10,10 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
-import Session.Auth (Authenticated)
-import qualified Session.Auth as Session
 import qualified User.Email as UserEmail
+import qualified User.Session
 import qualified User.Id as User
 import User.Role.Role (Role (..))
-import qualified User.Session as User
 import qualified User.User as User
 
 newtype CanDelete = CanDelete Bool
@@ -94,12 +92,12 @@ get ::
     App.HasDb env
   ) =>
   Int ->
-  Authenticated ->
+  User.Session.Authenticated ->
   m (Maybe LayoutStub)
 get paramId auth = do
   let userIdToShow = User.Id paramId
-      userIsAdmin = Session.isAdmin' auth
-      User.Session {..} = Session.get' auth
+      userIsAdmin = User.Session.isAdmin' auth
+      User.Session.Session {..} = User.Session.get' auth
       isOwnProfile = sessionUserId == userIdToShow
   user <- User.get userIdToShow
   return $ case user of

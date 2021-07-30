@@ -11,7 +11,7 @@ where
 import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader.Class (MonadReader)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -21,19 +21,19 @@ import qualified Katip as K
 import Layout (LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
-import qualified Session.Auth as Auth
 import qualified UnliftIO
 import qualified User.Email as UserEmail
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import qualified User.Id as User
 import qualified User.Role.DB as User.Role
 import User.Role.Role (Role (..))
+import qualified User.Session
 import qualified User.User as User
 import Wai (parseParams)
 
 createGet ::
   (MonadIO m) =>
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 createGet _ =
   return $
@@ -54,11 +54,11 @@ createPost ::
     App.HasDb env,
     MonadThrow m
   ) =>
-  SQLite.Connection ->
   Wai.Request ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
-createPost conn req _ = do
+createPost req _ = do
+  conn <- asks App.getDb
   params <- liftIO $ parseParams req
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
@@ -114,7 +114,7 @@ deletePost ::
     App.HasDb env
   ) =>
   User.Id ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 deletePost userId _ = do
   User.get userId >>= \case
@@ -136,7 +136,7 @@ deleteGet ::
     App.HasDb env
   ) =>
   User.Id ->
-  Auth.Admin ->
+  User.Session.Admin ->
   m LayoutStub
 deleteGet userId@(User.Id uid) _ = do
   User.get userId >>= \case
@@ -162,7 +162,7 @@ editGet ::
     App.HasDb env
   ) =>
   User.Id ->
-  Auth.Authenticated ->
+  User.Session.Authenticated ->
   m LayoutStub
 editGet userIdToEdit@(User.Id uid) auth = do
   user <- User.get userIdToEdit
@@ -176,7 +176,7 @@ editGet userIdToEdit@(User.Id uid) auth = do
        in LayoutStub "Nutzer Editieren" Nothing $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
               User.Form.render
-                (CanEditRoles $ Auth.isAdmin' auth)
+                (CanEditRoles $ User.Session.isAdmin' auth)
                 "Nutzer editieren"
                 [i|/nutzer/#{uid}/editieren|]
                 ( FormInput
@@ -207,7 +207,7 @@ editPost ::
   ) =>
   Wai.Request ->
   User.Id ->
-  Auth.Authenticated ->
+  User.Session.Authenticated ->
   m LayoutStub
 editPost req userId auth = do
   rolesForUserToUpdate <- User.Role.get userId
@@ -252,4 +252,4 @@ editPost req userId auth = do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
                 "Nutzer " <> UserEmail.show email <> " erfolgreich editiert"
   where
-    userIsAdmin = Auth.isAdmin' auth
+    userIsAdmin = User.Session.isAdmin' auth

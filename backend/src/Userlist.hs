@@ -15,8 +15,8 @@ import qualified Katip as K
 import Layout (ActiveNavLink (..), LayoutStub (..), ariaLabel_)
 import Lucid
 import qualified Network.Wai as Wai
-import qualified Session.Auth as Session
 import qualified User.Email as UserEmail
+import qualified User.Session
 import qualified User.Id as User
 import User.Role.Role (Role (..))
 import qualified User.User as User
@@ -161,7 +161,7 @@ get ::
     MonadThrow m
   ) =>
   Wai.Request ->
-  Session.Authenticated ->
+  User.Session.Authenticated ->
   m LayoutStub
 get req auth = do
   let selectionRaw = Map.findWithDefault "all" "userselect" $ parseQueryParams req
@@ -172,7 +172,7 @@ get req auth = do
   return $
     LayoutStub "Mitglieder" (Just Members) $
       div_ [class_ "container p-2"] $ do
-        when (Session.isAdmin' auth) $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
+        when (User.Session.isAdmin' auth) $ a_ [class_ "btn btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
         h1_ [class_ "h4 mb-5"] "Mitgliederliste"
         div_ [class_ "row row-cols-1 g-2"] $
           render (formatDataForView usersToShow) dropdown

@@ -162,7 +162,6 @@ library
     Password.Change.Form
     Session.Middleware
     Session.Session
-    Session.Auth
     Session.Valid
     Request.Types
     Request.Middleware

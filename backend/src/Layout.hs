@@ -18,8 +18,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
-import qualified Session.Auth as Session
-import qualified User.Session as User
+import qualified User.Session
 
 data LayoutStub = LayoutStub
   { layoutStubTitle :: Text,
@@ -38,7 +37,7 @@ ariaLabel_ = makeAttribute "aria-label"
 ariaLabelledBy_ = makeAttribute "aria-labelledby"
 ariaHidden_ = makeAttribute "aria-hidden"
 
-layout :: Session.Authentication -> LayoutStub -> Html ()
+layout :: User.Session.Authentication -> LayoutStub -> Html ()
 layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = activeNavLink, layoutStubContent = pageContent}) =
   doctype_ *> do
     html_ [lang_ "de-DE"] $ do
@@ -82,9 +81,9 @@ layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = 
                           ("/nutzer", "Mitglieder", Just Members),
                           ("/login", "Login", Just Login)
                         ]
-                          ++ ( case Session.get auth of
+                          ++ ( case User.Session.get auth of
                                  Nothing -> []
-                                 Just User.Session {..} -> [([i|/nutzer/#{sessionUserId}|], "Mein Profil", Just Profile)]
+                                 Just User.Session.Session {..} -> [([i|/nutzer/#{sessionUserId}|], "Mein Profil", Just Profile)]
                              )
                       )
           div_ [class_ "py-4 content"] pageContent

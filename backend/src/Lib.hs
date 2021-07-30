@@ -10,7 +10,6 @@ import qualified DB
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
-import qualified Database.SQLite.Simple as SQLite
 import qualified Events.Attachments.Middleware as AttachmentsMiddleware
 import qualified Events.Event.Handlers as Event.Handlers
 import qualified Events.Event.Id as Event
@@ -30,7 +29,6 @@ import qualified Password.Change.Handlers
 import qualified Password.Reset.Handlers
 import qualified Password.Reset.Mail as Mail
 import qualified Request.Middleware as Request
-import qualified Session.Auth as Session
 import qualified Session.Middleware as Session
 import qualified System.Directory
 import System.Environment (getEnv)
@@ -38,6 +36,7 @@ import Text.Read (readEither)
 import qualified UnliftIO
 import qualified User.Handler as User.User
 import qualified User.Id as User
+import qualified User.Session
 import qualified User.Session as User
 import qualified Userlist
 import qualified Userprofile
@@ -56,6 +55,7 @@ server ::
     UnliftIO.MonadUnliftIO m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
+    App.HasSessionDataVaultKey env,
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
     App.HasDb env,
@@ -63,17 +63,16 @@ server ::
     App.HasMail env,
     MonadReader env m
   ) =>
-  SQLite.Connection ->
-  Session.VaultKey ->
   InternalState ->
   Wai.ApplicationT m
-server dbConn sessionDataVaultKey internalState req send = do
+server internalState req send = do
   reqIdVaultKey <- asks App.getRequestIdVaultKey
+  sessionDataVaultKey <- asks App.getSessionDataVaultKey
 
   let vault = Wai.vault req
 
       -- Create some helpers for doing things based on the user's auth status.
-      authInfo = Session.fromVault sessionDataVaultKey vault
+      authInfo = User.Session.fromVault sessionDataVaultKey vault
 
       -- This function let's visitors access a resource if:
       -- - They're an admin
@@ -81,15 +80,15 @@ server dbConn sessionDataVaultKey internalState req send = do
       -- TODO: Test this
       adminOnlyOrOwn id next =
         maybe send403 (next . (id,)) $ do
-          auth <- Session.getAuth authInfo
-          unless (Session.isAdmin authInfo) Nothing
-          let User.Session {..} = Session.get' auth
+          auth <- User.Session.getAuth authInfo
+          unless (User.Session.isAdmin authInfo) Nothing
+          let User.Session {..} = User.Session.get' auth
           unless (sessionUserId /= id) Nothing
           pure auth
 
-      adminOnly' next = maybe send403 next (Session.getAdmin authInfo)
+      adminOnly' next = maybe send403 next (User.Session.getAdmin authInfo)
 
-      authenticatedOnly' next = maybe send403 next (Session.getAuth authInfo)
+      authenticatedOnly' next = maybe send403 next (User.Session.getAuth authInfo)
 
       -- The layout changes depending on whether you're logged in or not, so
       -- we dependency inversion through partial application. Witness the
@@ -113,7 +112,7 @@ server dbConn sessionDataVaultKey internalState req send = do
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ WelcomeMessage.showFeed dbConn >=> send200 . layout'
+          "GET" -> authenticatedOnly' $ WelcomeMessage.showFeed >=> send200 . layout'
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
@@ -172,12 +171,12 @@ server dbConn sessionDataVaultKey internalState req send = do
           Right (parsed :: Int) ->
             let msgId = WelcomeMsgId parsed
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ WelcomeMessage.handleDeleteMessage dbConn msgId >=> send200 . layout'
-                  "GET" -> adminOnly' $ WelcomeMessage.showDeleteConfirmation dbConn msgId >=> send200 . layout'
+                  "POST" -> adminOnly' $ WelcomeMessage.handleDeleteMessage msgId >=> send200 . layout'
+                  "GET" -> adminOnly' $ WelcomeMessage.showDeleteConfirmation msgId >=> send200 . layout'
                   _ -> send404
       ["neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ WelcomeMessage.saveNewMessage dbConn req >=> send200 . layout'
+          "POST" -> adminOnly' $ WelcomeMessage.saveNewMessage req >=> send200 . layout'
           "GET" -> adminOnly' $ WelcomeMessage.showAddMessageForm >=> send200 . layout'
           _ -> send404
       ["editieren", i] ->
@@ -186,8 +185,8 @@ server dbConn sessionDataVaultKey internalState req send = do
           Right (parsed :: Int) ->
             let msgId = WelcomeMsgId parsed
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ WelcomeMessage.handleEditMessage dbConn req msgId >=> send200 . layout'
-                  "GET" -> adminOnly' $ WelcomeMessage.showMessageEditForm dbConn msgId >=> send200 . layout'
+                  "POST" -> adminOnly' $ WelcomeMessage.handleEditMessage req msgId >=> send200 . layout'
+                  "GET" -> adminOnly' $ WelcomeMessage.showMessageEditForm msgId >=> send200 . layout'
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
@@ -195,7 +194,7 @@ server dbConn sessionDataVaultKey internalState req send = do
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ User.User.createPost dbConn req >=> send200 . layout'
+          "POST" -> adminOnly' $ User.User.createPost req >=> send200 . layout'
           "GET" -> adminOnly' (User.User.createGet >=> send200 . layout')
           _ -> send404
       ["nutzer", int, "editieren"] ->
@@ -309,12 +308,6 @@ main = do
                               envLogEnv = logEnv
                             }
 
-                        app' =
-                          server
-                            conn
-                            sessionDataVaultKey
-                            internalState
-
                     K.katipAddContext (K.sl "port" port) $ do
                       K.logLocM K.InfoS "starting server"
 
@@ -330,7 +323,7 @@ main = do
                               . Session.middleware
                               . AttachmentsMiddleware.middleware storageDir
                               . storageStaticMiddleware
-                          appWithMiddlewares = allMiddlewares app'
+                          appWithMiddlewares = allMiddlewares $ server internalState
 
                       let settings = setPort port $ setHost "localhost" defaultSettings
                       liftIO . runSettings settings $
@@ -347,7 +340,7 @@ main = do
       send
         . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-        . layout Session.notAuthenticated
+        . layout User.Session.notAuthenticated
         . LayoutStub "Fehler" Nothing
         $ div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do

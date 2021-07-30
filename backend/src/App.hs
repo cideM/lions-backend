@@ -25,7 +25,7 @@ import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
 import qualified Password.Reset.Mail as Mail
 import qualified Request.Types
-import qualified Session.Auth as Auth
+import qualified User.Session
 import qualified UnliftIO
 import qualified Web.ClientSession as ClientSession
 
@@ -57,7 +57,7 @@ data Env = Env
     envScryptSignerKey :: ByteString,
     envScryptSaltSeparator :: ByteString,
     envEventAttachmentStorageDir :: FilePath,
-    envSessionDataVaultKey :: Auth.VaultKey,
+    envSessionDataVaultKey :: User.Session.VaultKey,
     envRequestIdVaultKey :: Request.Types.IdVaultKey,
     envSessionEncryptionKey :: ClientSession.Key,
     envLogNamespace :: K.Namespace,
@@ -129,9 +129,9 @@ instance HasScryptSaltSeparator Env where
   getScryptSaltSeparator = envScryptSaltSeparator
 
 class HasSessionDataVaultKey a where
-  getSessionDataVaultKey :: a -> Auth.VaultKey
+  getSessionDataVaultKey :: a -> User.Session.VaultKey
 
-instance HasSessionDataVaultKey Auth.VaultKey where
+instance HasSessionDataVaultKey User.Session.VaultKey where
   getSessionDataVaultKey = id
 
 instance HasSessionDataVaultKey Env where
