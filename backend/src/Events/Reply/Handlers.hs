@@ -19,8 +19,8 @@ import Network.HTTP.Types (status303)
 import qualified Network.Wai as Wai
 import qualified Session.Auth as Auth
 import Text.Read (readEither)
-import User.Types (UserId (..), UserProfile (..))
-import qualified User.Types as User
+import qualified User.Session as User
+import qualified User.User as User
 import Wai (parseParams)
 
 post ::
@@ -29,17 +29,16 @@ post ::
     MonadThrow m,
     App.HasDb env
   ) =>
-  (UserId -> IO (Maybe UserProfile)) ->
   Wai.Request ->
   (Wai.Response -> m a) ->
   Event.Id ->
   Auth.Authenticated ->
   m a
-post getUser req send eventid@(Event.Id eid) auth = do
+post req send eventid@(Event.Id eid) auth = do
   let User.Session {..} = Auth.get' auth
 
-  UserProfile {userEmail = userEmail} <-
-    (liftIO $ getUser sessionUserId) >>= \case
+  (_, User.Profile {userEmail = userEmail}) <-
+    User.get sessionUserId >>= \case
       Nothing -> throwString [i|"no user for userid from session #{sessionUserId}"|]
       Just v -> return v
 

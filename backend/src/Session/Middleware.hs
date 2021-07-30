@@ -10,11 +10,11 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Error as E
 import qualified Katip as K
 import Network.HTTP.Types (status302)
+import qualified User.Role.DB as Role
 import qualified Network.Wai as Wai
 import Session.Session (Session (..))
 import qualified Session.Session as Session
 import qualified Session.Valid
-import User.DB (getRolesFromDb)
 import qualified Wai.Class as Wai
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
@@ -65,7 +65,7 @@ login req = do
   sessionId <- getSessionId
   session@(Session _ _ userId) <- Session.get sessionId >>= E.note' "no session found"
   _ <- Session.Valid.parse session
-  roles <- (getRolesFromDb userId) >>= E.note' "no roles found"
+  roles <- Role.get userId >>= E.note' "no roles found"
   let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
   return $ req {Wai.vault = vault'}
   where

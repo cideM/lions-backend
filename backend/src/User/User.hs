@@ -1,263 +1,354 @@
 module User.User
-  ( createGet,
-    createPost,
-    deletePost,
-    deleteGet,
-    editPost,
-    editGet,
+  ( exists,
+    get,
+    getCredentials,
+    getAll,
+    save,
+    update,
+    delete,
+    Profile (..),
   )
 where
 
 import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader.Class (MonadReader)
+import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Crypto.BCrypt as BCrypt
+import Crypto.Random (SystemRandom, genBytes, newGenIO)
+import Data.Aeson
+  ( ToJSON,
+    defaultOptions,
+    genericToEncoding,
+    toEncoding,
+  )
+import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (i)
+import Data.Text (Text)
+import qualified Data.Text as Text
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Database.SQLite.Simple as SQLite
-import Layout (LayoutStub (..))
-import Lucid
-import qualified Network.Wai as Wai
-import qualified Session.Auth as Auth
-import User.DB
-  ( deleteUserById,
-    getRolesFromDb,
-    getUser,
-    saveUser,
-    saveUserRoles,
-    updateUser,
-  )
-import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
-import User.Types
-  ( Role (..),
-    UserEmail (..),
-    UserId (..),
-    UserProfile (..),
-    UserProfileCreate (..),
-    showEmail,
-  )
-import Wai (parseParams)
+import Database.SQLite.Simple.FromRow (FromRow)
+import Database.SQLite.Simple.QQ (sql)
+import Database.SQLite.Simple.ToField (ToField (..))
+import Database.SQLite.Simple.ToRow (ToRow (..))
+import qualified Error as E
+import GHC.Generics
+import Text.Email.Validate (emailAddress)
+import qualified Text.Email.Validate as Email
+import User.Email (Email (..))
+import qualified User.Id as User
+import qualified User.Role.DB as Role
+import qualified User.Role.Role as Role
+import Prelude hiding (id)
 
-createGet ::
-  (MonadIO m) =>
-  Auth.Admin ->
-  m LayoutStub
-createGet _ =
-  return $
-    LayoutStub "Nutzer Hinzufügen" Nothing $
-      div_ [class_ "container p-3 d-flex justify-content-center"] $
-        User.Form.render
-          (CanEditRoles True)
-          "Nutzer erstellen"
-          "/nutzer/neu"
-          (FormInput "" "" "" False False False False "" "" "" "" "" "" "")
-          emptyForm
+data Profile = Profile
+  { userEmail :: Email,
+    userFirstName :: Maybe Text,
+    userLastName :: Maybe Text,
+    userAddress :: Maybe Text,
+    userMobilePhoneNr :: Maybe Text,
+    userLandlineNr :: Maybe Text,
+    userBirthday :: Maybe Text,
+    userFirstNamePartner :: Maybe Text,
+    userLastNamePartner :: Maybe Text,
+    userBirthdayPartner :: Maybe Text,
+    userRoles :: NonEmpty Role.Role
+  }
+  deriving (Show, Generic)
 
-createPost ::
-  (MonadIO m) =>
-  SQLite.Connection ->
-  Wai.Request ->
-  Auth.Admin ->
-  m LayoutStub
-createPost conn req _ = do
-  params <- liftIO $ parseParams req
-  let paramt name = Map.findWithDefault "" name params
-      paramb name = isJust $ Map.lookup name params
-      input =
-        FormInput
-          (paramt "inputEmail")
-          (paramt "inputBirthday")
-          (paramt "inputBirthdayPartner")
-          (paramb "inputIsAdmin")
-          (paramb "inputIsBoard")
-          (paramb "inputIsPresident")
-          (paramb "inputIsPassive")
-          (paramt "inputAddress")
-          (paramt "inputFirstName")
-          (paramt "inputFirstNamePartner")
-          (paramt "inputLastName")
-          (paramt "inputLastNamePartner")
-          (paramt "inputMobile")
-          (paramt "inputLandline")
-  (liftIO $ makeProfile input) >>= \case
-    Left state ->
-      return $
-        LayoutStub "Nutzer Hinzufügen" Nothing $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            User.Form.render
-              (CanEditRoles True)
-              "Nutzer erstellen"
-              "/nutzer/neu"
-              input
-              state
-    Right (profile@UserProfileCreate {..}) -> do
-      liftIO $
-        SQLite.withTransaction
-          conn
-          $ do
-            saveUser conn profile
-            (userid :: Int) <- fromIntegral <$> SQLite.lastInsertRowId conn
-            saveUserRoles conn (UserId userid) (NE.toList userCreateRoles)
-      let (UserEmail email) = userCreateEmail
-      return $
-        LayoutStub "Nutzer Hinzufügen" Nothing $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> showEmail email <> " erfolgreich erstellt"
+instance ToJSON Profile where
+  toEncoding = genericToEncoding defaultOptions
 
-deletePost ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
-  UserId ->
-  Auth.Admin ->
-  m LayoutStub
-deletePost conn userId _ = do
-  user <- liftIO $ getUser conn userId
-  case user of
-    Nothing -> throwString $ "edit user but no user found for id: " <> show userId
-    Just userProfile -> do
-      liftIO $ deleteUserById conn userId
-      return $
-        LayoutStub "Nutzerprofil" Nothing $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> show (userEmail userProfile) <> " erfolgreich gelöscht"
+newtype ProfileCreateWithPw = ProfileCreateWithPw (Text, Profile)
 
-deleteGet ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
-  UserId ->
-  Auth.Admin ->
-  m LayoutStub
-deleteGet conn userId@(UserId uid) _ = do
-  user <- liftIO $ getUser conn userId
-  case user of
-    Nothing -> throwString $ "delete user but no user for eid found: " <> show userId
-    Just userProfile -> do
-      return . LayoutStub "Nutzerprofil" Nothing $
-        div_ [class_ "container p-3 d-flex justify-content-center"] $
-          div_ [class_ "row col-6"] $ do
-            p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
-              toHtml ("Nutzer " <> show (userEmail userProfile) <> " wirklich löschen?")
-            form_
-              [ action_ [i|/nutzer/#{uid}/loeschen|],
-                method_ "post",
-                class_ "d-flex justify-content-center"
-              ]
-              $ button_ [class_ "btn btn-primary", type_ "submit"] "Ja, Nutzer löschen!"
+instance ToRow ProfileCreateWithPw where
+  toRow (ProfileCreateWithPw (pw, profile)) = toField pw : toRow profile
 
-editGet ::
-  (MonadIO m) =>
-  SQLite.Connection ->
-  UserId ->
-  Auth.Authenticated ->
-  m LayoutStub
-editGet conn userIdToEdit@(UserId uid) auth = do
-  user <- liftIO $ getUser conn userIdToEdit
-  return $ case user of
-    Nothing -> LayoutStub "Fehler" Nothing $
-      div_ [class_ "container p-3 d-flex justify-content-center"] $
-        div_ [class_ "row col-6"] $ do
-          p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
-    Just UserProfile {..} ->
-      let (UserEmail email) = userEmail
-       in LayoutStub "Nutzer Editieren" Nothing $
-            div_ [class_ "container p-3 d-flex justify-content-center"] $
-              User.Form.render
-                (CanEditRoles $ Auth.isAdmin' auth)
-                "Nutzer editieren"
-                [i|/nutzer/#{uid}/editieren|]
-                ( FormInput
-                    { inputEmail = showEmail email,
-                      inputBirthday = fromMaybe "" userBirthday,
-                      inputBirthdayPartner = fromMaybe "" userBirthdayPartner,
-                      inputIsAdmin = any ((==) Admin) userRoles,
-                      inputIsBoard = any ((==) Board) userRoles,
-                      inputIsPresident = any ((==) President) userRoles,
-                      inputIsPassive = any ((==) Passive) userRoles,
-                      inputAddress = fromMaybe "" userAddress,
-                      inputFirstName = fromMaybe "" userFirstName,
-                      inputFirstNamePartner = fromMaybe "" userFirstNamePartner,
-                      inputLastName = fromMaybe "" userLastName,
-                      inputMobile = fromMaybe "" userMobilePhoneNr,
-                      inputLandline = fromMaybe "" userLandlineNr,
-                      inputLastNamePartner = fromMaybe "" userLastNamePartner
-                    }
-                )
-                emptyForm
+instance ToRow Profile where
+  toRow
+    ( Profile
+        (Email _userEmail)
+        _userFirstName
+        _userLastName
+        _userAddress
+        _userMobilePhoneNr
+        _userLandlineNr
+        _userBirthday
+        _userFirstNamePartner
+        _userLastNamePartner
+        _userBirthdayPartner
+        _userRoles
+      ) =
+      [ toField (decodeUtf8 $ Email.toByteString _userEmail),
+        toField _userFirstName,
+        toField _userLastName,
+        toField _userAddress,
+        toField _userMobilePhoneNr,
+        toField _userLandlineNr,
+        toField _userBirthday,
+        toField _userFirstNamePartner,
+        toField _userLastNamePartner,
+        toField _userBirthdayPartner
+      ]
 
-editPost ::
+exists ::
   ( MonadIO m,
-    MonadThrow m,
+    Monad m,
     MonadReader env m,
     MonadThrow m,
     App.HasDb env
   ) =>
-  SQLite.Connection ->
-  Wai.Request ->
-  UserId ->
-  Auth.Authenticated ->
-  m LayoutStub
-editPost conn req userId auth = do
-  rolesForUserToUpdate <- getRolesFromDb userId
-  params <- liftIO $ parseParams req
-  let paramt name = Map.findWithDefault "" name params
-      paramb name = isJust $ Map.lookup name params
-      isRole role = maybe False (any ((==) role)) rolesForUserToUpdate
-      input =
-        FormInput
-          (paramt "inputEmail")
-          (paramt "inputBirthday")
-          (paramt "inputBirthdayPartner")
-          (if userIsAdmin then paramb "inputIsAdmin" else isRole Admin)
-          (if userIsAdmin then paramb "inputIsBoard" else isRole Board)
-          (if userIsAdmin then paramb "inputIsPresident" else isRole President)
-          (if userIsAdmin then paramb "inputIsPassive" else isRole Passive)
-          (paramt "inputAddress")
-          (paramt "inputFirstName")
-          (paramt "inputFirstNamePartner")
-          (paramt "inputLastName")
-          (paramt "inputLastNamePartner")
-          (paramt "inputMobile")
-          (paramt "inputLandline")
-  (liftIO $ makeProfile input) >>= \case
-    Left state ->
-      return $
-        LayoutStub "Nutzer Editieren" Nothing $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            User.Form.render
-              (CanEditRoles userIsAdmin)
-              "Nutzer editieren"
-              "/nutzer/neu"
-              input
-              state
-    Right UserProfileCreate {..} -> do
-      let profile =
-            UserProfile
-              { userEmail = userCreateEmail,
-                userFirstName = userCreateFirstName,
-                userLastName = userCreateLastName,
-                userAddress = userCreateAddress,
-                userMobilePhoneNr = userCreateMobilePhoneNr,
-                userLandlineNr = userCreateLandlineNr,
-                userBirthday = userCreateBirthday,
-                userFirstNamePartner = userCreateFirstNamePartner,
-                userLastNamePartner = userCreateLastNamePartner,
-                userBirthdayPartner = userCreateBirthdayPartner,
-                userId = userId,
-                userRoles = userCreateRoles
-              }
-      liftIO $ updateUser conn userId profile
-      let (UserEmail email) = userCreateEmail
-      return $
-        LayoutStub "Nutzer Editieren" Nothing $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            div_ [class_ "row col-6"] $ do
-              p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> showEmail email <> " erfolgreich editiert"
-  where
-    userIsAdmin = Auth.isAdmin' auth
+  User.Id ->
+  m Bool
+exists (User.Id id) = do
+  conn <- asks App.getDb
+  rows <-
+    liftIO $ SQLite.query conn [sql| SELECT id FROM users WHERE users.id = ?|] [id]
+  case rows of
+    [] -> return False
+    [[_ :: Integer]] -> return True
+    result -> throwString $ "got unexpected user exists result" <> show result
+
+-- TODO: Merge roles and ID into profile and then have separate version of profile for form create without ID
+-- I've spent about 2h debugging this GROUP BY NULL shit, fml
+-- https://stackoverflow.com/questions/3652580/how-to-prevent-group-concat-from-creating-a-result-when-no-input-data-is-present
+-- TODO: Test
+get ::
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  User.Id ->
+  m (Maybe (User.Id, Profile))
+get (User.Id userid) = do
+  conn <- asks App.getDb
+  rows <-
+    liftIO $
+      SQLite.query
+        conn
+        [sql|
+            SELECT
+               GROUP_CONCAT(label,","),
+               users.id,
+               email,
+               first_name,
+               last_name,
+               address,
+               mobile_phone_nr,
+               landline_nr,
+               birthday,
+               first_name_partner,
+               last_name_partner,
+               birthday_partner
+            FROM users
+            JOIN user_roles ON users.id = userid
+            JOIN roles ON roles.id = roleid
+            WHERE users.id = ?
+            GROUP BY NULL
+           |]
+        [userid]
+  case rows of
+    [] -> return Nothing
+    [getUserRows :: GetUserRow] -> do
+      case parseUserRow getUserRows of
+        Left e -> throwString $ Text.unpack ("couldn't get user: " <> e)
+        Right v' -> return $ Just v'
+    result -> throwString $ "got unexpected getUser result" <> show result
+
+parseUserRow :: GetUserRow -> Either Text (User.Id, Profile)
+parseUserRow GetUserRow {..} = do
+  parsed <- NE.nonEmpty <$> traverse Role.parse (Text.splitOn "," _getUserRowRoles)
+  roles <- E.note [i|user without roles; id: #{_getUserRowUserid} email: ${_getUserRowEmail}|] parsed
+  parsedEmail <- E.note [i|couldn't parse email #{_getUserRowEmail}|] $ emailAddress (encodeUtf8 _getUserRowEmail)
+  Right $
+    ( User.Id _getUserRowUserid,
+      Profile
+        (Email parsedEmail)
+        _getUserRowFirstName
+        _getUserRowLastName
+        _getUserRowAddress
+        _getUserRowMobilePhoneNr
+        _getUserRowLandlineNr
+        _getUserRowBirthday
+        _getUserRowFirstNamePartner
+        _getUserRowLastNamePartner
+        _getUserRowBirthdayPartner
+        roles
+    )
+
+data GetUserRow = GetUserRow
+  { _getUserRowRoles :: Text,
+    _getUserRowUserid :: Int,
+    _getUserRowEmail :: Text,
+    _getUserRowFirstName :: Maybe Text,
+    _getUserRowLastName :: Maybe Text,
+    _getUserRowAddress :: Maybe Text,
+    _getUserRowMobilePhoneNr :: Maybe Text,
+    _getUserRowLandlineNr :: Maybe Text,
+    _getUserRowBirthday :: Maybe Text,
+    _getUserRowFirstNamePartner :: Maybe Text,
+    _getUserRowLastNamePartner :: Maybe Text,
+    _getUserRowBirthdayPartner :: Maybe Text
+  }
+  deriving (Show)
+
+instance FromRow GetUserRow where
+  fromRow =
+    GetUserRow
+      <$> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+        <*> SQLite.field
+
+delete ::
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  User.Id ->
+  m ()
+delete (User.Id userid) = do
+  conn <- asks App.getDb
+  liftIO $ SQLite.execute conn "DELETE FROM users WHERE id = ?" [userid]
+  liftIO $ SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" [userid]
+  liftIO $ SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" [userid]
+
+getAll ::
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  m [(User.Id, Profile)]
+getAll = do
+  conn <- asks App.getDb
+  rows <-
+    liftIO $
+      SQLite.query_
+        conn
+        [sql|
+         SELECT GROUP_CONCAT(label,","), users.id, email, first_name, last_name, address, mobile_phone_nr, landline_nr,
+                birthday, first_name_partner, last_name_partner, birthday_partner
+         FROM users
+         JOIN user_roles ON users.id = userid
+         JOIN roles ON roles.id = roleid
+         GROUP BY users.id
+        |]
+
+  case traverse parseUserRow rows of
+    Left e -> throwString $ "error making profile: " <> Text.unpack e
+    Right v -> pure v
+
+update ::
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  User.Id ->
+  Profile ->
+  m ()
+update uid@(User.Id userid) profile@Profile {..} = do
+  conn <- asks App.getDb
+
+  -- We'll delete all user roles and redo them
+  liftIO $ SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" [userid]
+  Role.save uid (NE.toList userRoles)
+
+  liftIO $
+    SQLite.execute
+      conn
+      [sql|
+    UPDATE users
+    SET email = ?
+    ,   first_name = ?
+    ,   last_name = ?
+    ,   address = ?
+    ,   mobile_phone_nr = ?
+    ,   landline_nr  = ?
+    ,   birthday  = ?
+    ,   first_name_partner  = ?
+    ,   last_name_partner  = ?
+    ,   birthday_partner = ?
+    WHERE id = ?
+    |]
+      profile
+
+save ::
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  Profile ->
+  m ()
+save profile = do
+  conn <- asks App.getDb
+
+  g <- liftIO (newGenIO :: IO SystemRandom)
+
+  password <- case genBytes 20 g of
+    Left e -> throwString $ show e
+    Right (pw, _) -> return pw
+
+  hashed <-
+    (liftIO $ BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy password) >>= \case
+      Nothing -> throwString "hashing password failed"
+      Just pw -> return $ decodeUtf8 pw
+
+  liftIO $
+    SQLite.execute
+      conn
+      [sql|
+    INSERT INTO users (
+      password_digest,
+      email,
+      first_name,
+      last_name,
+      address,
+      mobile_phone_nr,
+      landline_nr ,
+      birthday ,
+      first_name_partner ,
+      last_name_partner ,
+      birthday_partner 
+    ) VALUES (?, ?, ?, ?, ?, ?, ? , ? , ? , ? , ?)
+    |]
+      $ ProfileCreateWithPw (hashed, profile)
+
+-- Returns ID, hashed password and salt used for hashing. This will be a
+-- non-empty text for firebase data that was imported. It will be empty for all
+-- other users.
+getCredentials ::
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  Text ->
+  m (Maybe (User.Id, Maybe Text, Text))
+getCredentials email = do
+  conn <- asks App.getDb
+  r <- liftIO $ SQLite.query conn "SELECT id, salt, password_digest FROM users WHERE email = ?" [email]
+  return $ case r of
+    [(userid, salt, pw)] -> Just ((User.Id userid), salt, pw)
+    [] -> Nothing
+    _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getCredentials"

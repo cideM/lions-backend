@@ -16,7 +16,8 @@ import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.QQ (sql)
 import Events.Event.Id (Id (..))
 import GHC.Generics
-import User.Types (UserEmail (..), UserId (..))
+import qualified User.Id as User
+import qualified User.Email as UserEmail
 import Prelude hiding (id)
 
 -- Now that I'm writing tests that involve this data type I find it a bit weird
@@ -24,8 +25,8 @@ import Prelude hiding (id)
 -- without its event ID. TODO: Reconsider if this should carry its ID around!
 data Reply = Reply
   { replyComing :: Bool,
-    replyUserEmail :: UserEmail,
-    replyUserId :: UserId,
+    replyUserEmail :: UserEmail.Email,
+    replyUserId :: User.Id,
     replyGuests :: Int
   }
   deriving (Show, Generic, Eq)
@@ -48,7 +49,7 @@ upsert ::
   Id ->
   Reply ->
   m ()
-upsert (Id eventid) (Reply coming _ (UserId userid) guests) = do
+upsert (Id eventid) (Reply coming _ (User.Id userid) guests) = do
   conn <- asks App.getDb
   liftIO $
     SQLite.execute
@@ -71,8 +72,8 @@ delete ::
     App.HasDb env
   ) =>
   Id ->
-  UserId ->
+  User.Id ->
   m ()
-delete (Id eventid) (UserId userid) = do
+delete (Id eventid) (User.Id userid) = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "delete from event_replies where userid = ? and eventid = ?" [userid, eventid]

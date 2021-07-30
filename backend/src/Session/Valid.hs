@@ -19,9 +19,9 @@ import qualified Error as E
 import Network.Wai.Session (genSessionId)
 import Session.Session (Id (..), Session (..))
 import Time (timeDaysFromNow)
-import User.Types (UserId (..))
+import qualified User.Id as User
 
-create :: (MonadIO m) => UserId -> m Valid
+create :: (MonadIO m) => User.Id -> m Valid
 create uid = do
   expires <- liftIO $ timeDaysFromNow 30
   sessionid <- liftIO $ decodeUtf8 <$> genSessionId
@@ -49,6 +49,6 @@ save ::
   ) =>
   Valid ->
   m ()
-save (Valid (Session (Id key) expires (UserId uid))) = do
+save (Valid (Session (Id key) expires (User.Id uid))) = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "INSERT INTO sessions (key,expires,userid) VALUES (?,?,?)" (key, expires, uid)

@@ -16,7 +16,9 @@ import Form (FormFieldState (..), processField)
 import Layout (describedBy_)
 import Lucid
 import qualified Text.Email.Validate as Email
-import User.Types (Role (..), UserEmail (..), UserProfileCreate (..))
+import User.Role.Role (Role (..))
+import qualified User.User as User
+import qualified User.Email as UserEmail
 
 newtype EditFormState = EditFormState
   {formStateEmail :: FormFieldState Email.EmailAddress}
@@ -160,7 +162,7 @@ data FormInput = FormInput
   }
   deriving (Show)
 
-makeProfile :: FormInput -> IO (Either EditFormState UserProfileCreate)
+makeProfile :: FormInput -> IO (Either EditFormState User.Profile)
 makeProfile FormInput {..} =
   case EditFormState (validateEmail inputEmail) of
     (EditFormState (Valid email)) ->
@@ -177,8 +179,8 @@ makeProfile FormInput {..} =
             Nothing -> throwString "empty roles in user creation form"
             Just roles' ->
               return . Right $
-                UserProfileCreate
-                  (UserEmail email)
+                User.Profile
+                  (UserEmail.Email email)
                   (Just inputFirstName)
                   (Just inputLastName)
                   (Just inputAddress)

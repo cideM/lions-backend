@@ -18,8 +18,8 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
-import qualified User.Types as User
 import qualified Session.Auth as Session
+import qualified User.Session as User
 
 data LayoutStub = LayoutStub
   { layoutStubTitle :: Text,

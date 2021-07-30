@@ -1,32 +1,29 @@
 module Userprofile (get) where
 
+import qualified App
+import Control.Exception.Safe
 import Control.Monad (unless, when)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Reader.Class (MonadReader)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
-import qualified Database.SQLite.Simple as SQLite
 import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
 import Session.Auth (Authenticated)
 import qualified Session.Auth as Session
-import User.DB (getUser)
-import User.Types
-  ( Role (..),
-    UserEmail (..),
-    UserId (..),
-    UserProfile (..),
-    showEmail,
-  )
-import qualified User.Types as User
+import qualified User.Email as UserEmail
+import qualified User.Id as User
+import User.Role.Role (Role (..))
+import qualified User.Session as User
+import qualified User.User as User
 
 newtype CanDelete = CanDelete Bool
 
 newtype CanEdit = CanEdit Bool
 
-render :: UserProfile -> CanDelete -> CanEdit -> Html ()
-render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
-  let (UserId uid) = userId
+render :: (User.Id, User.Profile) -> CanDelete -> CanEdit -> Html ()
+render (User.Id uid, User.Profile {..}) (CanDelete canDelete) (CanEdit canEdit) = do
   div_ [class_ "card"] $ do
     div_ [class_ "card-header"] "Nutzerprofil"
     div_ [class_ "card-body"] $ do
@@ -38,8 +35,11 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
       div_ [class_ "row"] $ do
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Email"
-          let (UserEmail email) = userEmail
-          p_ [class_ "fs-5"] $ a_ [href_ $ "mailto:" <> showEmail email] $ toHtml $ showEmail email
+          let (UserEmail.Email email) = userEmail
+          p_ [class_ "fs-5"] $
+            a_ [href_ $ "mailto:" <> UserEmail.show email] $
+              toHtml $
+                UserEmail.show email
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Addresse"
           p_ [class_ "fs-5", style_ "whitespace: pre"] $ toHtml' userAddress
@@ -87,17 +87,21 @@ render UserProfile {..} (CanDelete canDelete) (CanEdit canEdit) = do
     showBadge User = "Nutzer"
 
 get ::
-  (MonadIO m) =>
-  SQLite.Connection ->
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
   Int ->
   Authenticated ->
   m (Maybe LayoutStub)
-get conn paramId auth = do
-  let userIdToShow = UserId paramId
+get paramId auth = do
+  let userIdToShow = User.Id paramId
       userIsAdmin = Session.isAdmin' auth
       User.Session {..} = Session.get' auth
       isOwnProfile = sessionUserId == userIdToShow
-  user <- liftIO $ getUser conn userIdToShow
+  user <- User.get userIdToShow
   return $ case user of
     Nothing -> Nothing
     Just userProfile -> do

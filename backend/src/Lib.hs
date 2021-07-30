@@ -11,9 +11,9 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
+import qualified Events.Attachments.Middleware as AttachmentsMiddleware
 import qualified Events.Event.Handlers as Event.Handlers
 import qualified Events.Event.Id as Event
-import qualified Events.Attachments.Middleware as AttachmentsMiddleware
 import qualified Events.Reply.Handlers as Reply.Handlers
 import qualified Katip as K
 import Layout (LayoutStub (..), layout, warning)
@@ -36,10 +36,9 @@ import qualified System.Directory
 import System.Environment (getEnv)
 import Text.Read (readEither)
 import qualified UnliftIO
-import qualified User.DB
-import User.Types (UserId (..))
-import qualified User.Types as User
-import qualified User.User
+import qualified User.Handler as User.User
+import qualified User.Id as User
+import qualified User.Session as User
 import qualified Userlist
 import qualified Userprofile
 import qualified Wai.Class as Wai
@@ -99,9 +98,6 @@ server dbConn sessionDataVaultKey internalState req send = do
 
       requestId = maybe "" (Text.pack . show) $ Vault.lookup reqIdVaultKey vault
 
-      -- TODO: Remove
-      getUser = User.DB.getUser dbConn
-
       -- Some helpers related to rendering content. I could look into
       -- bringing back Snap or something similar so I don't need to
       -- reimplement these helpers in a crappy and bug ridden way.
@@ -149,7 +145,7 @@ server dbConn sessionDataVaultKey internalState req send = do
             case Wai.requestMethod req of
               "POST" ->
                 authenticatedOnly' $
-                  Reply.Handlers.post getUser req send (Event.Id parsed)
+                  Reply.Handlers.post req send (Event.Id parsed)
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
@@ -195,7 +191,7 @@ server dbConn sessionDataVaultKey internalState req send = do
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Userlist.get dbConn req >=> send200 . layout'
+          "GET" -> authenticatedOnly' $ Userlist.get req >=> send200 . layout'
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
@@ -204,38 +200,38 @@ server dbConn sessionDataVaultKey internalState req send = do
           _ -> send404
       ["nutzer", int, "editieren"] ->
         case readEither (Text.unpack int) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for User.Id as int: " <> int
           Right (parsed :: Int) ->
-            let userId = UserId parsed
+            let userId = User.Id parsed
              in case Wai.requestMethod req of
                   "GET" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      User.User.editGet dbConn id auth
+                      User.User.editGet id auth
                         >>= send200 . layout'
                   "POST" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      User.User.editPost dbConn req id auth
+                      User.User.editPost req id auth
                         >>= send200 . layout'
                   _ -> send404
       ["nutzer", int] ->
         case Wai.requestMethod req of
           "GET" ->
             case readEither (Text.unpack int) of
-              Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
+              Left _ -> throwString . Text.unpack $ "couldn't parse route param for User.Id as int: " <> int
               Right (parsed :: Int) ->
                 authenticatedOnly' $
-                  Userprofile.get dbConn parsed >=> \case
+                  Userprofile.get parsed >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
           _ -> send404
       ["nutzer", int, "loeschen"] ->
         case readEither (Text.unpack int) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for UserId as int: " <> int
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for User.Id as int: " <> int
           Right (parsed :: Int) ->
-            let userId = UserId parsed
+            let userId = User.Id parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly' $ User.User.deleteGet dbConn userId >=> send200 . layout'
-                  "POST" -> adminOnly' $ User.User.deletePost dbConn userId >=> send200 . layout'
+                  "GET" -> adminOnly' $ User.User.deleteGet userId >=> send200 . layout'
+                  "POST" -> adminOnly' $ User.User.deletePost userId >=> send200 . layout'
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of

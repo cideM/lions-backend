@@ -21,12 +21,13 @@ import Lucid
 import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Scrypt (verifyPassword)
+import qualified Session.Auth as Auth
 import Session.Session (Session (..))
 import qualified Session.Session as Session
-import qualified Session.Auth as Auth
 import qualified Session.Valid
-import User.DB (getCredentials)
-import User.Types (Role, UserId (..))
+import qualified User.Id as User
+import User.Role.Role (Role (..))
+import qualified User.User as User
 import Wai (parseParams)
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
@@ -39,7 +40,7 @@ postLogout ::
     App.HasEnvironment env,
     MonadReader env m
   ) =>
-  (Vault.Vault -> Maybe ([Role], UserId)) ->
+  (Vault.Vault -> Maybe ([Role], User.Id)) ->
   Wai.Request ->
   (Wai.Response -> m a) ->
   m a
@@ -90,7 +91,6 @@ login ::
   Text ->
   m (ByteString, Time.UTCTime)
 login email formPw = do
-  conn <- asks App.getDb
   signerKey <- asks App.getScryptSignerKey
   saltSep <- asks App.getScryptSaltSeparator
   sessionKey <- asks App.getSessionEncryptionKey
@@ -98,7 +98,7 @@ login email formPw = do
   let verifyPassword' = verifyPassword signerKey saltSep
       clientEncrypt = ClientSession.encryptIO sessionKey
 
-  (userId, userSalt, dbPw) <- (liftIO $ getCredentials conn email) >>= E.note' "no user found"
+  (userId, userSalt, dbPw) <- User.getCredentials email >>= E.note' "no user found"
 
   let formPw' = encodeUtf8 formPw
   let dbPw' = encodeUtf8 dbPw

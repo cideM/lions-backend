@@ -1,21 +1,25 @@
 module Userlist (get) where
 
+import qualified App
 import Control.Exception.Safe
 import Control.Monad (unless, when)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Reader.Class (MonadReader)
 import Data.List.NonEmpty (NonEmpty, toList)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Database.SQLite.Simple as SQLite
+import qualified Katip as K
 import Layout (ActiveNavLink (..), LayoutStub (..), ariaLabel_)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified Session.Auth as Session
-import User.DB (getUsers)
-import User.Types
+import qualified User.Email as UserEmail
+import qualified User.Id as User
+import User.Role.Role (Role (..))
+import qualified User.User as User
 import Wai (parseQueryParams)
 
 data Option a = Option {optionLabel :: Text, optionValue :: a} deriving (Show, Eq)
@@ -109,13 +113,16 @@ allOptions = [allOption, adminOption, boardOption, presidentOption, passiveOptio
 -- Turn the selected value from the incoming request into an Option and then
 -- filter the users accordingly and return a proper Dropdown where the
 -- selection and the other options are separated.
-selectionLogic :: [UserProfile] -> Text -> Either Text ([UserProfile], Dropdown RoleOption)
+selectionLogic ::
+  [(User.Id, User.Profile)] ->
+  Text ->
+  Either Text ([(User.Id, User.Profile)], Dropdown RoleOption)
 selectionLogic allUsers selected = do
   parsed <- makeOptionFromSelection selected
   let others = filter (not . (==) parsed) allOptions
       usersToShow = case optionValue parsed of
         All -> allUsers
-        Some role -> filter (elem role . userRoles) allUsers
+        Some role -> filter (elem role . User.userRoles . snd) allUsers
   return $ (usersToShow, Dropdown {dropdownSelected = parsed, dropdownOthers = others})
 
 -- Looks complicated but essentially turns Foo into "cool foo"
@@ -130,32 +137,35 @@ rolesToBadge = map showBadge . filter dropUser . toList
     showBadge Admin = "Administrator"
     showBadge User = "Nutzer"
 
-formatDataForView :: [UserProfile] -> [MemberlistProfile]
+formatDataForView :: [(User.Id, User.Profile)] -> [MemberlistProfile]
 formatDataForView users =
   map
-    ( \UserProfile {..} ->
+    ( \(uid, User.Profile {..}) ->
         let name = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
-            (UserEmail email) = userEmail
-            (UserId uid) = userId
+            (UserEmail.Email email) = userEmail
          in MemberlistProfile
               { memberlistProfileName = name,
                 memberlistProfileProfileLink = [i|/nutzer/#{uid}|],
-                memberlistProfileEmailLink = [i|mailto:#{showEmail email}|],
-                memberlistProfileEmail = showEmail email,
+                memberlistProfileEmailLink = [i|mailto:#{UserEmail.show email}|],
+                memberlistProfileEmail = UserEmail.show email,
                 memberlistProfileRoles = rolesToBadge userRoles
               }
     )
     users
 
 get ::
-  (MonadIO m, MonadThrow m) =>
-  SQLite.Connection ->
+  ( MonadIO m,
+    MonadReader env m,
+    K.KatipContext m,
+    App.HasDb env,
+    MonadThrow m
+  ) =>
   Wai.Request ->
   Session.Authenticated ->
   m LayoutStub
-get conn req auth = do
+get req auth = do
   let selectionRaw = Map.findWithDefault "all" "userselect" $ parseQueryParams req
-  users <- liftIO $ getUsers conn
+  users <- User.getAll
   (usersToShow, dropdown) <- case selectionLogic users selectionRaw of
     Left e -> throwString $ show e
     Right v -> return v

@@ -13,12 +13,12 @@ import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Text (Text)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import User.Types (UserId (..))
+import qualified User.Id as User
 
 newtype Id = Id Text
   deriving (Show, Eq)
 
-data Session = Session Id Time.UTCTime UserId deriving (Show)
+data Session = Session Id Time.UTCTime User.Id deriving (Show)
 
 -- Delete all sessions for the given User ID
 deleteUser ::
@@ -26,9 +26,9 @@ deleteUser ::
     App.HasDb env,
     MonadReader env m
   ) =>
-  UserId ->
+  User.Id ->
   m ()
-deleteUser (UserId uid) = do
+deleteUser (User.Id uid) = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "delete from sessions where userid = ?" [uid]
 
@@ -45,6 +45,6 @@ get (Id sid) = do
   rows <- liftIO $ SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE key = ?" [sid]
   case rows of
     [(key, expires, userid) :: (Text, Time.UTCTime, Int)] ->
-      return . Just $ Session (Id key) expires (UserId userid)
+      return . Just $ Session (Id key) expires (User.Id userid)
     [] -> return Nothing
     other -> throwString $ "unexpected DB result for session: " <> show other

@@ -172,12 +172,15 @@ library
     DB
     Scrypt
     Time
-    User.DB
-    User.Types
+    User.Handler
     Userlist
     Userprofile
     User.Form
     User.User
+    User.Role.Role
+    User.Session
+    User.Email
+    User.Role.DB
     Wai
     WelcomeMessage
 

@@ -1,6 +1,7 @@
 module Password.Password
   ( hash,
     update,
+    get,
     save,
     Hashed (..),
   )
@@ -17,10 +18,19 @@ import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
 import qualified Password.Reset.Token as Token
 import qualified UnliftIO
-import User.Types (UserId (..))
+import qualified User.Id as User
 import Prelude hiding (id, log)
 
 newtype Hashed = Hashed Text deriving (Show)
+
+newtype Salt = Salt Text
+
+-- There are two generations of users. Those imported from Firebase (SCrypt),
+-- together with their hashed passwords and salts. And new users, who are
+-- created with BCrypt.
+data Password a
+  = FirebaseUser Salt a
+  | BCryptUser a
 
 update ::
   ( MonadIO m,
@@ -30,7 +40,7 @@ update ::
     App.HasDb env,
     MonadThrow m
   ) =>
-  UserId ->
+  User.Id ->
   Hashed ->
   m ()
 update uid hashedPassword = do
@@ -50,9 +60,9 @@ save ::
     MonadThrow m
   ) =>
   Hashed ->
-  UserId ->
+  User.Id ->
   m ()
-save hashed (UserId userid) = do
+save hashed (User.Id userid) = do
   conn <- asks App.getDb
   let newPw = unhash hashed
   liftIO $ SQLite.execute conn "update users set password_digest = ? where id = ?" (newPw, show userid)
@@ -70,3 +80,22 @@ hash pw =
     BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy (encodeUtf8 pw) >>= \case
       Nothing -> throwString "hashing password failed"
       Just pw' -> return . Hashed $ decodeUtf8 pw'
+
+get ::
+  ( MonadIO m,
+    MonadReader env m,
+    App.HasDb env,
+    MonadThrow m
+  ) =>
+  Text ->
+  m (Maybe (Password Hashed))
+get email = do
+  conn <- asks App.getDb
+  rows <- liftIO $ SQLite.query conn "SELECT salt, password_digest FROM users WHERE email = ?" [email]
+  return $ case rows of
+    [(salt, pw)] ->
+      if salt == ""
+        then Just $ BCryptUser (Hashed pw)
+        else Just $ FirebaseUser (Salt salt) (Hashed pw)
+    [] -> Nothing
+    _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getCredentials"

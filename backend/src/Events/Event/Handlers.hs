@@ -46,7 +46,7 @@ import Network.Wai.Parse
     tempFileBackEnd,
   )
 import qualified Session.Auth as Auth
-import qualified User.Types as User
+import qualified User.Session as User
 import Wai (paramsToMap)
 
 page :: Bool -> Html () -> Html ()

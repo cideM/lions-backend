@@ -31,9 +31,11 @@ where
 
 import Data.Maybe (isJust)
 import qualified Data.Vault.Lazy as Vault
-import qualified User.Types as User
+import qualified User.Id as User
+import qualified User.Role.Role as User
+import qualified User.Session as User
 
-type VaultKey = Vault.Key ([User.Role], User.UserId)
+type VaultKey = Vault.Key ([User.Role], User.Id)
 
 -- These aren't exported on purpose so I don't have nested destructuring
 -- everywhere that would be tedious to refactor in case I ever figure out a
@@ -66,7 +68,7 @@ isAuthenticated = isJust . get
 notAuthenticated :: Authentication
 notAuthenticated = IsNotAuthenticated
 
-fromVault :: Vault.Key ([User.Role], User.UserId) -> Vault.Vault -> Authentication
+fromVault :: VaultKey -> Vault.Vault -> Authentication
 fromVault sessionDataVaultKey vault =
   case Vault.lookup sessionDataVaultKey vault of
     Nothing -> IsNotAuthenticated

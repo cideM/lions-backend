@@ -17,6 +17,7 @@ import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Crypto.BCrypt as BCrypt
 import Crypto.Random (SystemRandom, genBytes, newGenIO)
 import Data.Text (Text)
+import qualified User.User as User
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
@@ -24,9 +25,7 @@ import qualified Database.SQLite.Simple as SQLite
 import qualified Error as E
 import Time (timeDaysFromNow)
 import qualified UnliftIO
-import User.DB (getCredentials)
-import qualified User.DB
-import User.Types (UserId (..))
+import qualified User.Id as User
 import Prelude hiding (id)
 
 newtype TokenId = TokenId Int
@@ -35,7 +34,7 @@ newtype TokenId = TokenId Int
 data TokenCreate = TokenCreate
   { tokenCreateValue :: Text,
     tokenCreateExpires :: Time.UTCTime,
-    tokenCreateUserId :: UserId
+    tokenCreateUserId :: User.Id
   }
   deriving (Show, Eq)
 
@@ -43,7 +42,7 @@ data Token = Token
   { tokenValue :: Text,
     tokenExpires :: Time.UTCTime,
     tokenId :: TokenId,
-    tokenUserId :: UserId
+    tokenUserId :: User.Id
   }
   deriving (Show, Eq)
 
@@ -63,7 +62,7 @@ get t = do
   case rows of
     [] -> return Nothing
     [(value, expires, id, userid) :: (Text, Time.UTCTime, Int, Int)] ->
-      return . Just $ Token value expires (TokenId id) (UserId userid)
+      return . Just $ Token value expires (TokenId id) (User.Id userid)
     _ -> throwString . T.unpack $ "returned more than one token for value: " <> t
 
 delete ::
@@ -72,9 +71,9 @@ delete ::
     App.HasDb env,
     MonadThrow m
   ) =>
-  UserId ->
+  User.Id ->
   m ()
-delete (UserId userid) = do
+delete (User.Id userid) = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "delete from reset_tokens where userid = ?" $ SQLite.Only userid
 
@@ -86,7 +85,7 @@ save ::
   ) =>
   TokenCreate ->
   m ()
-save TokenCreate {tokenCreateUserId = (UserId userid), ..} = do
+save TokenCreate {tokenCreateUserId = (User.Id userid), ..} = do
   conn <- asks App.getDb
   liftIO $
     SQLite.execute
@@ -125,7 +124,7 @@ update ::
   m (Maybe Text)
 update email = do
   conn <- asks App.getDb
-  (liftIO $ getCredentials conn email) >>= \case
+  User.getCredentials email >>= \case
     Nothing -> return Nothing
     Just (userid, _, _) -> do
       (tokenValue, expires) <- create
@@ -141,7 +140,7 @@ update email = do
 
 data ParseError
   = NotFound Text
-  | NoUser UserId
+  | NoUser User.Id
   | Expired Token
   deriving (Show)
 
@@ -155,9 +154,8 @@ parse ::
   Text ->
   m Valid
 parse value = do
-  dbConn <- asks App.getDb
   tok@Token {..} <- get value >>= E.note' (NotFound value)
-  ok <- liftIO $ User.DB.hasUser dbConn tokenUserId
+  ok <- User.exists tokenUserId
   E.unless ok $ E.throwError (NoUser tokenUserId)
   now <- liftIO $ Time.getCurrentTime
   E.when (now >= tokenExpires) (E.throwError $ Expired tok)

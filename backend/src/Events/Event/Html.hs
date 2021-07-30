@@ -19,7 +19,8 @@ import qualified Events.Reply.Reply as Event
 import Layout (ariaLabel_)
 import Locale (german)
 import Lucid
-import User.Types (UserEmail (..), UserId (..), showEmail)
+import qualified User.Id as User
+import qualified User.Email as UserEmail
 
 newtype ShowAdminTools = ShowAdminTools Bool deriving (Show)
 
@@ -119,9 +120,9 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Event.Reply {Event.replyUserEmail = UserEmail email, Event.replyUserId = UserId userid, ..} -> do
+                      ( \Event.Reply {Event.replyUserEmail = UserEmail.Email email, Event.replyUserId = User.Id userid, ..} -> do
                           tr_ $ do
-                            td_ [] $ toHtml $ showEmail email
+                            td_ [] $ toHtml $ UserEmail.show email
                             td_ [] $ toHtml $ show replyGuests
                             td_ [class_ "d-flex justify-content-end"] $
                               a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
@@ -137,9 +138,9 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
                       th_ [scope_ "col"] ""
                   tbody_ $ do
                     mapM_
-                      ( \Event.Reply {Event.replyUserEmail = UserEmail email, Event.replyUserId = UserId userid} -> do
+                      ( \Event.Reply {Event.replyUserEmail = UserEmail.Email email, Event.replyUserId = User.Id userid} -> do
                           tr_ $ do
-                            td_ [] $ toHtml $ showEmail email
+                            td_ [] $ toHtml $ UserEmail.show email
                             td_ [class_ "d-flex justify-content-end"] $
                               a_ [href_ . Text.pack $ "/nutzer/" <> show userid] "Zum Profil"
                       )
