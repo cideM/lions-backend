@@ -5,7 +5,7 @@ import Control.Exception.Safe
 import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.Trans.Resource (InternalState, runResourceT, withInternalState)
+import Control.Monad.Trans.Resource (runResourceT, withInternalState)
 import qualified DB
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
@@ -55,6 +55,7 @@ server ::
     UnliftIO.MonadUnliftIO m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
+    App.HasInternalState env,
     App.HasSessionDataVaultKey env,
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
@@ -63,9 +64,8 @@ server ::
     App.HasMail env,
     MonadReader env m
   ) =>
-  InternalState ->
   Wai.ApplicationT m
-server internalState req send = do
+server req send = do
   reqIdVaultKey <- asks App.getRequestIdVaultKey
   sessionDataVaultKey <- asks App.getSessionDataVaultKey
 
@@ -123,7 +123,7 @@ server internalState req send = do
         case Wai.requestMethod req of
           "GET" -> adminOnly' $ Event.Handlers.getCreate >=> send200 . layout'
           "POST" ->
-            adminOnly' $ Event.Handlers.postCreate internalState req >=> send200 . layout'
+            adminOnly' $ Event.Handlers.postCreate req >=> send200 . layout'
           -- TODO: Send unsupported method 405
           _ -> send404
       ["veranstaltungen", i] ->
@@ -162,7 +162,7 @@ server internalState req send = do
               "GET" -> adminOnly' $ Event.Handlers.getEdit (Event.Id parsed) >=> send200 . layout'
               "POST" ->
                 adminOnly' $
-                  Event.Handlers.postUpdate internalState req (Event.Id parsed)
+                  Event.Handlers.postUpdate req (Event.Id parsed)
                     >=> send200 . layout'
               _ -> send404
       ["loeschen", i] ->
@@ -296,6 +296,7 @@ main = do
                             { envDatabaseConnection = conn,
                               envEnvironment = appEnv,
                               envScryptSignerKey = signerKey,
+                              envInternalState = internalState,
                               envMail = Mail.send awsEnv,
                               envScryptSaltSeparator = saltSep,
                               envPort = port,
@@ -323,7 +324,7 @@ main = do
                               . Session.middleware
                               . AttachmentsMiddleware.middleware storageDir
                               . storageStaticMiddleware
-                          appWithMiddlewares = allMiddlewares $ server internalState
+                          appWithMiddlewares = allMiddlewares server
 
                       let settings = setPort port $ setHost "localhost" defaultSettings
                       liftIO . runSettings settings $

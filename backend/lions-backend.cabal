@@ -76,6 +76,7 @@ test-suite tests
     , email-validate
     , katip
     , filepath
+    , resourcet
     , directory
     , lens
     , lucid
@@ -175,6 +176,7 @@ library
     Userlist
     Userprofile
     User.Form
+    User.Id
     User.User
     User.Role.Role
     User.Session

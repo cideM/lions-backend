@@ -12,12 +12,14 @@ module App
     HasScryptSaltSeparator (..),
     HasSessionDataVaultKey (..),
     HasRequestIdVaultKey (..),
+    HasInternalState(..),
     HasSessionEncryptionKey (..),
   )
 where
 
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Trans.Resource (InternalState)
 import Control.Monad.Reader.Class (MonadReader, asks, local)
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Data.ByteString (ByteString)
@@ -59,6 +61,7 @@ data Env = Env
     envEventAttachmentStorageDir :: FilePath,
     envSessionDataVaultKey :: User.Session.VaultKey,
     envRequestIdVaultKey :: Request.Types.IdVaultKey,
+    envInternalState :: InternalState,
     envSessionEncryptionKey :: ClientSession.Key,
     envLogNamespace :: K.Namespace,
     envLogContext :: K.LogContexts,
@@ -158,6 +161,15 @@ instance HasSessionEncryptionKey Env where
 instance K.Katip (App Env) where
   getLogEnv = asks envLogEnv
   localLogEnv f (App m) = App (local (\s -> s {envLogEnv = f (envLogEnv s)}) m)
+
+class HasInternalState a where
+  getInternalState :: a -> InternalState
+
+instance HasInternalState InternalState where
+  getInternalState = id
+
+instance HasInternalState Env where
+  getInternalState = envInternalState
 
 instance K.KatipContext (App Env) where
   getKatipContext = asks envLogContext

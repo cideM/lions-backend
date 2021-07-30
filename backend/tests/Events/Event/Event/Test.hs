@@ -10,13 +10,14 @@ import qualified Events.Attachments.Saved as Saved
 import qualified Events.Event.Event as Event
 import qualified Events.Event.Id as Event
 import qualified Events.Reply.Reply as Event
+import qualified User.Id as User
+import qualified User.Email as User
 import Helpers
   ( withTestEnvProd,
   )
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Text.Email.Validate as Email
-import User.Types
 
 tests :: TestTree
 tests =
@@ -66,7 +67,7 @@ tests =
                         True
                         "some desc"
                         "some loc"
-                        [Event.Reply True (UserEmail email) (UserId 1) 2]
+                        [Event.Reply True (User.Email email) (User.Id 1) 2]
                         [Saved.FileName "some file"]
                     )
                   ],
@@ -111,7 +112,7 @@ tests =
                         True
                         "some desc"
                         "some loc"
-                        [Event.Reply True (UserEmail email) (UserId 1) 2]
+                        [Event.Reply True (User.Email email) (User.Id 1) 2]
                         [Saved.FileName "some file"]
                   )
     ]

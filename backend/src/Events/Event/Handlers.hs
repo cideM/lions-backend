@@ -14,8 +14,7 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader.Class (MonadReader)
-import Control.Monad.Trans.Resource (InternalState)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Foldable (find)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
@@ -194,13 +193,14 @@ postCreate ::
     K.KatipContext m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
+    App.HasInternalState env,
     App.HasDb env
   ) =>
-  InternalState ->
   Wai.Request ->
   User.Session.Admin ->
   m LayoutStub
-postCreate internalState req _ = do
+postCreate req _ = do
+  internalState <- asks App.getInternalState
   -- There's no point in trying to catch an exception arising from a payload
   -- that's too large. The connection will be closed, so no more bytes are read
   -- by the server, and the browser will likely just show a connection reset
@@ -263,16 +263,17 @@ postUpdate ::
     MonadIO m,
     K.KatipContext m,
     App.HasEventStorage env,
+    App.HasInternalState env,
     App.HasSessionEncryptionKey env,
     MonadReader env m,
     App.HasDb env
   ) =>
-  InternalState ->
   Wai.Request ->
   Event.Id ->
   User.Session.Admin ->
   m LayoutStub
-postUpdate internalState req eid@(Event.Id eventid) _ = do
+postUpdate req eid@(Event.Id eventid) _ = do
+  internalState <- asks App.getInternalState
   body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
 
   K.katipAddNamespace "postUpdate" $ do
