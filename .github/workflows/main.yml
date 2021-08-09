@@ -32,7 +32,7 @@ jobs:
           # SSH key file name (default: id_rsa)
           # name: # optional, default is id_rsa
           # public keys of SSH servers
-          # known_hosts: # default is 
+          known_hosts: ${{ secrets.KNOWN_HOSTS_CI }}
           # SSH config
           # config: # optional, default is 
           # replace / ignore / fail
