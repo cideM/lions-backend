@@ -1,7 +1,8 @@
 module Events.Event.Html
   ( preview,
     full,
-    ShowAdminTools(..)
+    IsExpired (..),
+    ShowAdminTools (..),
   )
 where
 
@@ -16,22 +17,30 @@ import qualified Events.Attachments.Saved as Saved
 import qualified Events.Event.Event as Events
 import qualified Events.Event.Id as Event
 import qualified Events.Reply.Reply as Event
-import Layout (ariaLabel_)
+import Layout (ariaLabel_, infoBox)
 import Locale (german)
 import Lucid
-import qualified User.Id as User
 import qualified User.Email as UserEmail
+import qualified User.Id as User
 
 newtype ShowAdminTools = ShowAdminTools Bool deriving (Show)
 
-full :: ShowAdminTools -> Maybe Event.Reply -> Event.Id -> Events.Event Saved.FileName -> Html ()
-full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {..} =
+newtype IsExpired = IsExpired Bool deriving (Show)
+
+full :: IsExpired -> ShowAdminTools -> Maybe Event.Reply -> Event.Id -> Events.Event Saved.FileName -> Html ()
+full (IsExpired isExpired) (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {..} =
   let date = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
       coming = eventReplies & filter Event.replyComing & length
       notComing = eventReplies & filter (not . Event.replyComing) & length
       guests = eventReplies & filter Event.replyComing & map Event.replyGuests & sum
    in do
         div_ [class_ "container"] $ do
+          -- Warning that looking at an event that already happened
+          when isExpired $ do
+            div_ [class_ "my-3"] $
+              infoBox "Diese Veranstaltung hat bereits stattgefunden und kann daher nicht mehr editiert werden!"
+
+          -- Admin tools at the top
           div_ [class_ "row gy-3 gx-lg-4 mb-5"] $ do
             when showAdminTools $ do
               div_ [class_ "col-12 d-flex flex-wrap"] $ do
@@ -47,11 +56,13 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
                     href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/editieren"
                   ]
                   "Editieren"
+
+            -- The actual event content, such as description and title
             section_ [class_ "justify-content-center col-lg-8"] $ do
               div_ [class_ "mb-1 text-muted"] $ do
                 span_ [class_ "me-2"] $ toHtml date
                 when eventFamilyAllowed $ span_ [class_ "badge bg-success"] "Mit Familie"
-              p_ [class_ "mb-1 text-muted"] $ toHtml $ "Ort: " <> eventLocation
+              p_ [class_ "mb-2 text-muted"] $ toHtml $ "Ort: " <> eventLocation
               h1_ [class_ "mb-2 h3"] $ toHtml eventTitle
               p_ [class_ "my-3", style_ "white-space: pre-wrap"] $ toHtml eventDescription
               when (length eventAttachments > 0) $ do
@@ -63,6 +74,9 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
                         li_ [] $
                           a_ [href_ [i|/events/#{eventId}/#{filename}|]] $ toHtml filename
                     )
+
+            -- User's reply to the event, should be disabled if the event is in
+            -- the past
             section_ [class_ "justify-content-center col-lg-4"] $ do
               div_ [class_ "card"] $ do
                 div_ [class_ "card-header"] $ do
@@ -77,11 +91,13 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
                       div_ [class_ "mb-3"] $ do
                         label_ [class_ "form-label", for_ "replySelect"] "Antwort"
                         select_
-                          [ name_ "reply",
-                            id_ "replySelect",
-                            class_ "form-select form-select-sm me-1",
-                            ariaLabel_ "Veranstaltung beantworten"
-                          ]
+                          ( [ name_ "reply",
+                              id_ "replySelect",
+                              class_ "form-select form-select-sm me-1",
+                              ariaLabel_ "Veranstaltung beantworten"
+                            ]
+                              ++ [disabled_ "disabled" | isExpired]
+                          )
                           $ do
                             option_ (value_ "coming" : [selected_ "selected" | replyComing' == Just True]) "Zusage"
                             option_ (value_ "notcoming" : [selected_ "selected" | replyComing' == Just False]) "Absage"
@@ -89,15 +105,21 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
                       div_ [class_ "mb-3"] $ do
                         label_ [class_ "form-label", for_ "numberOfGuests"] "Anzahl Gäste die du mitbringst"
                         input_
-                          [ class_ "form-control form-control-sm",
-                            type_ "number",
-                            name_ "numberOfGuests",
-                            id_ "numberOfGuests",
-                            value_ replyGuests',
-                            placeholder_ "0"
-                          ]
+                          ( [ class_ "form-control form-control-sm",
+                              type_ "number",
+                              name_ "numberOfGuests",
+                              id_ "numberOfGuests",
+                              value_ replyGuests',
+                              placeholder_ "0"
+                            ]
+                              ++ [disabled_ "disabled" | isExpired]
+                          )
                       div_ [class_ "d-flex justify-content-start align-items-end"] $
-                        button_ [type_ "submit", class_ "btn btn-primary btn-sm"] "Speichern"
+                        button_
+                          ( [type_ "submit", class_ "btn btn-primary btn-sm"]
+                              ++ [disabled_ "disabled" | isExpired]
+                          )
+                          "Speichern"
           div_ [class_ "row row-cols-1 row-cols-lg-2 mt-4 gy-4 gx-lg-4"] $ do
             div_ [class_ "col"] $ do
               when (coming > 0) $ do
@@ -151,8 +173,8 @@ full (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {.
       _ -> mempty
     replyComing' = fmap Event.replyComing ownReply
 
-preview :: (Event.Id, Events.Event Saved.FileName, Maybe Event.Reply) -> Html ()
-preview (Event.Id eventid, Events.Event {..}, ownReply) = do
+preview :: (Event.Id, Events.Event Saved.FileName, Maybe Event.Reply, IsExpired) -> Html ()
+preview (Event.Id eventid, Events.Event {..}, ownReply, IsExpired isExpired) = do
   let formatted = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
       coming = eventReplies & filter Event.replyComing & length
       notComing = eventReplies & filter (not . Event.replyComing) & length
@@ -160,9 +182,10 @@ preview (Event.Id eventid, Events.Event {..}, ownReply) = do
   div_ [class_ "card"] $ do
     div_ [class_ "card-header"] $ do
       span_ [class_ "me-2"] $ toHtml formatted
-      when eventFamilyAllowed $ span_ [class_ "badge bg-success"] "Mit Familie"
-      when ((Event.replyComing <$> ownReply) == Just True) $ do span_ [class_ "ms-2 badge bg-success text-white"] "Zugesagt"
-      when ((Event.replyComing <$> ownReply) == Just False) $ do span_ [class_ "ms-2 badge bg-danger text-white"] "Abgesagt"
+      when isExpired $ span_ [class_ "badge bg-warning text-dark me-2"] "Bereits stattgefunden"
+      when eventFamilyAllowed $ span_ [class_ "badge bg-success me-2"] "Mit Familie"
+      when ((Event.replyComing <$> ownReply) == Just True) $ do span_ [class_ "badge bg-success text-white me-2"] "Zugesagt"
+      when ((Event.replyComing <$> ownReply) == Just False) $ do span_ [class_ "badge bg-danger text-white"] "Abgesagt"
     div_ [class_ "card-body"] $ do
       a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle
       h2_ [class_ "card-subtitle fs-6 mb-3 text-muted"] $ toHtml $ "Ort: " <> eventLocation

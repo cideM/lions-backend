@@ -61,19 +61,31 @@ getAll ::
   User.Session.Authenticated ->
   m LayoutStub
 getAll auth = do
-  events <- toEventList <$> Event.getAll
-  return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml events
-  where
-    getOwnReplyFromEvent (eventid, event@Event.Event {..}) =
-      let User.Session.Session {..} = User.Session.get' auth
-       in (eventid,event,) $ find ((==) sessionUserId . Reply.replyUserId) eventReplies
+  events <- Event.getAll
 
-    toEventList = map getOwnReplyFromEvent . sortWith (Down . Event.eventDate . snd)
+  now <- liftIO $ Time.getCurrentTime
+
+  let formatted = map (formatEventData now) $ sortWith (Down . Event.eventDate . snd) events
+
+  return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml formatted
+  where
+    formatEventData now (eventid, event@Event.Event {..}) =
+      let User.Session.Session {..} = User.Session.get' auth
+          userReply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
+          isExpired = Event.Html.IsExpired (now >= eventDate)
+       in (eventid, event, userReply, isExpired)
 
     -- Ideally there's zero markup in the handler files.
     -- TODO: If you're super bored with lots of time on your hands extract the
     -- markup
-    eventPreviewsHtml :: [(Event.Id, Event.Event Saved.FileName, Maybe Reply)] -> Html ()
+    eventPreviewsHtml ::
+      [ ( Event.Id,
+          Event.Event Saved.FileName,
+          Maybe Reply,
+          Event.Html.IsExpired
+        )
+      ] ->
+      Html ()
     eventPreviewsHtml events =
       page (User.Session.isAdmin' auth) (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
 
@@ -87,18 +99,20 @@ get ::
   User.Session.Authenticated ->
   m (Maybe LayoutStub)
 get eventid auth = do
+  now <- liftIO $ Time.getCurrentTime
+
   let userIsAdmin = User.Session.isAdmin' auth
       User.Session.Session {..} = User.Session.get' auth
 
   Event.get eventid >>= \case
     Nothing -> return Nothing
     Just e@Event.Event {..} -> do
-      let ownReply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
-      return . Just
-        . LayoutStub
-          eventTitle
-          (Just Events)
-        $ Event.Html.full (Event.Html.ShowAdminTools userIsAdmin) ownReply eventid e
+      let isExpired = Event.Html.IsExpired (now >= eventDate)
+          ownReply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
+          isAdmin = Event.Html.ShowAdminTools userIsAdmin
+          html = Event.Html.full isExpired isAdmin ownReply eventid e
+
+      return . Just $ LayoutStub eventTitle (Just Events) html
 
 getConfirmDelete ::
   ( MonadIO m,
