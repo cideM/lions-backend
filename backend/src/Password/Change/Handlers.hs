@@ -6,7 +6,6 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
-import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Error as E
 import Form (FormFieldState (..))
@@ -40,7 +39,13 @@ post req = do
   params <- liftIO $ parseParams req
 
   case Map.lookup "token" params of
-    Nothing -> return . layout . warning $ changePwNoToken
+    Nothing ->
+      return . layout . warning $
+        [i|Zum Ändern des Passworts ist ein Verifizierungs-Code notwendig, der
+        normalerweise automatisch aus dem Link in der Email herausgelesen wird.
+        Dieser Code fehlt jedoch. Das Password kann nur über den Link in der Email
+        geändert werden. Falls der richtige Link verwendet wurde, bitte an einen
+        Administrator wenden.|]
     Just tok -> do
       let pw = (Map.findWithDefault "" "inputPassword" params)
           pwMatch = (Map.findWithDefault "" "inputPasswordMatch" params)
@@ -50,7 +55,14 @@ post req = do
         then
           return $
             page
-              (F.form tok input (F.FormState (Invalid changePwNoMatch) (Invalid changePwNoMatch)))
+              ( F.form
+                  tok
+                  input
+                  ( F.FormState
+                      (Invalid "Passwörter stimmen nicht überein")
+                      (Invalid "Passwörter stimmen nicht überein")
+                  )
+              )
         else do
           let notEmptyMsg = "Feld darf nicht leer sein"
 
@@ -102,25 +114,5 @@ get req = do
   where
     decode' = T.pack . decode . T.unpack
 
--- The various things that I expect to happen when trying to change a user's
--- password. Each has a different error message that is shown to the user.
-data TryResetError
-  = InvalidPassword F.FormInput Text F.FormState
-  | ParseE Token.ParseError
-  deriving (Show)
-
 page :: Html () -> LayoutStub
 page = layout . div_ [class_ "container p-3 d-flex justify-content-center"]
-
--- Copy that I didn't want in the handler code because it distracts from the
--- actual logic
-changePwNoToken :: Text
-changePwNoToken =
-  [i|Zum Ändern des Passworts ist ein Verifizierungs-Code notwendig, der
-  normalerweise automatisch aus dem Link in der Email herausgelesen wird.
-  Dieser Code fehlt jedoch. Das Password kann nur über den Link in der Email
-  geändert werden. Falls der richtige Link verwendet wurde, bitte an einen
-  Administrator wenden.|]
-
-changePwNoMatch :: Text
-changePwNoMatch = "Passwörter stimmen nicht überein"
