@@ -6,16 +6,13 @@ import qualified Network.Wai.Middleware.Static as Static
 import qualified UnliftIO
 import qualified Wai.Class as Wai
 
+-- This middleware intercepts requests to event attachments and rewrites them
+-- so that, relative to the event attachments storage location, the filepath is
+-- correct. It turns "/events/2/foo.pdf" into "/2/foo.pdf"
 middleware :: (UnliftIO.MonadUnliftIO m) => String -> Wai.MiddlewareT m
-middleware storageDir = do
-  Wai.liftMiddleware
-    ( Static.staticPolicy
-        ( Static.policy rewriteEvents >-> Static.addBase storageDir
-        )
-    )
+middleware storageDir =
+  Wai.liftMiddleware (Static.staticPolicy (Static.policy rewriteEvents >-> Static.addBase storageDir))
   where
-    -- Turn /events/2/foo.pdf -> /2/foo.pdf
-    -- since that's the actual path inside the event attachment storage folder
     rewriteEvents :: String -> Maybe String
     rewriteEvents s =
       let t = Text.pack s

@@ -5,6 +5,7 @@ import Control.Exception.Safe
 import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Data.Default as Def
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified Env
@@ -19,7 +20,9 @@ import Lucid
 import Network.HTTP.Types (status200, status403, status404, status500)
 import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
-import Network.Wai.Middleware.RequestLogger (logStdout)
+import qualified Network.Wai.Middleware.Gzip as Gzip
+import qualified Network.Wai.Middleware.RequestLogger as RequestLogger
+import qualified Network.Wai.Middleware.RequestLogger.JSON as RequestLogger
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Password.Change.Handlers
 import qualified Password.Reset.Handlers
@@ -251,27 +254,47 @@ main = do
     K.katipAddContext (K.sl "port" envPort) $ do
       K.logLocM K.InfoS "starting server"
 
-      let assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
-          assetMiddleware = Wai.liftMiddleware $ staticPolicy (addBase "public")
-          -- Must come after sessionMiddleware because these files shouldn't be public
-          storageStaticMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
-          storageStaticMiddleware = Wai.liftMiddleware $ staticPolicy (addBase envEventAttachmentStorageDir)
-          allMiddlewares =
-            assetMiddleware
-              . (Wai.liftMiddleware logStdout)
+      let defaultGzipSettings = (Def.def :: Gzip.GzipSettings)
+          gzipMiddleware =
+            Gzip.gzip $
+              defaultGzipSettings
+                { Gzip.gzipFiles = Gzip.GzipCompress,
+                  Gzip.gzipCheckMime = Gzip.defaultCheckMime
+                }
+
+      let attchmentMiddleware =
+            -- This middleware rewrites file paths for the following middleware,
+            -- which serves them
+            AttachmentsMiddleware.middleware envEventAttachmentStorageDir
+              . (Wai.liftMiddleware $ staticPolicy (addBase envEventAttachmentStorageDir))
+
+      -- Set up JSON logging. It's not using Katip but I'm too lazy right now
+      -- to make all the necessary adjustments.
+      let jsonFormatter = RequestLogger.CustomOutputFormatWithDetails $ RequestLogger.formatAsJSON
+          defaultLoggerSettings = (Def.def :: RequestLogger.RequestLoggerSettings)
+          customSettings = defaultLoggerSettings {RequestLogger.outputFormat = jsonFormatter}
+
+      reqLogger <- liftIO $ RequestLogger.mkRequestLogger customSettings
+
+      let middlewares =
+            (Wai.liftMiddleware gzipMiddleware)
+              . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
+              . (Wai.liftMiddleware reqLogger)
               . Request.middleware
+              -- It's important that the attachments middleware comes after the session
+              -- middleware, so that the event attachments are not accessible by the
+              -- public.
               . Session.middleware
-              . AttachmentsMiddleware.middleware envEventAttachmentStorageDir
-              . storageStaticMiddleware
-          appWithMiddlewares = allMiddlewares server
+              . attchmentMiddleware
 
       let settings = setPort envPort $ setHost "localhost" defaultSettings
+
       liftIO . runSettings settings $
         ( \r s ->
             let send = liftIO . s
              in flip App.unApp env
                   . handleAny (\_ -> send500 send)
-                  $ appWithMiddlewares r send
+                  $ middlewares server r send
         )
   where
     send500 send = do
