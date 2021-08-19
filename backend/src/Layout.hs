@@ -56,7 +56,7 @@ layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = 
               div_ [class_ "container-fluid"] $ do
                 a_
                   [ class_ "d-flex flex-row align-items-center navbar-brand",
-                    href_ "/willkommen"
+                    href_ "/"
                   ]
                   $ do
                     img_ [src_ "/emblem_color.svg", width_ "50"]

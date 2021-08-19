@@ -18,7 +18,6 @@ import Form (FormFieldState (..), notEmpty, processField, validDate)
 import Layout (describedBy_)
 import Lucid
 
--- TODO: Rename create because it's both edit and create
 data FormState = FormState
   { createEventStateTitle :: FormFieldState Text,
     createEventStateDate :: FormFieldState Time.UTCTime,

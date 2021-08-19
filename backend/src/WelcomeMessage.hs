@@ -218,8 +218,6 @@ deleteMessage (WelcomeMsgId id) = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]
 
--- TODO: Something like this should probably exist for all pages. Maybe make
--- the title smaller, so it's almost more like breadcrums?
 pageLayout :: Text -> Html () -> LayoutStub
 pageLayout title content =
   LayoutStub title (Just Welcome) $

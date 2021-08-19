@@ -1,7 +1,6 @@
 { pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream, bootstrapSrc }:
 let
   # If needed can also just forward arguments to sass here
-  # TODO: Properly handle permissions for out path.
   # The things that "nix build" creates are put in the Nix store and then a
   # symlink to the folder in the store is created. That means I can't have Nix
   # be in charge of "public" while also optionally letting "sass --watch" write

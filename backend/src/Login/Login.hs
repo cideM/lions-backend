@@ -15,6 +15,7 @@ import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Error as E
+import Form (FormFieldState (..))
 import Layout (layout)
 import qualified Login.LoginForm as LoginForm
 import Lucid
@@ -22,11 +23,11 @@ import Network.HTTP.Types (status302, status401)
 import qualified Network.Wai as Wai
 import Scrypt (verifyPassword)
 import Session.Session (Session (..))
-import qualified User.Session
 import qualified Session.Session as Session
 import qualified Session.Valid
 import qualified User.Id as User
 import User.Role.Role (Role (..))
+import qualified User.Session
 import qualified User.User as User
 import Wai (parseParams)
 import qualified Web.ClientSession as ClientSession
@@ -164,16 +165,16 @@ postLogin req send = do
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
         . layout User.Session.notAuthenticated
-        . LoginForm.form
-        $ LoginForm.NotLoggedInValidated
-          email
-          (Just "Ungültige Kombination aus Email und Passwort")
-          formPw
-          (Just "Ungültige Kombination aus Email und Passwort")
+        $ ( LoginForm.render
+              User.Session.notAuthenticated
+              (LoginForm.FormInput email formPw)
+              ( LoginForm.FormState
+                  { loginStateEmail = Invalid "Ungültige Kombination aus Email und Passwort",
+                    loginStatePassword = Invalid "Ungültige Kombination aus Email und Passwort"
+                  }
+              )
+          )
 
 getLogin :: (MonadIO m) => User.Session.Authentication -> m (Html ())
 getLogin auth =
-  return . layout auth . LoginForm.form $
-    if User.Session.isAuthenticated auth
-      then LoginForm.LoggedIn
-      else LoginForm.NotLoggedInNotValidated
+  return . layout auth $ LoginForm.render auth (LoginForm.FormInput "" "") LoginForm.emptyForm

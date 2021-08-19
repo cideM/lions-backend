@@ -22,7 +22,7 @@ import Prelude hiding (id)
 
 -- Now that I'm writing tests that involve this data type I find it a bit weird
 -- that it doesn't have the event ID. Strictly speaking a reply is meaningless
--- without its event ID. TODO: Reconsider if this should carry its ID around!
+-- without its event ID.
 data Reply = Reply
   { replyComing :: Bool,
     replyUserEmail :: UserEmail.Email,

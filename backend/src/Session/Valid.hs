@@ -36,7 +36,7 @@ parse s@(Session _ expires _) = do
 
 -- A wrapper around a potentially invalid session so that I can differentiate
 -- the two possible session types through types. I should not export the
--- constructor actually.  TODO: Hide constructor
+-- constructor actually.
 newtype Valid = Valid Session deriving (Show)
 
 unvalid :: Valid -> Session

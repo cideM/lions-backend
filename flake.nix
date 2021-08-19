@@ -156,7 +156,6 @@
         modules = [
           sops-nix.nixosModules.sops
           {
-            # TODO: This sucks, install the server systemwide or something
             config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
             config.serverExe = "${allSystems.packages.x86_64-linux.server}/server";
           }

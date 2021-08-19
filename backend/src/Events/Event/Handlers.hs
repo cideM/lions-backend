@@ -76,8 +76,6 @@ getAll auth = do
        in (eventid, event, userReply, isExpired)
 
     -- Ideally there's zero markup in the handler files.
-    -- TODO: If you're super bored with lots of time on your hands extract the
-    -- markup
     eventPreviewsHtml ::
       [ ( Event.Id,
           Event.Event Saved.FileName,
@@ -124,7 +122,6 @@ getConfirmDelete ::
   User.Session.Admin ->
   m LayoutStub
 getConfirmDelete eid@(Event.Id eventid) _ = do
-  -- TODO: Duplicated
   (Event.get eid) >>= \case
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
