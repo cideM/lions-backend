@@ -31,7 +31,7 @@ let
     buildPhase = ''
       ln -s ${nodeDependencies}/lib/node_modules ./node_modules
       export PATH="${nodeDependencies}/bin:$PATH"
-      ${pkgs.nodePackages.sass}/bin/sass --load-path=${bootstrapSrc} $src/styles.scss style.css
+      ${pkgs.nodePackages.sass}/bin/sass --style=compressed --load-path=${bootstrapSrc} $src/styles.scss style.css
       mkdir build
       postcss style.css --use autoprefixer -d build/
       mkdir $out
