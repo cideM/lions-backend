@@ -5,21 +5,17 @@ import Control.Exception.Safe
 import Control.Monad (unless, (>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Control.Monad.Trans.Resource (runResourceT, withInternalState)
-import qualified DB
 import qualified Data.Text as Text
-import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
+import qualified Env
 import qualified Events.Attachments.Middleware as AttachmentsMiddleware
 import qualified Events.Event.Handlers as Event.Handlers
 import qualified Events.Event.Id as Event
 import qualified Events.Reply.Handlers as Reply.Handlers
 import qualified Katip as K
 import Layout (LayoutStub (..), layout, warning)
-import qualified Logging
 import qualified Login.Login as Login
 import Lucid
-import qualified Network.AWS as AWS
 import Network.HTTP.Types (status200, status403, status404, status500)
 import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
@@ -27,11 +23,8 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Password.Change.Handlers
 import qualified Password.Reset.Handlers
-import qualified Password.Reset.Mail as Mail
 import qualified Request.Middleware as Request
 import qualified Session.Middleware as Session
-import qualified System.Directory
-import System.Environment (getEnv)
 import Text.Read (readEither)
 import qualified UnliftIO
 import qualified User.Handler as User.User
@@ -41,7 +34,6 @@ import qualified User.Session as User
 import qualified Userlist
 import qualified Userprofile
 import qualified Wai.Class as Wai
-import qualified Web.ClientSession as ClientSession
 import WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage
 import Prelude hiding (id)
@@ -255,87 +247,32 @@ server req send = do
 
 main :: IO ()
 main = do
-  sqlitePath <- getEnv "LIONS_SQLITE_PATH"
-  appEnv <- getEnv "LIONS_ENV" >>= App.parseEnv
-  sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
-  mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
-  mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
-  signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
-  saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
-  storageDir <- getEnv "LIONS_STORAGE_DIR"
+  Env.withAppEnv $ \env@App.Env {..} -> do
+    K.katipAddContext (K.sl "port" envPort) $ do
+      K.logLocM K.InfoS "starting server"
 
-  System.Directory.createDirectoryIfMissing True storageDir
+      let assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
+          assetMiddleware = Wai.liftMiddleware $ staticPolicy (addBase "public")
+          -- Must come after sessionMiddleware because these files shouldn't be public
+          storageStaticMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
+          storageStaticMiddleware = Wai.liftMiddleware $ staticPolicy (addBase envEventAttachmentStorageDir)
+          allMiddlewares =
+            assetMiddleware
+              . (Wai.liftMiddleware logStdout)
+              . Request.middleware
+              . Session.middleware
+              . AttachmentsMiddleware.middleware envEventAttachmentStorageDir
+              . storageStaticMiddleware
+          appWithMiddlewares = allMiddlewares server
 
-  sessionKey <- ClientSession.getKey sessionKeyFile
-  sessionDataVaultKey <- Vault.newKey
-  requestIdVaultKey <- Vault.newKey
-
-  DB.withConnection
-    sqlitePath
-    ( \conn -> do
-        let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
-            sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
-        awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
-
-        runResourceT $
-          withInternalState
-            ( \internalState -> do
-                Logging.withKatip
-                  K.DebugS
-                  "main"
-                  (K.Environment . Text.pack $ show appEnv)
-                  $ do
-                    ctx <- K.getKatipContext
-                    ns <- K.getKatipNamespace
-                    logEnv <- K.getLogEnv
-
-                    let port = (3000 :: Int)
-
-                        env =
-                          App.Env
-                            { envDatabaseConnection = conn,
-                              envEnvironment = appEnv,
-                              envScryptSignerKey = signerKey,
-                              envInternalState = internalState,
-                              envMail = Mail.send awsEnv,
-                              envScryptSaltSeparator = saltSep,
-                              envPort = port,
-                              envEventAttachmentStorageDir = storageDir,
-                              envSessionDataVaultKey = sessionDataVaultKey,
-                              envRequestIdVaultKey = requestIdVaultKey,
-                              envSessionEncryptionKey = sessionKey,
-                              envLogNamespace = ns,
-                              envLogContext = ctx,
-                              envLogEnv = logEnv
-                            }
-
-                    K.katipAddContext (K.sl "port" port) $ do
-                      K.logLocM K.InfoS "starting server"
-
-                      let assetMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
-                          assetMiddleware = Wai.liftMiddleware $ staticPolicy (addBase "public")
-                          -- Must come after sessionMiddleware because these files shouldn't be public
-                          storageStaticMiddleware :: (UnliftIO.MonadUnliftIO m) => Wai.MiddlewareT m
-                          storageStaticMiddleware = Wai.liftMiddleware $ staticPolicy (addBase storageDir)
-                          allMiddlewares =
-                            assetMiddleware
-                              . (Wai.liftMiddleware logStdout)
-                              . Request.middleware
-                              . Session.middleware
-                              . AttachmentsMiddleware.middleware storageDir
-                              . storageStaticMiddleware
-                          appWithMiddlewares = allMiddlewares server
-
-                      let settings = setPort port $ setHost "localhost" defaultSettings
-                      liftIO . runSettings settings $
-                        ( \r s ->
-                            let send = liftIO . s
-                             in flip App.unApp env
-                                  . handleAny (\_ -> send500 send)
-                                  $ appWithMiddlewares r send
-                        )
-            )
-    )
+      let settings = setPort envPort $ setHost "localhost" defaultSettings
+      liftIO . runSettings settings $
+        ( \r s ->
+            let send = liftIO . s
+             in flip App.unApp env
+                  . handleAny (\_ -> send500 send)
+                  $ appWithMiddlewares r send
+        )
   where
     send500 send = do
       send
