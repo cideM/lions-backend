@@ -6,5 +6,3 @@ create table events (
   description text,
   location text not null
 );
-
-create index userreplies on event_replies (userid, eventid);

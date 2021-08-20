@@ -1,7 +1,8 @@
 module Password.Reset.Mail
-  ( send,
+  ( sendAws,
     Mail (..),
     SendMail,
+    sendIoRef,
     PlainText (..),
     Html (..),
   )
@@ -9,6 +10,8 @@ where
 
 import Control.Exception.Safe
 import Control.Lens
+import Data.IORef (IORef)
+import qualified Data.IORef as IORef
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text)
 import qualified Network.AWS as AWS
@@ -29,15 +32,13 @@ type SendMail m = Text -> Mail -> m SES.SendEmailResponse
 -- Function for sending email through AWS. This is exported because it's
 -- partially applied in Main and then passed to the handler, so the handler can
 -- be tested without sending emails.
-send ::
+sendAws ::
   ( MonadIO m,
     MonadThrow m
   ) =>
   AWS.Env ->
-  Text ->
-  Mail ->
-  m SES.SendEmailResponse
-send awsEnv recipient Mail {..} =
+  SendMail m
+sendAws awsEnv recipient Mail {..} =
   let (Html htmlContent) = mailHtml
       (PlainText plainContent) = mailPlainText
       message =
@@ -57,3 +58,10 @@ send awsEnv recipient Mail {..} =
           "hello@lions-achern.de"
           (set SES.dToAddresses [recipient] SES.destination)
           message
+
+-- This is a version of SendMail that records sent mails in an IO ref. Use it
+-- in unit or integration tests, to avoid using the actual AWS infrastructure.
+sendIoRef :: IORef (Maybe Text, Maybe Mail) -> SendMail IO
+sendIoRef ref recipient mail = do
+  IORef.writeIORef ref (Just recipient, Just mail)
+  return $ SES.sendEmailResponse 0 "id"

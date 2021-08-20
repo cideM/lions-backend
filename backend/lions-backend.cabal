@@ -22,7 +22,9 @@ maintainer:         yuuki@protonmail.com
 extra-source-files: CHANGELOG.md
 
 common shared-props
-  ghc-options:      -Wall
+  ghc-options:
+    -Wall
+    -threaded
   default-language: Haskell2010
   default-extensions:
     DerivingVia
@@ -70,7 +72,6 @@ test-suite tests
     , amazonka-ses
     , vault
     , warp
-    , fast-logger
     , uri-encode
     , cookie
     , email-validate
@@ -86,6 +87,31 @@ test-suite tests
     , tasty-hunit
     , text
     , string-interpolate
+
+-- test-suite end-to-end-tests
+--   import:         shared-props
+--   main-is:        Main.hs
+--   type:           exitcode-stdio-1.0
+--   hs-source-dirs: e2e
+--   build-depends:
+--     , base
+--     , unliftio
+--     , containers
+--     , bytestring
+--     , safe-exceptions
+--     , turtle
+--     , filepath
+--     , directory
+--     , time
+--     , tasty
+--     , async
+--     , req
+--     , http-types
+--     , tasty-hunit
+--     , text
+--     , retry
+--     , process
+--     , string-interpolate
 
 library
   import:          shared-props
@@ -103,13 +129,13 @@ library
     , bytestring
     , cipher-aes
     , clientsession
+    , filepattern
     , containers
     , cookie
     , resourcet
     , crypto-api
     , crypto-cipher-types
     , email-validate
-    , fast-logger
     , http-types
     , lens
     , lucid
@@ -150,6 +176,7 @@ library
     Events.Event.Id
     Events.Event.Form
     Error
+    Server
     Form
     Layout
     Locale

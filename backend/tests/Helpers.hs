@@ -31,7 +31,6 @@ import qualified Katip as K
 import Layout (LayoutStub (..))
 import qualified Logging
 import Lucid
-import qualified Network.AWS.SES as SES
 import Network.HTTP.Types (hContentType, status200)
 import qualified Network.Wai as Wai
 import Network.Wai.Test
@@ -103,14 +102,10 @@ withFormRequest body handler =
       UnliftIO.withRunInIO $ \runInIO ->
         runSession session $ \r send -> runInIO $ handler r (liftIO . send)
 
--- Use the IORef to keep track of the function being called
-sendMail :: IORef (Maybe Text, Maybe Mail.Mail) -> Mail.SendMail IO
-sendMail ref recipient mail = do
-  IORef.writeIORef ref (Just recipient, Just mail)
-  return $ SES.sendEmailResponse 0 "id"
-
--- I'm sure there's some overlap with the actual instantiation in Lib.hs which
--- I could get rid of.
+-- This generates a proper environment in which we can run our app, but all the
+-- values are hardcoded. Most importantly this takes the randomness out of
+-- password hashing. It also doesn't talk to AWS and instead uses an IO Ref to
+-- track emails.
 withTestEnv :: App.Environment -> (IORef (Maybe Text, Maybe Mail.Mail) -> App.App App.Env a) -> IO a
 withTestEnv appEnv f = do
   tempDir <- System.Directory.getTemporaryDirectory
@@ -136,7 +131,7 @@ withTestEnv appEnv f = do
                         envEnvironment = appEnv,
                         envScryptSignerKey = signerKey,
                         envScryptSaltSeparator = saltSep,
-                        envMail = sendMail mailRef,
+                        envMail = Mail.sendIoRef mailRef,
                         envInternalState = internalState,
                         -- TODO: Remove from env since not used in tests
                         envPort = 5000,

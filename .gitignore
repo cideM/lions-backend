@@ -1,5 +1,6 @@
 public
 client/node_modules
+cabal.project.local*
 dist-newstyle
 .envrc
 result
@@ -13,5 +14,5 @@ terraform/.terraform
 terraform/*.tfstate.*
 terraform/*.tfstate
 terraform/.terraform.lock.hcl
-nixos.*
 result-1
+*.qcow2

@@ -12,23 +12,23 @@ module App
     HasScryptSaltSeparator (..),
     HasSessionDataVaultKey (..),
     HasRequestIdVaultKey (..),
-    HasInternalState(..),
+    HasInternalState (..),
     HasSessionEncryptionKey (..),
   )
 where
 
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Trans.Resource (InternalState)
 import Control.Monad.Reader.Class (MonadReader, asks, local)
 import Control.Monad.Trans.Reader (ReaderT (..))
+import Control.Monad.Trans.Resource (InternalState)
 import Data.ByteString (ByteString)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
 import qualified Password.Reset.Mail as Mail
 import qualified Request.Types
-import qualified User.Session
 import qualified UnliftIO
+import qualified User.Session
 import qualified Web.ClientSession as ClientSession
 
 newtype App env result = App {unApp :: env -> IO result}
@@ -44,11 +44,16 @@ newtype App env result = App {unApp :: env -> IO result}
     )
     via ReaderT env IO
 
-data Environment = Production | Development deriving (Show, Eq)
+data Environment
+  = Production -- Uses real infrastructure and sends emails
+  | Development -- Logs at Debug
+  | Test -- Logs at Debug and doesn't send emails because it doesn't use real infrastructure
+  deriving (Show, Eq)
 
 parseEnv :: String -> IO Environment
 parseEnv "production" = return Production
 parseEnv "development" = return Development
+parseEnv "test" = return Test
 parseEnv s = throwString $ "unknown environment: " <> show s
 
 data Env = Env

@@ -16,6 +16,7 @@ import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import qualified Error as E
 import Form (FormFieldState (..))
+import qualified Katip as K
 import Layout (layout)
 import qualified Login.LoginForm as LoginForm
 import Lucid
@@ -81,6 +82,7 @@ login ::
   ( MonadIO m,
     MonadThrow m,
     E.MonadError Text m,
+    K.KatipContext m,
     App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
@@ -92,6 +94,8 @@ login ::
   Text ->
   m (ByteString, Time.UTCTime)
 login email formPw = do
+  K.logLocM K.DebugS "running login function"
+
   signerKey <- asks App.getScryptSignerKey
   saltSep <- asks App.getScryptSaltSeparator
   sessionKey <- asks App.getSessionEncryptionKey
@@ -107,17 +111,25 @@ login email formPw = do
   _ <- case encodeUtf8 <$> userSalt of
     -- Firebase credentials
     Just salt -> do
+      K.logLocM K.DebugS "found firebase credentials"
       case verifyPassword' salt dbPw' formPw' of
         Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
         Right ok -> E.unless ok $ E.throwError "incorrect password"
     -- BCrypt, new credentials
-    Nothing ->
-      E.unless (BCrypt.validatePassword dbPw' formPw') $ E.throwError "incorrect password"
+    Nothing -> do
+      K.logLocM K.DebugS "found bcrypt credentials"
+      E.unless (BCrypt.validatePassword dbPw' formPw') $ do
+        K.logLocM K.DebugS "incorrect password"
+        E.throwError "incorrect password"
+      K.logLocM K.DebugS "successful bcrypt login"
 
   newSession <- Session.Valid.create userId
+  K.logLocM K.DebugS "created new session"
   let (Session (Session.Id sessionId) expires _) = Session.Valid.unvalid newSession
   Session.Valid.save newSession
+  K.logLocM K.DebugS "saved new session"
   encryptedSessionId <- liftIO $ clientEncrypt (encodeUtf8 sessionId)
+  K.logLocM K.DebugS "encrypted session ID"
   return (encryptedSessionId, expires)
 
 -- POST handler that creates a new session in the DB and sets a cookie with the
@@ -126,6 +138,7 @@ postLogin ::
   ( MonadIO m,
     MonadThrow m,
     MonadReader env m,
+    K.KatipContext m,
     App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
@@ -142,9 +155,13 @@ postLogin req send = do
       formPw = Map.findWithDefault "" "password" params
 
   (E.runExceptT $ login email formPw) >>= \case
-    Left _ -> renderFormInvalid email formPw
+    Left e -> do
+      K.logLocM K.ErrorS (K.ls e)
+      renderFormInvalid email formPw
     Right (sessionId, expires) -> do
+      K.logLocM K.DebugS "make cookie"
       cookie <- makeCookie sessionId expires
+      K.logLocM K.DebugS "send cookie response"
       send $ Wai.responseLBS status302 [("Set-Cookie", cookie), ("Location", "/")] mempty
   where
     makeCookie sessionId expires = do

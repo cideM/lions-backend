@@ -347,6 +347,10 @@ getCredentials email = do
   conn <- asks App.getDb
   r <- liftIO $ SQLite.query conn "SELECT id, salt, password_digest FROM users WHERE email = ?" [email]
   return $ case r of
-    [(userid, salt, pw)] -> Just ((User.Id userid), salt, pw)
+    [(userid, salt, pw)] ->
+      case salt of
+        Nothing -> Just ((User.Id userid), Nothing, pw)
+        Just "" -> Just ((User.Id userid), Nothing, pw)
+        Just salt' -> Just ((User.Id userid), Just salt', pw)
     [] -> Nothing
     _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getCredentials"

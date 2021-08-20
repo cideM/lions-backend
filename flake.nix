@@ -80,6 +80,11 @@
               path = ./backend/migrations;
             };
 
+            # Hardcode the environment to "test"
+            lionsServerTest = pkgs.writeShellScriptBin "lions-server-test" ''
+              LIONS_ENV=test exec ${lionsServer}/server
+            '';
+
             lionsServer = pkgs.stdenv.mkDerivation {
               name = "lions-website";
               dontUnpack = true;
@@ -94,35 +99,15 @@
               '';
             };
 
-            vm = (import "${nixpkgs}/nixos" {
-              system = "x86_64-linux";
-              configuration = { config, pkgs, ... }:
-                {
-                  imports = [
-                    ({ nixpkgs.overlays = [ (import ./nix/migrate.nix) ]; })
-                    ({
-                      systemd.services.devSecrets =
-                        {
-                          before = [ "server" ];
-                          script = ''
-                            [[ -d /run/secrets ]] || mkdir /run/secrets
-                            echo "${(builtins.getEnv "LIONS_AWS_SES_ACCESS_KEY")}" > /run/secrets/aws_ses_access_key
-                            echo "${(builtins.getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY")}" > /run/secrets/aws_ses_secret_access_key
-                            echo "${(builtins.getEnv "LIONS_SCRYPT_SIGNER_KEY")}" > /run/secrets/signerkey
-                            echo "${(builtins.getEnv "LIONS_SCRYPT_SALT_SEP")}" > /run/secrets/saltsep
-                            echo "${(builtins.getEnv "LITESTREAM_ACCESS_KEY_ID")}" > /run/secrets/litestream_aws_key
-                            echo "${(builtins.getEnv "LITESTREAM_SECRET_ACCESS_KEY")}" > /run/secrets/litestream_aws_secret
-                          '';
-                          wantedBy = [ "multi-user.target" ];
-                        };
-                    })
-                    ./nix/vm.nix
-                    ./nix/systemd-server.nix
-                  ];
-
-                  config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
-                  config.serverExe = "${allSystems.packages.x86_64-linux.server}/server";
-                };
+            # Note that we're using the test server which is just a wrapper
+            # around the normal server with LIONS_ENV set to "test"
+            vm = (import ./nix/vm.nix {
+              inherit nixpkgs sops-nix;
+              # Yes, this is correct. If we use "testServer" we just end up in
+              # the directory of the wrapper, which includes only a "bin"
+              # folder.
+              serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
+              serverExe = "${allSystems.packages.x86_64-linux.testServer}/bin/lions-server-test";
             });
           in
           rec {
@@ -130,6 +115,7 @@
               ({
                 litestream = litestream;
                 server = lionsServer;
+                testServer = lionsServerTest;
                 allAssets = clientStuff.allAssets;
                 clientside = clientStuff.clientside;
               } // (nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
@@ -139,40 +125,25 @@
             defaultPackage = packages.server;
 
             apps.server = flake-utils.lib.mkApp { drv = packages.server; exePath = "server"; };
+            apps.testServer = flake-utils.lib.mkApp { drv = packages.testServer; exePath = "server"; };
 
             defaultApp = apps.server;
 
             devShell = import ./shell.nix {
               inherit pkgs spago2nix projectEnv litestream;
               bootstrapSrc = clientStuff.bootstrapSrc;
-              sopsHook = sops-nix.packages.${system}.sops-pgp-hook;
+              sopsHook = sops-nix.packages.${system}.sops-import-keys-hook;
               deploy-rs = deploy-rs.packages.${system}.deploy-rs;
             };
           }
         );
 
-      serverSystem = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          sops-nix.nixosModules.sops
-          {
-            config.serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
-            config.serverExe = "${allSystems.packages.x86_64-linux.server}/server";
-          }
-          {
-            environment.systemPackages = [ allSystems.packages.x86_64-linux.litestream ];
-          }
-          ./nix/configuration.nix
-          ./nix/systemd-server.nix
-          ./nix/systemd-litestream.nix
-          {
-            imports = [
-              "${nixpkgs-20-09}/nixos/modules/virtualisation/digital-ocean-image.nix"
-            ];
-          }
-
-        ];
-      };
+      serverSystem = (import ./nix/server.nix {
+        inherit nixpkgs sops-nix;
+        serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
+        serverExe = "${allSystems.packages.x86_64-linux.server}/server";
+        litestream = allSystems.packages.x86_64-linux.litestream;
+      });
 
     in
     allSystems // rec {

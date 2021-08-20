@@ -8,4 +8,4 @@ create table event_replies (
   unique (userid, eventid)
 );
 
-
+create index userreplies on event_replies (userid, eventid);

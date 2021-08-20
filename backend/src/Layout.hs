@@ -15,6 +15,7 @@ where
 
 import Data.String.Interpolate (i)
 import Data.Text (Text)
+import qualified User.Id
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
@@ -83,7 +84,9 @@ layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = 
                         ]
                           ++ ( case User.Session.get auth of
                                  Nothing -> []
-                                 Just User.Session.Session {..} -> [([i|/nutzer/#{sessionUserId}|], "Mein Profil", Just Profile)]
+                                 Just User.Session.Session {..} -> 
+                                   let (User.Id.Id uid) = sessionUserId
+                                    in [([i|/nutzer/#{uid}|], "Mein Profil", Just Profile)]
                              )
                       )
           div_ [class_ "py-4 content"] pageContent

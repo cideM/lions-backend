@@ -47,12 +47,12 @@ tests = do
               let actual = T.decodeUtf8 . B.concat . LB.toChunks $ simpleBody sresponse
 
               liftIO $ T.isInfixOf "Ungültige Kombination aus Email und Passwort" actual @?= True,
-          testCase "returns encrypted session cookie upon successful login" $ do
+          testCase "returns encrypted session cookie upon successful login even with empty text as salt" $ do
             withTestEnvProd $ \_ -> do
               conn <- asks App.getDb
               sessionKey <- asks App.getSessionEncryptionKey
 
-              liftIO $ SQLite.execute_ conn "insert into users (password_digest, email) values ('$2y$04$NFwlwssLnLtvJEwZ0XtXgOjAHPqUIDHZfd2CiZsVDgmk1NTrdwT1a', 'foo@bar.com')"
+              liftIO $ SQLite.execute conn "insert into users (password_digest, salt, email) values ('$2y$04$NFwlwssLnLtvJEwZ0XtXgOjAHPqUIDHZfd2CiZsVDgmk1NTrdwT1a', ?, 'foo@bar.com')" ["" :: T.Text]
 
               sresponse <- withFormRequest "email=foo@bar.com&password=foobar" $ Login.postLogin
 

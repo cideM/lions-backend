@@ -26,6 +26,28 @@ in
   };
 
   config = {
+    systemd.services.prepareDbFile = {
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        Environment = [
+          "LIONS_SQLITE_PATH=%S/lions-server/db"
+        ];
+        ProtectSystem = "strict";
+        Group = "lions";
+        User = "lions-server";
+        ProtectHome = "yes";
+        PrivateDevices = "yes";
+        Conflicts = "litestream.service";
+        Before = "migrations.service";
+        PrivateTmp = "yes";
+        DynamicUser = "yes";
+        StateDirectory = "lions-server";
+        WorkingDirectory = "${config.serverWorkingDir}";
+        ExecStart = "${pkgs.coreutils}/bin/touch $LIONS_SQLITE_PATH";
+      };
+    };
+
     systemd.services.migrations = {
       wantedBy = [ "multi-user.target" ];
 
@@ -36,6 +58,8 @@ in
         ProtectSystem = "strict";
         Group = "lions";
         User = "lions-server";
+        # Behavior of oneshot is similar to simple; however, the service manager will consider the unit up after the main process exits. It will then start follow-up units.
+        Type = "oneshot";
         ProtectHome = "yes";
         PrivateDevices = "yes";
         Conflicts = "litestream.service";
@@ -45,6 +69,7 @@ in
         StateDirectory = "lions-server";
         WorkingDirectory = "${config.serverWorkingDir}";
         Restart = "on-failure";
+        # If the executable path is prefixed with "+" then the process is executed with full privileges. In this mode privilege restrictions configured with User=, Group=, CapabilityBoundingSet= or the various file system namespacing options (such as PrivateDevices=, PrivateTmp=) are not applied to the invoked command line (but still affect any other ExecStart=, ExecStop=, … lines).
         ExecStart = "${migrateScript}/bin/lions-migrations";
       };
     };

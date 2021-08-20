@@ -1,32 +1,26 @@
 { pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream, bootstrapSrc }:
 let
-  # If needed can also just forward arguments to sass here
-  # The things that "nix build" creates are put in the Nix store and then a
-  # symlink to the folder in the store is created. That means I can't have Nix
-  # be in charge of "public" while also optionally letting "sass --watch" write
-  # to the store. I can modify dev.hs though so create the public folder, build
-  # the Nix stuff into "result" and then symlink everything inside "result/*"
-  # into public. That way "sass" (or any process running under my user) should
-  # be able to write into "public/"
-  lions-sass = pkgs.writeScriptBin "lions-sass" ''
-    #!/bin/sh
-    ${pkgs.nodePackages.sass}/bin/sass --watch --load-path=${bootstrapSrc} ./client/sass/styles.scss public/style.css
+  # Generate tags based on the exposed Haskell modules. "fast-tags" doesn't
+  # respect .gitignore and as such just calling fast-tags will result in lots
+  # of false positives.
+  lions-tags = pkgs.writeShellScriptBin "lions-tags" ''
+    ${pkgs.haskellPackages.fast-tags}/bin/fast-tags --cabal ./backend/lions-backend.cabal
   '';
 
-  # Need --impure so I can use getEnv in nix build
+  # Run this command to BUILD AND START a QEMU VM. This should work on both
+  # MacOS and Linux. On MacOS it uses Docker, since virtfs is not supported.
+  # The VM uses hardcoded DB values as seed data. Please update the vm nix
+  # derivation if more data is needed, rather than trying to somehow mirror the
+  # local SQLite DB into the QEMU VM.
   lions-vm = pkgs.writeShellScriptBin "lions-vm" (if pkgs.stdenv.isDarwin then ''
-    docker run -it -e LIONS_AWS_SES_ACCESS_KEY -e LIONS_AWS_SES_SECRET_ACCESS_KEY -e LIONS_SCRYPT_SALT_SEP -e LIONS_SCRYPT_SIGNER_KEY -e LITESTREAM_ACCESS_KEY_ID -e LITESTREAM_SECRET_ACCESS_KEY -p 127.0.0.1:81:8081 -p 127.0.0.1:80:8080 --rm -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes bash -c "nix build --impure .#packages.x86_64-linux.vm && QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443" ./result/bin/run-nixos-vm"
+    docker run -it -p 127.0.0.1:81:8081 -p 127.0.0.1:80:8080 --rm -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes bash -c 'nix build .#packages.x86_64-linux.vm && QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443" ./result/bin/run-lions-server-vm'
   '' else ''
-    nix build --impure .#vm
+    nix build .#packages.x86_64-linux.vm || exit 1
     echo "visit https://localhost:8081/"
     echo "or http://localhost:8080/"
     export QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"
-    ./result/bin/run-nixos-vm
+    ./result/bin/run-lions-server-vm
   '');
-
-  lions-vm-db = pkgs.writeShellScriptBin "lions-vm-db" ''
-    scp -P 2221 $LIONS_SQLITE_PATH root@localhost:/var/lib/lions-server/db
-  '';
 
   spago2nix' = import spago2nix { inherit pkgs; };
 
@@ -73,7 +67,7 @@ pkgs.mkShell {
       pkgs.bash_5
       pkgs.jq
       lions-vm
-      lions-vm-db
+      lions-tags
 
       # Infra
       # This doesn't work on NixOS because of yet another fucking NPM package

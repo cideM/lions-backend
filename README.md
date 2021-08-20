@@ -105,21 +105,12 @@ $ fd -e hs | entr -c cabal v2-test
 ### QEMU
 
 You can run the systemd services without SOPS to get an idea if the deployment
-setup actually works. On NixOS it's easy because you can just `nix build
-.#packages.x86_64-linux.vm` followed by `sh ./scripts/qemu.sh`
+setup actually works. Just run `lions-vm`, should work on both platforms.
 
-On MacOS you need to use Docker, so use `./scripts/build_qemu`.
-
-You can't currently send CTRL-C to the QEMU running inside Docker. Whatever.
+Hit `CTRL-A X` to quit.
 
 Login is `root` and an empty password.
 
-```shell
-$ ./scripts/build_qemu
-```
-
-Here are a few useful little notes on working with QEMU:
-
-- Just run commands through SSH so you get nicer shell history and also use your local tools, rather than being stuck in the emulator
-- `ssh root@localhost -p 2221 shutdown now`
-- Use shutdown to close the emulator until you've figured out how CTRL-C can be fixed
+Use `$ ssh -o StrictHostKeyChecking=no root@localhost -p 2221 systemctl status` to run commands.
+Disabling the check is necessary because whenever you delete and recreate the
+VM the known_hosts needs to be updated.
