@@ -42,9 +42,6 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Turtle hiding ((</>))
 
-buildServer :: IO Proc.ProcessHandle
-buildServer = do
-
 runServer' :: IO Proc.ProcessHandle
 runServer' = do
   home <- getHomeDirectory
