@@ -127,10 +127,13 @@ main = do
     -- Here we coerce everything into an integer exit code.
     ((defaultMain $ test p) >> return 0) `catch` (\e -> return $ if e == ExitSuccess then 0 else 1)
 
-  exit $
-    if exitCode == 0
-      then ExitSuccess
-      else ExitFailure exitCode
+  if exitCode == 0
+    then do
+      print "Success"
+      exit ExitSuccess
+    else do
+      print "Failure"
+      exit $ ExitFailure exitCode
 
 test p = testCase "Should show login page" $ do
   code <- runReq defaultHttpConfig $ do
