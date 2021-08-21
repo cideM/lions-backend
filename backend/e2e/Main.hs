@@ -52,7 +52,7 @@ runServer' = do
   Proc.spawnProcess
     "docker"
     [ "run",
-      "-it",
+      -t",
       "-p",
       "127.0.0.1:81:8081",
       "-p",
@@ -75,7 +75,7 @@ runServer' = do
 httpOptions =
   defaultHttpConfig
     { httpConfigRetryJudgeException = \_ _ -> True,
-      httpConfigRetryPolicy = constantDelay 1000000 <> limitRetries 200
+      httpConfigRetryPolicy = constantDelay 1000000 <> limitRetries 300
     }
 
 waitForServer :: IO ()
