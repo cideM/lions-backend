@@ -52,7 +52,7 @@ runServer' = do
   Proc.spawnProcess
     "docker"
     [ "run",
-      -t",
+      "-t",
       "-p",
       "127.0.0.1:81:8081",
       "-p",
