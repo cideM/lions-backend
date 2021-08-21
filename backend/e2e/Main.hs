@@ -42,6 +42,9 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Turtle hiding ((</>))
 
+buildServer :: IO Proc.ProcessHandle
+buildServer = do
+
 runServer' :: IO Proc.ProcessHandle
 runServer' = do
   home <- getHomeDirectory
@@ -75,7 +78,8 @@ runServer' = do
 httpOptions =
   defaultHttpConfig
     { httpConfigRetryJudgeException = \_ _ -> True,
-      httpConfigRetryPolicy = constantDelay 1000000 <> limitRetries 300
+      -- One minute in microseconds * number of minutes
+      httpConfigRetryPolicy = constantDelay 60000000 <> limitRetries 20
     }
 
 waitForServer :: IO ()
