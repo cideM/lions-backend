@@ -1,6 +1,8 @@
 #! /usr/bin/env runghc
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 {--
    This can't be a Cabal test suite. Because what will happen is that I run the
    tests, and Nix will build my Haskell package, as part of that it'll run
@@ -42,8 +44,11 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Turtle hiding ((</>))
 
-runServer' :: IO Proc.ProcessHandle
-runServer' = do
+runServer :: IO Proc.ProcessHandle
+runServer = Proc.spawnCommand "nix build .#vm && QEMU_OPTS='-display none' QEMU_NET_OPTS=hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443 ./result/bin/run-lions-server-vm"
+
+runServerDocker :: IO Proc.ProcessHandle
+runServerDocker = do
   home <- getHomeDirectory
   let sshDir = home </> ".ssh"
 
@@ -64,8 +69,8 @@ runServer' = do
       pwd ++ ":/foo",
       "-w",
       "/foo",
-      "-v",
-      sshDir ++ ":/root/.ssh:ro",
+      -- "-v",
+      -- sshDir ++ ":/root/.ssh:ro",
       "nixpkgs/nix-flakes",
       "bash",
       "-c",
@@ -76,19 +81,23 @@ httpOptions =
   defaultHttpConfig
     { httpConfigRetryJudgeException = \_ _ -> True,
       -- One minute in microseconds * number of minutes
-      httpConfigRetryPolicy = constantDelay 60000000 <> limitRetries 20
+      httpConfigRetryPolicy = constantDelay 60000000 <> limitRetries 30
     }
 
-waitForServer :: IO ()
-waitForServer = do
+waitForServer :: Int -> IO ()
+waitForServer p = do
   _ <- runReq httpOptions $ do
-    result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port 80)
+    result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port p)
     let code = (responseStatusCode result :: Int)
     return code
   pure ()
 
+parser :: Parser Bool
+parser = switch "docker" 'd' "CI; run Nix with Docker"
+
 main :: IO ()
 main = do
+  withDocker <- options "End-to-end test" parser
   {--
   Using Turtle's async facilities doesn't work here. Seems to be:
   https://github.com/Gabriel439/Haskell-Turtle-Library/issues/103
@@ -104,12 +113,27 @@ main = do
 
   Also you need -threaded or else fork won't work at all.
   --}
-  bracket runServer' Proc.interruptProcessGroupOf $ \_ -> do
-    waitForServer
-    defaultMain test
+  let p = if withDocker then 80 else 8080
 
-test = testCase "Should show login page" $ do
+  exitCode <- bracket (if withDocker then runServerDocker else runServer) Proc.interruptProcessGroupOf $ \_ -> do
+    waitForServer p
+    -- We need to return the correct exit code from the test but also clean up
+    -- after ourselves.  Unfortunately defaultMain doesn't return anything,
+    -- instead it throws exceptions to finish the test.
+    -- > When the tests finish, this function calls exitWith with the exit code that indicates whether any tests have failed.
+    -- But that means bracket will have IO () as its return value. It will then
+    -- catch the exception in all cases and interrupt the process. Therefore,
+    -- we'll always end up with an exit code of 1.
+    -- Here we coerce everything into an integer exit code.
+    ((defaultMain $ test p) >> return 0) `catch` (\e -> return $ if e == ExitSuccess then 0 else 1)
+
+  exit $
+    if exitCode == 0
+      then ExitSuccess
+      else ExitFailure exitCode
+
+test p = testCase "Should show login page" $ do
   code <- runReq defaultHttpConfig $ do
-    result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port 80)
+    result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port p)
     return (responseStatusCode result :: Int)
-  code @?= 200 
+  code @?= 200
