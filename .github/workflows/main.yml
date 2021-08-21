@@ -51,9 +51,7 @@ jobs:
 
       - name: End-to-end test
         run: |
-          nix develop
-          chmod +x ./backend/e2e/Main.hs
-          ./backend/e2e/Main.hs
+          nix develop -c "chmod +x ./backend/e2e/Main.hs && ./backend/e2e/Main.hs"
 
       # Runs a single command using the runners shell
       - name: Run Docker Deploy
