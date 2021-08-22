@@ -116,7 +116,6 @@ form FormInput {..} FormState {..} formAction = do
           type_ "textfield",
           name_ "message",
           id_ "message",
-          required_ "required",
           autofocus_,
           rows_ "10",
           cols_ "10",
