@@ -182,5 +182,6 @@ preview (Event.Id eventid, Events.Event {..}, ownReply, IsExpired isExpired) = d
     when eventFamilyAllowed $ span_ [class_ "badge bg-secondary me-2"] "Mit Familie"
     when ((Event.replyComing <$> ownReply) == Just True) $ do span_ [class_ "badge bg-success text-white me-2"] "Zugesagt"
     when ((Event.replyComing <$> ownReply) == Just False) $ do span_ [class_ "badge bg-danger text-white"] "Abgesagt"
-  a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle
+  p_ [class_ "mb-3 fs-4", style_ "max-width: 48rem"] $
+    a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ toHtml eventTitle
   h2_ [class_ "card-subtitle fs-6 mb-3 text-muted"] $ toHtml $ "Ort: " <> eventLocation
