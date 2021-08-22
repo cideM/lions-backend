@@ -2,7 +2,7 @@ module Server (run) where
 
 import qualified App
 import Control.Exception.Safe
-import Control.Monad (unless, (>=>))
+import Control.Monad ((>=>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.Default as Def
@@ -74,13 +74,17 @@ server req send = do
       -- This function let's visitors access a resource if:
       -- - They're an admin
       -- - They're accessing a resource associated with their own user ID
-      adminOnlyOrOwn id next =
-        maybe send403 (next . (id,)) $ do
-          auth <- User.Session.getAuth authInfo
-          unless (User.Session.isAdmin authInfo) Nothing
-          let User.Session {..} = User.Session.get' auth
-          unless (sessionUserId /= id) Nothing
-          pure auth
+      adminOnlyOrOwn id next = do
+        case User.Session.getAuth authInfo of
+          Nothing -> send403
+          Just auth -> do
+            let User.Session {..} = User.Session.get' auth
+                isAdmin = User.Session.isAdmin authInfo
+                isOwn = sessionUserId == id
+
+            if isAdmin || isOwn
+              then next (id, auth)
+              else send403
 
       adminOnly' next = maybe send403 next (User.Session.getAdmin authInfo)
 
