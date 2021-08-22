@@ -2,11 +2,14 @@
 
 ## Deploy
 
-`deploy .`
-
-On Darwin please use `./scripts/deploy-docker`. If this fails with something about `variable $src or $srcs should point to the source` then remember that [you made this go away](https://discourse.nixos.org/t/how-to-make-my-flake-work-on-darwin-macos/13713/5) by randomly commenting things out, but ultimately you **didn't change the code at all**. Could be that I was calling `nix develop` followed by `deploy .` and the script instead uses `nix run`. I don't know and I'm currently not motivated to find out.
+Linux: `deploy .`
+Darwin Intel: `./scripts/deploy-docker`
+Darwin M1: Use CI, which is broken
 
 ## SQLite
+
+There's no more seed data in `.sql` files since the QEMU VM has hardcoded data
+and for everything else you can just use Litestream to pull down production.
 
 ### Running Migrations
 
@@ -29,14 +32,6 @@ $ migrate create -ext sql -dir migrations/ -seq events
 /home/tifa/lions-backend/migrations/000007_events.down.sql
 ```
 
-### Dummy Data
-
-*There's now a command called `lions-dummy` that loads all*
-
-```shell
-for f in ./dev/*; sqlite3 $LIONS_SQLITE_PATH < $f; end
-```
-
 ### Litestream
 
 When opening S3 from the Administrator account, keep in mind that the user
@@ -56,7 +51,11 @@ Check all generations that exist:
 litestream generations s3://lions-achern-litestream-replica-1/prod/
 ```
 
-Restore the DB **from** S3 **to** a local file on the server. This process is pretty dangerous. First of all, files can only be accessed by the dynamic user created by systemd. You can override this with `sudo` but then you need to `chown` the files afterwards. Also, be sure to delete all DB files, not just the DB itself, also the WAL and the `.db-litestream` I guess?
+Restore the DB **from** S3 **to** a local file on the server. This process is
+pretty dangerous. First of all, files can only be accessed by the dynamic user
+created by systemd. You can override this with `sudo` but then you need to
+`chown` the files afterwards. Also, be sure to delete all DB files, not just
+the DB itself, also the WAL and the `.db-litestream` I guess?
 
 ```shell
 [admin@lions-server:~]$ sudo rm /var/lib/lions-server/db /var/lib/lions-server/.db-litestream
@@ -78,7 +77,7 @@ $ cd backend
 $ ghcid --no-height-limit --clear --reverse
 ```
 
-### Tests
+## Tests
 
 Check test files:
 
@@ -102,10 +101,19 @@ $ cd backend
 $ fd -e hs | entr -c cabal v2-test
 ```
 
+### End-To-End
+
+There's one simple end-to-end test which only works on Linux. You can make this
+work on MacOS as well by running QEMU in Docker. Probably won't work for M1
+though.
+
+There's a memory leak hardcoded into the E2E test in GitHub CI. Reason being
+that killing the server process also kills the entire GitHub worker. I don't
+know if this is a Haskell bug or something about how `run: ` works.
+
 ### QEMU
 
-You can run the systemd services without SOPS to get an idea if the deployment
-setup actually works. Just run `lions-vm`, should work on both platforms.
+Just run `lions-vm`.
 
 Hit `CTRL-A X` to quit.
 
@@ -113,4 +121,44 @@ Login is `root` and an empty password.
 
 Use `$ ssh -o StrictHostKeyChecking=no root@localhost -p 2221 systemctl status` to run commands.
 Disabling the check is necessary because whenever you delete and recreate the
-VM the known_hosts needs to be updated.
+VM the `known_hosts` needs to be updated.
+
+## Known Problems
+
+- The modules are super granular, which is annoying. I don't like Haskell
+  modules but overall it's easier to work with fewer, slightly bigger modules.
+- Layouting is very ad-hoc
+- The project would benefit from more tests
+- CI broke randomly and now gives me `error: a 'x86_64-darwin' with features {} is required to build '/nix/store/zin2czycwviah6nghq6s0i4gnqxqm0am-source.drv', but I am a 'x86_64-linux' with features {benchmark, big-parallel, nixos-test, recursive-nix}` which makes no sense whatsoever. Why is CI trying to build a darwin thing, when it works locally?
+- Not all modules were cleaned up when I added the `mtl` everywhere. So some of
+  the code might still be a little rough around the edges.
+- I think I'd like to go back to no `mtl` in the end. It's simpler, just a bit
+  more typing, less foot guns.
+
+## Known UX Problems
+
+- URLs are plain text in news feed
+- Profile pictures are missing
+- I'd like to move away from OneDrive for sharing files. A very light weight
+  file management system would be super cool.
+- No push notifications for monitoring, only systemd logs on server
+
+## Architecture
+
+I'll hopefully spend more time on this section in the future. But here's the gist.
+
+Configuration is propagated through ReaderT. Handlers generally return HTML,
+but sometimes they also redirect. It's using WAI/Warp under the hood, so
+nothing fancy. `mtl` is used only locally, so no error hierarchies. Right now
+modules are tiny, but I'd like to go back to bigger modules. In general one
+module per type. No special DB wrappers unless a record has more than 10
+fields, which SQLite has no default instances for.
+
+Configuration is read from environment variables. I'd prefer a file in the future.
+
+Emails are sent through AWS. Email sending is replaced with a dummy in QEMU.
+Outside of QEMU, if you start the server directly, you need to have AWS
+credentials in the environment.
+
+File storage happens on S3. Only files that can be uploaded right now are event
+attachments.

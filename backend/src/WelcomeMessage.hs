@@ -149,25 +149,24 @@ renderFeed zone userIsAdmin msgs =
     div_ [class_ "container"] $ do
       div_ [class_ "row row-cols-1 g-4"] $ do
         div_ [class_ "col"] $ do
-          div_ [class_ "my-3"] $
-            infoBox $ do
-              "Alle Dateien (inklusive Bilderarchiv) des Lions Club Achern befinden sich auf "
-              a_ [href_ "https://1drv.ms/f/s!As3H-io1fRdFcZnEJ0BXdpeV9Lw"] "Microsoft OneDrive"
-          when userIsAdmin $ do
-            div_ [class_ "my-3"] $
-              infoBox $ do
-                "Mit diesem Link "
-                a_ [href_ "https://1drv.ms/f/s!As3H-io1fRdFcUPc-Dz3SC08Wno"] "(Microsoft OneDrive)"
-                [i|
-                können die Dateien im geteilten Ordner "Lions Dateien" bearbeitet
-                werden. Dieser Link ist nur für Administratoren gedacht und wird
-                auch nur Administratoren angezeigt. Zum Bearbeiten ist jedoch ein
-                Microsoft Account notwendig!
-                |]
-        div_ [class_ "col d-flex flex-wrap-reverse align-items-center"] $ do
-          h1_ [class_ "h3 m-0 me-2 mb-1"] "Interne Neuigkeiten"
           when userIsAdmin $
-            a_ [class_ "btn btn-primary mb-1", href_ "/neu", role_ "button"] "Neue Nachricht"
+            a_ [class_ "btn btn-sm btn-primary mb-2", href_ "/neu", role_ "button"] "Neue Nachricht"
+          h1_ [class_ "h3 m-0 mb-1"] "Interne Neuigkeiten"
+        div_ [class_ "col"] $ do
+          infoBox $ do
+            "Alle Dateien (inklusive Bilderarchiv) des Lions Club Achern befinden sich auf "
+            a_ [href_ "https://1drv.ms/f/s!As3H-io1fRdFcZnEJ0BXdpeV9Lw"] "Microsoft OneDrive"
+        div_ [class_ "col"] $ do
+          when userIsAdmin $ do
+            infoBox $ do
+              "Mit diesem Link "
+              a_ [href_ "https://1drv.ms/f/s!As3H-io1fRdFcUPc-Dz3SC08Wno"] "(Microsoft OneDrive)"
+              [i|
+              können die Dateien im geteilten Ordner "Lions Dateien" bearbeitet
+              werden. Dieser Link ist nur für Administratoren gedacht und wird
+              auch nur Administratoren angezeigt. Zum Bearbeiten ist jedoch ein
+              Microsoft Account notwendig!
+              |]
         div_ [class_ "col"] $ do
           div_ [class_ "row row-cols-1 g-5"] $ do
             mapM_
