@@ -54,4 +54,4 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Run Docker Deploy
-        run: nix run github:serokell/deploy-rs . -- --show-trace
+        run: nix run github:serokell/deploy-rs --show-trace .
