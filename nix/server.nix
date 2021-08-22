@@ -15,28 +15,30 @@ nixpkgs.lib.nixosSystem {
           "${nixpkgs}/nixos/modules/virtualisation/digital-ocean-image.nix"
         ];
 
-        boot.loader.grub.enable = true;
+        config = {
+          boot.loader.grub.enable = true;
 
-        sops.defaultSopsFile = ../secrets/prod.yaml;
+          sops.defaultSopsFile = ../secrets/prod.yaml;
 
-        users.users.admin.isNormalUser = true;
-        config.serverWorkingDir = serverWorkingDir;
-        config.serverExe = serverExe;
+          users.users.admin.isNormalUser = true;
+          serverWorkingDir = serverWorkingDir;
+          serverExe = serverExe;
 
-        environment.systemPackages = with pkgs; [
-          litestream
-          sqlite-interactive
-          go-migrate
-        ];
+          environment.systemPackages = with pkgs; [
+            litestream
+            sqlite-interactive
+            go-migrate
+          ];
 
-        services.caddy = {
-          enable = true;
-          email = "yuuki@protonmail.com";
-          config = ''
-            members.lions-achern.de
+          services.caddy = {
+            enable = true;
+            email = "yuuki@protonmail.com";
+            config = ''
+              members.lions-achern.de
 
-            reverse_proxy localhost:3000
-          '';
+              reverse_proxy localhost:3000
+            '';
+          };
         };
       })
   ];
