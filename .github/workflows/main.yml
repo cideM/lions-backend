@@ -54,4 +54,4 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Run Docker Deploy
-        run: nix develop -c "deploy" ". -- --show-trace"
+        run: nix develop -c "deploy" "."
