@@ -66,6 +66,9 @@ save hashed (User.Id userid) = do
   conn <- asks App.getDb
   let newPw = unhash hashed
   liftIO $ SQLite.execute conn "update users set password_digest = ? where id = ?" (newPw, show userid)
+  -- If we don't set the salt, that salt will be used to decrypt the password with SCrypt,
+  -- even though it was encrypted with BCrypt.
+  liftIO $ SQLite.execute conn "update users set salt = null where id = ?" [(show userid)]
   where
     unhash (Hashed s) = s
 
