@@ -12,7 +12,6 @@ module WelcomeMessage
 where
 
 import qualified App
-import Data.Maybe (fromMaybe)
 import Control.Exception.Safe
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -23,7 +22,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import Form (FormFieldState (..), processField, validDate)
+import Form (FormFieldState (..), notEmpty, processField, validDate)
 import Layout (ActiveNavLink (..), LayoutStub (..), describedBy_, infoBox, success)
 import Locale (german)
 import Lucid
@@ -34,7 +33,7 @@ import Prelude hiding (id)
 
 newtype WelcomeMsgId = WelcomeMsgId Int deriving (Show)
 
-data WelcomeMsg = WelcomeMsg WelcomeMsgId (Maybe Text) Time.UTCTime deriving (Show)
+data WelcomeMsg = WelcomeMsg WelcomeMsgId Text Time.UTCTime deriving (Show)
 
 -- | Returns the MOST RECENT welcome message, if there is one
 getWelcomeMsgFromDb ::
@@ -49,7 +48,7 @@ getWelcomeMsgFromDb (WelcomeMsgId id) = do
   conn <- asks App.getDb
   rows <- liftIO $ SQLite.query conn "SELECT id, content, date FROM welcome_text WHERE id = ?" [id]
   case rows of
-    [(mid, msg, createdAt) :: (Int, Maybe Text, Time.UTCTime)] ->
+    [(mid, msg, createdAt) :: (Int, Text, Time.UTCTime)] ->
       return . Just $ WelcomeMsg (WelcomeMsgId mid) msg createdAt
     [] -> return Nothing
     other -> return . throwString $ "unexpected result from DB for welcome message" <> show other
@@ -66,7 +65,7 @@ getAllWelcomeMsgsFromDb = do
   conn <- asks App.getDb
   rows <- liftIO $ SQLite.query_ conn "SELECT id, content, date FROM welcome_text ORDER BY date DESC"
   case rows of
-    (msgs :: [(Int, Maybe Text, Time.UTCTime)]) ->
+    (msgs :: [(Int, Text, Time.UTCTime)]) ->
       return $ map (\(id, msg, createdAt) -> WelcomeMsg (WelcomeMsgId id) msg createdAt) msgs
 
 data FormState = FormState
@@ -86,7 +85,7 @@ emptyState = FormState NotValidated NotValidated
 
 makeMessage :: FormInput -> Either FormState (Text, Time.UTCTime)
 makeMessage FormInput {..} =
-  case FormState (validDate welcomeMsgInputDate) (Valid welcomeMsgInputMessage) of
+  case FormState (validDate welcomeMsgInputDate) (notEmpty welcomeMsgInputMessage) of
     FormState (Valid date) (Valid message) ->
       Right (message, date)
     state -> Left state
@@ -116,6 +115,7 @@ form FormInput {..} FormState {..} formAction = do
           type_ "textfield",
           name_ "message",
           id_ "message",
+          required_ "required",
           autofocus_,
           rows_ "10",
           cols_ "10",
@@ -175,8 +175,7 @@ renderFeed zone userIsAdmin msgs =
                   let editHref = EditHref $ Text.pack $ "/editieren/" <> show id
                       deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show id
                       zoned = Time.utcToZonedTime zone datetime
-                      content' = fromMaybe "" content
-                   in (renderSingleMessage editHref deleteHref (content', zoned) userIsAdmin)
+                   in (renderSingleMessage editHref deleteHref (content, zoned) userIsAdmin)
               )
               msgs
 
@@ -219,6 +218,8 @@ deleteMessage (WelcomeMsgId id) = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]
 
+-- TODO: Something like this should probably exist for all pages. Maybe make
+-- the title smaller, so it's almost more like breadcrums?
 pageLayout :: Text -> Html () -> LayoutStub
 pageLayout title content =
   LayoutStub title (Just Welcome) $
@@ -293,7 +294,7 @@ showDeleteConfirmation mid@(WelcomeMsgId msgid) _ = do
     Just (WelcomeMsg _ content _) -> do
       return . deletePageLayout $ do
         p_ [] "Nachricht wirklich löschen?"
-        p_ [class_ "border p-2 mb-4", role_ "alert"] . toHtml $ fromMaybe "" content
+        p_ [class_ "border p-2 mb-4", role_ "alert"] $ toHtml content
         form_ [action_ [i|/loeschen/#{msgid}|], method_ "post", class_ ""] $
           button_ [class_ "btn btn-danger", type_ "submit"] "Ja, Nachricht löschen!"
 
@@ -333,8 +334,7 @@ showMessageEditForm mid@(WelcomeMsgId msgid) _ = do
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
     Just (WelcomeMsg _ content date) -> do
       let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ date
-          content' = fromMaybe "" content
-      return . editPageLayout $ form (FormInput formatted content') emptyState [i|/editieren/#{msgid}|]
+      return . editPageLayout $ form (FormInput formatted content) emptyState [i|/editieren/#{msgid}|]
 
 showFeed ::
   ( MonadIO m,
