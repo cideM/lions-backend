@@ -40,4 +40,4 @@ nixpkgs.lib.nixosSystem {
         };
       })
   ];
-};
+}
