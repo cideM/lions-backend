@@ -79,7 +79,6 @@ test-suite tests
     , filepath
     , resourcet
     , directory
-    , lens
     , lucid
     , time
     , tasty
@@ -87,31 +86,6 @@ test-suite tests
     , tasty-hunit
     , text
     , string-interpolate
-
--- test-suite end-to-end-tests
---   import:         shared-props
---   main-is:        Main.hs
---   type:           exitcode-stdio-1.0
---   hs-source-dirs: e2e
---   build-depends:
---     , base
---     , unliftio
---     , containers
---     , bytestring
---     , safe-exceptions
---     , turtle
---     , filepath
---     , directory
---     , time
---     , tasty
---     , async
---     , req
---     , http-types
---     , tasty-hunit
---     , text
---     , retry
---     , process
---     , string-interpolate
 
 library
   import:          shared-props
@@ -221,3 +195,17 @@ executable run-lions-backend
     , lions-backend
 
   hs-source-dirs: app
+
+executable run-lions-e2e
+  import:         shared-props
+  main-is:        Main.hs
+  build-depends:
+    , base
+    , safe-exceptions
+    , tasty
+    , req
+    , tasty-hunit
+    , retry
+    , process
+
+  hs-source-dirs: e2e

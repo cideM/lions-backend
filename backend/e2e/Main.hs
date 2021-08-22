@@ -1,114 +1,95 @@
-#! /usr/bin/env runghc
+module Main where
 
-{-# LANGUAGE OverloadedStrings #-}
 {--
    This can't be a Cabal test suite. Because what will happen is that I run the
    tests, and Nix will build my Haskell package, as part of that it'll run
    the tests of that package, which will then cause infinite docker recursion.
    Amazing.
 
-   I could try to disable running just that test automatically or whatever but
-   I can also just make it a script or a standalone executable.
+   This does not work on MacOS because I can't build the NixOS VM on MacOS and
+   I don't want to do it with Docker because then how do you get the VM out of
+   the Docker container?
 
-   $ chmod +x ./backend/app/Main.hs
-   $ ./backend/app/Main.hs
-
-   So what's going on here?
-
-   1. Ask Docker to start a Nix container
-   2. Inside the container, build our VM
-   3. Run the VM, with ports forwarded from Host -> Docker -> QEMU
-   4. Then run tests against the server inside QEMU inside Docker
-
-   The Docker indirection isn't really necessary on a system where QEMU just
-   works.
-
-   I'm currently using an ubuntu runner though.
+   The weird CI flag exists because I think interruptProcessGroupOf is killing
+   the CI runner itself in GitHub Actions. It works perfectly fine locally and
+   I'm too tired of all this shit to figure this out.
 --}
 
-module Main where
-
-import Control.Concurrent.Async
 import Control.Exception.Safe
-import Control.Monad
 import Control.Retry
-import Data.ByteString (ByteString)
-import qualified Data.Text.Encoding as T
 import Network.HTTP.Req
-import System.Directory
-import System.FilePath
+import System.Environment
+import System.Exit
 import qualified System.Process as Proc
 import Test.Tasty
 import Test.Tasty.HUnit
-import Turtle hiding ((</>))
-
-runServer' :: IO Proc.ProcessHandle
-runServer' = do
-  home <- getHomeDirectory
-  let sshDir = home </> ".ssh"
-
-  pwd <- getCurrentDirectory
-
-  Proc.spawnProcess
-    "docker"
-    [ "run",
-      "-it",
-      "-p",
-      "127.0.0.1:81:8081",
-      "-p",
-      "127.0.0.1:80:8080",
-      "--rm",
-      "-v",
-      "nixcache2:/nix",
-      "-v",
-      pwd ++ ":/foo",
-      "-w",
-      "/foo",
-      "-v",
-      sshDir ++ ":/root/.ssh:ro",
-      "nixpkgs/nix-flakes",
-      "bash",
-      "-c",
-      "nix build .#vm && QEMU_NET_OPTS=hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443 ./result/bin/run-lions-server-vm"
-    ]
-
-httpOptions =
-  defaultHttpConfig
-    { httpConfigRetryJudgeException = \_ _ -> True,
-      httpConfigRetryPolicy = constantDelay 1000000 <> limitRetries 200
-    }
 
 waitForServer :: IO ()
 waitForServer = do
+  let httpOptions =
+        defaultHttpConfig
+          { httpConfigRetryJudgeException = \_ _ -> True,
+            httpConfigRetryPolicy = constantDelay 1000000 <> limitRetries 300
+          }
+
   _ <- runReq httpOptions $ do
-    result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port 80)
-    let code = (responseStatusCode result :: Int)
-    return code
+    result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port 8080)
+    return (responseStatusCode result :: Int)
+
   pure ()
 
 main :: IO ()
 main = do
-  {--
-  Using Turtle's async facilities doesn't work here. Seems to be:
-  https://github.com/Gabriel439/Haskell-Turtle-Library/issues/103
+  testEnv <- getEnv "TEST_ENV"
 
-  runServer :: IO ExitCode
-  runServer = proc "cabal" ["v2-run", "--cabal-file", "./backend/lions-backend.cabal", "run-lions-backend"] empty
+  let runner = do
+        buildHandle <- Proc.spawnProcess "nix" ["build", ".#vm"]
 
-  asyncProcess <- fork runServer
-  ...
-  cancel asyncProcess
+        exitCodeBuild <- Proc.waitForProcess buildHandle
 
-  ^--- Does not work
+        print ("Done building VM" :: String)
 
-  Also you need -threaded or else fork won't work at all.
-  --}
-  bracket runServer' Proc.interruptProcessGroupOf $ \_ -> do
-    waitForServer
-    defaultMain test
+        case exitCodeBuild of
+          (ExitFailure _) -> throwString "couldn't build server"
+          _ -> do
+            currentEnv <- getEnvironment
 
-test = testCase "Should show login page" $ do
-  code <- runReq defaultHttpConfig $ do
-    result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port 80)
-    return (responseStatusCode result :: Int)
-  code @?= 200 
+            let run = Proc.proc "./result/bin/run-lions-server-vm" []
+                qemuNetOpts = "hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"
+                run' = run {Proc.env = Just (("QEMU_NET_OPTS", qemuNetOpts) : currentEnv)}
+
+            (_, _, _, runHandle) <- Proc.createProcess run'
+            return runHandle
+
+  exitCode <-
+    bracket
+      runner
+      ( \h ->
+          if testEnv == "ci"
+            then return ()
+            else Proc.interruptProcessGroupOf h
+      )
+      ( const $ do
+          waitForServer
+          tests `catch` (\testErr -> return $ if testErr == ExitSuccess then 0 else 1)
+      )
+
+  if exitCode == 0
+    then do
+      print ("Success" :: String)
+      exitWith ExitSuccess
+    else do
+      print ("Failure" :: String)
+      exitWith $ ExitFailure exitCode
+
+tests :: IO Int
+tests = do
+  defaultMain test
+  return 0
+  where
+    test =
+      testCase "Should show login page" $ do
+        code <- runReq defaultHttpConfig $ do
+          result <- req GET (http "localhost" /: "login") NoReqBody bsResponse (port 8080)
+          return (responseStatusCode result :: Int)
+        code @?= 200

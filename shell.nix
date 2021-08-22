@@ -42,7 +42,6 @@ pkgs.mkShell {
       ormolu
       hlint
       cabal2nix
-      haskell-language-server
       cabal-install
       cabal-fmt
       fast-tags
@@ -64,8 +63,6 @@ pkgs.mkShell {
       pkgs.nodePackages.purty
 
       # Scripts
-      pkgs.bash_5
-      pkgs.jq
       lions-vm
       lions-tags
 

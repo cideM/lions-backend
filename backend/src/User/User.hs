@@ -210,6 +210,24 @@ instance FromRow GetUserRow where
         <*> SQLite.field
         <*> SQLite.field
 
+newtype UserProfileWithId = UserProfileWithId (User.Id, Profile)
+
+instance ToRow UserProfileWithId where
+  toRow (UserProfileWithId (User.Id uid, Profile {..})) =
+    let (Email email) = userEmail
+     in [ toField (decodeUtf8 $ Email.toByteString email),
+          toField userFirstName,
+          toField userLastName,
+          toField userAddress,
+          toField userMobilePhoneNr,
+          toField userLandlineNr,
+          toField userBirthday,
+          toField userFirstNamePartner,
+          toField userLastNamePartner,
+          toField userBirthdayPartner,
+          toField uid
+        ]
+
 delete ::
   ( MonadIO m,
     Monad m,
@@ -286,7 +304,7 @@ update uid@(User.Id userid) profile@Profile {..} = do
     ,   birthday_partner = ?
     WHERE id = ?
     |]
-      profile
+      (UserProfileWithId (uid, profile))
 
 save ::
   ( MonadIO m,
