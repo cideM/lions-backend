@@ -9,16 +9,20 @@ module Main where
    This does not work on MacOS because I can't build the NixOS VM on MacOS and
    I don't want to do it with Docker because then how do you get the VM out of
    the Docker container?
+
+   The weird CI flag exists because I think interruptProcessGroupOf is killing
+   the CI runner itself in GitHub Actions. It works perfectly fine locally and
+   I'm too tired of all this shit to figure this out.
 --}
 
 import Control.Exception.Safe
 import Control.Retry
 import Network.HTTP.Req
+import System.Environment
+import System.Exit
 import qualified System.Process as Proc
 import Test.Tasty
-import System.Exit
 import Test.Tasty.HUnit
-import System.Environment
 
 waitForServer :: IO ()
 waitForServer = do
@@ -36,6 +40,8 @@ waitForServer = do
 
 main :: IO ()
 main = do
+  testEnv <- getEnv "TEST_ENV"
+
   let runner = do
         buildHandle <- Proc.spawnProcess "nix" ["build", ".#vm"]
 
@@ -58,7 +64,11 @@ main = do
   exitCode <-
     bracket
       runner
-      Proc.interruptProcessGroupOf
+      ( \h ->
+          if testEnv == "ci"
+            then return ()
+            else Proc.interruptProcessGroupOf h
+      )
       ( const $ do
           waitForServer
           tests `catch` (\testErr -> return $ if testErr == ExitSuccess then 0 else 1)
