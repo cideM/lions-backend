@@ -3,8 +3,10 @@
 ## Deploy
 
 Linux: `deploy .`
+
 Darwin Intel: `./scripts/deploy-docker`
-Darwin M1: Use CI, which is broken
+
+Darwin M1: Use CI
 
 ## SQLite
 
