@@ -1,5 +1,5 @@
 CREATE TABLE welcome_text (
   id INTEGER PRIMARY KEY,
-  content TEXT NOT NULL,
+  content TEXT,
   date TEXT NOT NULL
 )
