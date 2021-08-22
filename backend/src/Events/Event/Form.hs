@@ -58,7 +58,7 @@ makeEvent FormInput {..} =
     (notEmpty createEventInputTitle)
     (validDate createEventInputDate)
     (notEmpty createEventInputLocation)
-    (notEmpty createEventInputDescription) of
+    (Valid createEventInputDescription) of
     FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
       let filesToKeep = [name | (name, checked) <- createEventInputCheckboxes, checked]
        in Right $
@@ -124,7 +124,6 @@ render btnLabel action FormInput {..} FormState {..} = do
           type_ "textfield",
           name_ "eventDescriptionInput",
           id_ "eventDescriptionInput",
-          required_ "required",
           autofocus_,
           rows_ "10",
           describedBy_ "eventDescriptionFeedback",
