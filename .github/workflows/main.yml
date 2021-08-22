@@ -50,9 +50,7 @@ jobs:
             experimental-features = nix-command flakes
 
       - name: End-to-end test
-        run: |
-          chmod +x ./backend/e2e/Main.hs
-          nix develop -c "./backend/e2e/Main.hs"
+        run: nix run .#e2e
 
       # Runs a single command using the runners shell
       - name: Run Docker Deploy
