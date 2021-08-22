@@ -12,7 +12,7 @@ nixpkgs.lib.nixosSystem {
     ({ pkgs, config, ... }:
       {
         imports = [
-          "${nixpkgs-20-09}/nixos/modules/virtualisation/digital-ocean-image.nix"
+          "${nixpkgs}/nixos/modules/virtualisation/digital-ocean-image.nix"
         ];
 
         boot.loader.grub.enable = true;
