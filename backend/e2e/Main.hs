@@ -66,8 +66,10 @@ main = do
 
   if exitCode == 0
     then do
+      print ("Success" :: String)
       exitWith ExitSuccess
     else do
+      print ("Failure" :: String)
       exitWith $ ExitFailure exitCode
 
 tests :: IO Int
