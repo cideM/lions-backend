@@ -85,7 +85,15 @@ getAll auth = do
       ] ->
       Html ()
     eventPreviewsHtml events =
-      page (User.Session.isAdmin' auth) (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
+      div_ [class_ "container"] $ do
+        when (User.Session.isAdmin' auth) $
+          a_ [class_ "mb-1 mb-3 btn btn-sm btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
+        h1_ [class_ "h3 mb-4"] "Veranstaltungen"
+        div_
+          [class_ "row row-cols-1 gy-4"]
+          $ do
+            div_ [class_ "col"] $ infoBox "Zum Öffnen einer Veranstaltung einfach auf den Titel klicken"
+            (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
 
 get ::
   ( MonadIO m,
