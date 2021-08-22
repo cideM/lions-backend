@@ -221,3 +221,28 @@ executable run-lions-backend
     , lions-backend
 
   hs-source-dirs: app
+
+executable run-lions-e2e
+  import:         shared-props
+  main-is:        Main.hs
+  build-depends:
+    , base
+    , unliftio
+    , containers
+    , bytestring
+    , safe-exceptions
+    , turtle
+    , filepath
+    , directory
+    , time
+    , tasty
+    , async
+    , req
+    , http-types
+    , tasty-hunit
+    , text
+    , retry
+    , process
+    , string-interpolate
+
+  hs-source-dirs: e2e

@@ -99,6 +99,10 @@
               '';
             };
 
+            lionsE2e = pkgs.writeShellScriptBin "lions-e2e" ''
+              exec ${backend}/bin/run-lions-e2e
+            '';
+
             # Note that we're using the test server which is just a wrapper
             # around the normal server with LIONS_ENV set to "test"
             vm = (import ./nix/vm.nix {
@@ -115,6 +119,7 @@
               ({
                 litestream = litestream;
                 server = lionsServer;
+                e2e = lionsE2e;
                 testServer = lionsServerTest;
                 allAssets = clientStuff.allAssets;
                 clientside = clientStuff.clientside;
@@ -126,6 +131,7 @@
 
             apps.server = flake-utils.lib.mkApp { drv = packages.server; exePath = "server"; };
             apps.testServer = flake-utils.lib.mkApp { drv = packages.testServer; exePath = "server"; };
+            apps.e2e = flake-utils.lib.mkApp { drv = packages.e2e; exePath = "/bin/lions-e2e"; };
 
             defaultApp = apps.server;
 
