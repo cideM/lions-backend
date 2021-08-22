@@ -10,7 +10,6 @@ import Control.Monad (forM_, when)
 import Data.Function ((&))
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
-import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Events.Attachments.Saved as Saved
@@ -61,7 +60,7 @@ full (IsExpired isExpired) (ShowAdminTools showAdminTools) ownReply (Event.Id ev
             section_ [class_ "justify-content-center col-lg-8"] $ do
               div_ [class_ "mb-1 text-muted"] $ do
                 span_ [class_ "me-2"] $ toHtml date
-                when eventFamilyAllowed $ span_ [class_ "badge bg-success"] "Mit Familie"
+                when eventFamilyAllowed $ span_ [class_ "badge bg-secondary"] "Mit Familie"
               p_ [class_ "mb-2 text-muted"] $ toHtml $ "Ort: " <> eventLocation
               h1_ [class_ "mb-2 h3"] $ toHtml eventTitle
               p_ [class_ "my-3", style_ "white-space: pre-wrap"] $ toHtml eventDescription
@@ -180,7 +179,7 @@ preview (Event.Id eventid, Events.Event {..}, ownReply, IsExpired isExpired) = d
   div_ [class_ "mb-2"] $ do
     span_ [class_ "me-2"] $ toHtml formatted
     when isExpired $ span_ [class_ "badge bg-warning text-dark me-2"] "Bereits stattgefunden"
-    when eventFamilyAllowed $ span_ [class_ "badge bg-success me-2"] "Mit Familie"
+    when eventFamilyAllowed $ span_ [class_ "badge bg-secondary me-2"] "Mit Familie"
     when ((Event.replyComing <$> ownReply) == Just True) $ do span_ [class_ "badge bg-success text-white me-2"] "Zugesagt"
     when ((Event.replyComing <$> ownReply) == Just False) $ do span_ [class_ "badge bg-danger text-white"] "Abgesagt"
   a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ h1_ [class_ "card-title fs-4 mb-3"] $ toHtml eventTitle

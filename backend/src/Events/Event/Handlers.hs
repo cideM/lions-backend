@@ -47,15 +47,6 @@ import Network.Wai.Parse
 import qualified User.Session
 import Wai (paramsToMap)
 
-page :: Bool -> Html () -> Html ()
-page userIsAdmin content = do
-  div_ [class_ "container"] $ do
-    when userIsAdmin $
-      a_ [class_ "mb-1 mb-3 btn btn-sm btn-primary", href_ "/veranstaltungen/neu", role_ "button"] "Neue Veranstaltung"
-    h1_ [class_ "h3 mb-4"] "Veranstaltungen"
-    div_ [class_ "my-3"] $ infoBox "Zum Öffnen einer Veranstaltung einfach auf den Titel klicken"
-    div_ [class_ "row row-cols-1 row-cols-lg-2 gy-4 gx-lg-4"] content
-
 getAll ::
   (MonadIO m, MonadReader env m, MonadThrow m, App.HasDb env) =>
   User.Session.Authenticated ->
