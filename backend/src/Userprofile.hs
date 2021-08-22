@@ -26,10 +26,8 @@ render (User.Id uid, User.Profile {..}) (CanDelete canDelete) (CanEdit canEdit) 
     div_ [class_ "card-header"] "Nutzerprofil"
     div_ [class_ "card-body"] $ do
       let fullName = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
-          -- Every user has role "User"
-          hasDisplayRules = length userRoles > 2
       unless (Text.null $ Text.strip fullName) $ h1_ [class_ "card-title fs-3"] $ toHtml fullName
-      when hasDisplayRules $ div_ [class_ "text-muted mb-4"] $ toHtml $ displayBadges $ NE.toList userRoles
+      div_ [class_ "text-muted mb-4"] $ toHtml $ displayBadges $ NE.toList userRoles
       div_ [class_ "row"] $ do
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Email"
