@@ -65,6 +65,10 @@ the DB itself, also the WAL and the `.db-litestream` I guess?
 [admin@lions-server:~]$ sudo chown lions-server:lions /var/lib/lions-server/db
 ```
 
+Here's how to get prod DB onto local, if you already have a valid `.envrc` setup
+
+`litestream restore -o $LIONS_SQLITE_PATH s3://lions-achern-litestream-replica-1/prod`
+
 ## Development
 
 Rebuild and restart when source changes. This may or may not work reliably on MacOS.

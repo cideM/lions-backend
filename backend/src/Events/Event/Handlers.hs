@@ -16,9 +16,9 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Foldable (find)
+import Data.List (partition)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
-import Data.Ord (Down (..))
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import Events.Attachments.Actions (Actions (..))
@@ -56,7 +56,9 @@ getAll auth = do
 
   now <- liftIO $ Time.getCurrentTime
 
-  let formatted = map (formatEventData now) $ sortWith (Down . Event.eventDate . snd) events
+  let (past, upcoming) = partition ((>=) now . Event.eventDate . snd) events
+      upcomingSorted = sortWith (Event.eventDate . snd) upcoming
+      formatted = map (formatEventData now) (upcomingSorted ++ past)
 
   return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml formatted
   where
