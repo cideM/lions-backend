@@ -164,3 +164,22 @@ credentials in the environment.
 
 File storage happens on S3. Only files that can be uploaded right now are event
 attachments.
+
+### Modules
+
+Haskell modules suck. It's hard to get all the following:
+
+1. Import a single module rather than 10, all relating to `User`
+2. No need to think about import cycles
+3. No redundant names like Foo.Bar.Bar
+4. Granular modules at the source level
+5. No string prefixes for namspaces
+
+You can either stuff everything in one module (gives you 1, 2 and 3), or make
+everything extremely granular (2, 4, 5) but you won't get all of it.
+
+I went for the very granular approach. I still had an import cycle which forced
+me to very awkwardly split functions and types in one place, but other than
+that it's OK. I could try to re-export some modules to reduce the number of
+required imports, but that's not trivial, since you need to watch our for
+conflicts when different submodules define the same names, such as `Id`.

@@ -16,3 +16,4 @@ terraform/*.tfstate
 terraform/.terraform.lock.hcl
 result-1
 *.qcow2
+.direnv
