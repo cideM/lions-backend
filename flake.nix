@@ -122,6 +122,14 @@
                   };
                 })
 
+                (self: super: {
+                  # Hardcode the environment to "test"
+                  lionsServerTest = pkgs.writeShellScriptBin "lions-server-test" ''
+                    LIONS_ENV=test exec ${pkgs.lionsServer}/server
+                  '';
+                })
+
+
               ];
               config = import ./nix/config.nix;
             };
@@ -144,11 +152,6 @@
               path = ./backend/migrations;
             };
 
-            # Hardcode the environment to "test"
-            lionsServerTest = pkgs.writeShellScriptBin "lions-server-test" ''
-              LIONS_ENV=test exec ${pkgs.lionsServer}/server
-            '';
-
             lionsE2e = pkgs.writeShellScriptBin "lions-e2e" ''
               exec ${backend}/bin/run-lions-e2e
             '';
@@ -160,8 +163,8 @@
               # Yes, this is correct. If we use "testServer" we just end up in
               # the directory of the wrapper, which includes only a "bin"
               # folder.
-              serverWorkingDir = "${pkgs.server}/";
-              serverExe = "${pkgs.testServer}/bin/lions-server-test";
+              serverWorkingDir = "${pkgs.lionsServer}/";
+              serverExe = "${pkgs.lionsServerTest}/bin/lions-server-test";
             });
           in
           rec {
@@ -170,7 +173,7 @@
                 litestream = pkgs.litestream;
                 server = pkgs.lionsServer;
                 e2e = lionsE2e;
-                testServer = lionsServerTest;
+                testServer = pkgs.lionsServerTest;
                 allAssets = clientStuff.allAssets;
               } // (nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
                 vm = vm.vm;
