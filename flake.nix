@@ -6,13 +6,11 @@
     litestream-src.flake = false;
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixpkgs-20-09.url = "github:NixOS/nixpkgs/nixos-20.09";
+    npmlock2nix.url = "github:nix-community/npmlock2nix";
+    npmlock2nix.flake = false;
     deploy-rs.url = "github:serokell/deploy-rs";
     spago2nix = {
       url = "github:justinwoo/spago2nix/master";
-      flake = false;
-    };
-    bootstrap = {
-      url = "https://github.com/twbs/bootstrap/releases/download/v5.0.1/bootstrap-5.0.1-dist.zip";
       flake = false;
     };
     bootstrapsrc = {
@@ -31,11 +29,11 @@
     { self
     , spago2nix
     , bootstrap-icons
-    , bootstrap
     , bootstrapsrc
     , nixpkgs
     , flake-utils
     , nixpkgs-20-09
+    , npmlock2nix
     , deploy-rs
     , sops-nix
     , litestream-src
@@ -51,17 +49,83 @@
 
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ (import ./nix/migrate.nix) ];
+              overlays = [
+                (import ./nix/migrate.nix)
+
+                # TODO: Use this for bootstrap etc. as well
+                (self: super: {
+                  npmlock2nix = pkgs.callPackage npmlock2nix { };
+                })
+
+                (self: super: {
+                  bootstrapJs = pkgs.stdenv.mkDerivation {
+                    name = "bootstrap-js-bundle";
+                    src = bootstrapsrc;
+                    unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
+                    dontBuild = true;
+                    installPhase = ''
+                      mkdir $out
+                      cp dist/js/bootstrap.bundle.min.js* $out/
+                    '';
+                  };
+                })
+
+                (self: super: {
+                  bootstrap-icons = pkgs.stdenv.mkDerivation {
+                    name = "boostrap-icons";
+                    src = bootstrap-icons;
+                    unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
+                    dontBuild = true;
+                    installPhase = ''
+                      mkdir $out
+                      cp *.svg $out/
+                    '';
+                  };
+                })
+
+                (self: super: {
+                  litestream = pkgs.buildGoModule rec {
+                    pname = "litestream";
+                    version = "0.3.4";
+
+                    src = litestream-src;
+                    vendorSha256 = "sha256-O1d2xQ+1Xn88JCaVv4ge8HmrFqEl3lRTJIhgZoAri7U=";
+                  };
+                })
+
+                (self: super: {
+                  bootstrapCss = pkgs.stdenv.mkDerivation {
+                    name = "bootstrap-scss-source";
+                    src = bootstrapsrc;
+                    unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
+                    dontBuild = true;
+                    installPhase = ''
+                      mkdir $out
+                      cp -r scss/* $out/
+                    '';
+                  };
+                })
+
+                (self: super: {
+                  lionsServer = pkgs.stdenv.mkDerivation {
+                    name = "lions-website";
+                    dontUnpack = true;
+                    dontBuild = true;
+                    installPhase = ''
+                      mkdir $out
+                      mkdir $out/public/
+                      mkdir $out/migrations
+                      cp -r ${clientStuff.allAssets}/* $out/public/
+                      cp ${migrationsDir}/* $out/migrations/
+                      cp ${backend}/bin/run-lions-backend $out/server
+                    '';
+                  };
+                })
+
+              ];
               config = import ./nix/config.nix;
             };
 
-            litestream = pkgs.buildGoModule rec {
-              pname = "litestream";
-              version = "0.3.4";
-
-              src = litestream-src;
-              vendorSha256 = "sha256-O1d2xQ+1Xn88JCaVv4ge8HmrFqEl3lRTJIhgZoAri7U=";
-            };
 
             # Add turtle to my environment so any Haskell script inside
             # scripts/ can be run with runghc without having to think about
@@ -73,7 +137,7 @@
               libraryHaskellDepends = drv.libraryHaskellDepends ++ haskellScriptDeps;
             })).env;
 
-            clientStuff = import ./client/default.nix { inherit bootstrap-icons pkgs backend system; bootstrap = bootstrapsrc; };
+            clientStuff = import ./client/default.nix { inherit pkgs; };
 
             migrationsDir = builtins.path {
               name = "lions-migrations";
@@ -82,22 +146,8 @@
 
             # Hardcode the environment to "test"
             lionsServerTest = pkgs.writeShellScriptBin "lions-server-test" ''
-              LIONS_ENV=test exec ${lionsServer}/server
+              LIONS_ENV=test exec ${pkgs.lionsServer}/server
             '';
-
-            lionsServer = pkgs.stdenv.mkDerivation {
-              name = "lions-website";
-              dontUnpack = true;
-              dontBuild = true;
-              installPhase = ''
-                mkdir $out
-                mkdir $out/public/
-                mkdir $out/migrations
-                cp -r ${clientStuff.allAssets}/* $out/public/
-                cp ${migrationsDir}/* $out/migrations/
-                cp ${backend}/bin/run-lions-backend $out/server
-              '';
-            };
 
             lionsE2e = pkgs.writeShellScriptBin "lions-e2e" ''
               exec ${backend}/bin/run-lions-e2e
@@ -110,19 +160,18 @@
               # Yes, this is correct. If we use "testServer" we just end up in
               # the directory of the wrapper, which includes only a "bin"
               # folder.
-              serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
-              serverExe = "${allSystems.packages.x86_64-linux.testServer}/bin/lions-server-test";
+              serverWorkingDir = "${pkgs.server}/";
+              serverExe = "${pkgs.testServer}/bin/lions-server-test";
             });
           in
           rec {
             packages = flake-utils.lib.flattenTree
               ({
-                litestream = litestream;
-                server = lionsServer;
+                litestream = pkgs.litestream;
+                server = pkgs.lionsServer;
                 e2e = lionsE2e;
                 testServer = lionsServerTest;
                 allAssets = clientStuff.allAssets;
-                clientside = clientStuff.clientside;
               } // (nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
                 vm = vm.vm;
               }));
@@ -136,8 +185,7 @@
             defaultApp = apps.server;
 
             devShell = import ./shell.nix {
-              inherit pkgs spago2nix projectEnv litestream;
-              bootstrapSrc = clientStuff.bootstrapSrc;
+              inherit pkgs spago2nix projectEnv;
               sopsHook = sops-nix.packages.${system}.sops-import-keys-hook;
               deploy-rs = deploy-rs.packages.${system}.deploy-rs;
             };
@@ -148,7 +196,6 @@
         inherit nixpkgs sops-nix;
         serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
         serverExe = "${allSystems.packages.x86_64-linux.server}/server";
-        litestream = allSystems.packages.x86_64-linux.litestream;
       });
 
     in

@@ -1,5 +1,5 @@
 # Open this side-by-side with vm.nix to see the differences between VM and server.
-{ nixpkgs, sops-nix, serverWorkingDir, serverExe, litestream }:
+{ nixpkgs, sops-nix, serverWorkingDir, serverExe }:
 
 nixpkgs.lib.nixosSystem {
   system = "x86_64-linux";
@@ -25,7 +25,7 @@ nixpkgs.lib.nixosSystem {
           serverExe = serverExe;
 
           environment.systemPackages = with pkgs; [
-            litestream
+            pkgs.litestream
             sqlite-interactive
             go-migrate
           ];

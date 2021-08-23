@@ -1,17 +1,5 @@
 {
   "nodes": {
-    "bootstrap": {
-      "flake": false,
-      "locked": {
-        "narHash": "sha256-HcOmcVvA/MAmd4ZffjGuP4ytboEWpUZVYv38SHKJEp0=",
-        "type": "tarball",
-        "url": "https://github.com/twbs/bootstrap/releases/download/v5.0.1/bootstrap-5.0.1-dist.zip"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://github.com/twbs/bootstrap/releases/download/v5.0.1/bootstrap-5.0.1-dist.zip"
-      }
-    },
     "bootstrap-icons": {
       "flake": false,
       "locked": {
@@ -190,9 +178,24 @@
         "type": "github"
       }
     },
+    "npmlock2nix": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1629559065,
+        "narHash": "sha256-yfa0/v7cN1cO2KmTUo6SJVJ+ke2NA8EYcA/1kw7+v5Q=",
+        "owner": "nix-community",
+        "repo": "npmlock2nix",
+        "rev": "4ac13bfffcbb76b9e41701e4822808d2061b73b3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "npmlock2nix",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
-        "bootstrap": "bootstrap",
         "bootstrap-icons": "bootstrap-icons",
         "bootstrapsrc": "bootstrapsrc",
         "deploy-rs": "deploy-rs",
@@ -200,6 +203,7 @@
         "litestream-src": "litestream-src",
         "nixpkgs": "nixpkgs_2",
         "nixpkgs-20-09": "nixpkgs-20-09",
+        "npmlock2nix": "npmlock2nix",
         "sops-nix": "sops-nix",
         "spago2nix": "spago2nix"
       }

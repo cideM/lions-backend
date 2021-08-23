@@ -1,4 +1,4 @@
-{ pkgs, spago2nix, projectEnv, deploy-rs, sopsHook, litestream, bootstrapSrc }:
+{ pkgs, spago2nix, projectEnv, deploy-rs, sopsHook }:
 let
   # Generate tags based on the exposed Haskell modules. "fast-tags" doesn't
   # respect .gitignore and as such just calling fast-tags will result in lots
@@ -24,6 +24,10 @@ let
 
   spago2nix' = import spago2nix { inherit pkgs; };
 
+  clientShell = pkgs.npmlock2nix.shell {
+    src = ./client/.;
+  };
+
 in
 pkgs.mkShell {
   sopsPGPKeyDirs = [
@@ -34,7 +38,9 @@ pkgs.mkShell {
   nativeBuildInputs = [
     sopsHook
     spago2nix'
-  ];
+  ] ++ clientShell.buildInputs;
+  propagatedBuildInputs = clientShell.propagatedBuildInputs;
+  propagatedNativeBuildInputs = clientShell.propagatedNativeBuildInputs;
   buildInputs = with pkgs.haskellPackages;
     [
       # Haskell
@@ -53,7 +59,7 @@ pkgs.mkShell {
       pkgs.go-migrate
       pkgs.sqlite-interactive
       pkgs.sqlite-web
-      litestream
+      pkgs.litestream
 
       # Purescript
       pkgs.purescript
@@ -76,10 +82,9 @@ pkgs.mkShell {
       pkgs.nodejs
       pkgs.cli53
       pkgs.nodePackages.sass
-      pkgs.nodePackages.node2nix
       pkgs.nodePackages.postcss-cli
       pkgs.packer
       pkgs.awscli2
       deploy-rs
-    ];
+    ] ++ clientShell.buildInputs;
 }

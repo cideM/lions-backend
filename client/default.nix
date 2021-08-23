@@ -1,27 +1,7 @@
-{ pkgs, bootstrap, system, bootstrap-icons, backend }:
+{ pkgs }:
 let
-  nodeDependencies = (pkgs.callPackage ./nodePackages.nix { inherit pkgs system; }).shell.nodeDependencies;
-
-  bootstrapSrc = pkgs.stdenv.mkDerivation {
-    name = "bootstrap-scss-source";
-    src = bootstrap;
-    unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
-    dontBuild = true;
-    installPhase = ''
-      mkdir $out
-      cp -r scss/* $out/
-    '';
-  };
-
-  bootstrapJs = pkgs.stdenv.mkDerivation {
-    name = "bootstrap-js-bundle";
-    src = bootstrap;
-    unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
-    dontBuild = true;
-    installPhase = ''
-      mkdir $out
-      cp dist/js/bootstrap.bundle.min.js* $out/
-    '';
+  nodeModules = pkgs.npmlock2nix.node_modules {
+    src = ./.;
   };
 
   styles = pkgs.stdenv.mkDerivation {
@@ -29,26 +9,15 @@ let
     src = builtins.path { name = "lions-scss"; path = ./sass; };
     dontUnpack = true;
     buildPhase = ''
-      ln -s ${nodeDependencies}/lib/node_modules ./node_modules
-      export PATH="${nodeDependencies}/bin:$PATH"
-      ${pkgs.nodePackages.sass}/bin/sass --style=compressed --load-path=${bootstrapSrc} $src/styles.scss style.css
+      ln -s ${nodeModules}/node_modules ./node_modules
+      export PATH="${nodeModules}/node_modules/.bin:$PATH"
+      ${pkgs.nodePackages.sass}/bin/sass --style=compressed --load-path=${pkgs.bootstrapCss} $src/styles.scss style.css
       mkdir build
       postcss style.css --use autoprefixer -d build/
       mkdir $out
       cp build/style.css $out/style.css
     '';
     dontInstall = true;
-  };
-
-  icons = pkgs.stdenv.mkDerivation {
-    name = "boostrap-icons";
-    src = bootstrap-icons;
-    unpackCmd = "${pkgs.unzip}/bin/unzip $curSrc";
-    dontBuild = true;
-    installPhase = ''
-      mkdir $out
-      cp *.svg $out/
-    '';
   };
 
   assets = pkgs.stdenv.mkDerivation {
@@ -60,9 +29,9 @@ let
       mkdir $out
       cp $src/* $out/
       cp ${styles}/* $out/
-      cp ${bootstrapJs}/* $out/
+      cp ${pkgs.bootstrapJs}/* $out/
       mkdir $out/icons
-      cp ${icons}/* $out/icons
+      cp ${pkgs.bootstrap-icons}/* $out/icons
     '';
   };
 
@@ -110,5 +79,5 @@ let
 
 in
 {
-  inherit bootstrapSrc styles assets icons clientside allAssets;
+  inherit styles assets allAssets;
 }
