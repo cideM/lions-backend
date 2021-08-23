@@ -168,16 +168,15 @@ library
     Session.Valid
     Request.Types
     Request.Middleware
-    Wai.Class
     App
     Password.Reset.Mail
     DB
     Scrypt
     Time
     User.Handler
-    Userlist
-    Userprofile
     User.Form
+    User.Profile
+    User.List
     User.Id
     User.User
     User.Role.Role

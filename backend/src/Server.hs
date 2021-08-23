@@ -31,13 +31,10 @@ import qualified Request.Middleware as Request
 import qualified Session.Middleware as Session
 import Text.Read (readEither)
 import qualified UnliftIO
-import qualified User.Handler as User.User
+import qualified User.Handler as User
 import qualified User.Id as User
 import qualified User.Session
-import qualified User.Session as User
-import qualified Userlist
-import qualified Userprofile
-import qualified Wai.Class as Wai
+import qualified Wai as Wai
 import WelcomeMessage (WelcomeMsgId (..))
 import qualified WelcomeMessage
 import Prelude hiding (id)
@@ -78,7 +75,7 @@ server req send = do
         case User.Session.getAuth authInfo of
           Nothing -> send403
           Just auth -> do
-            let User.Session {..} = User.Session.get' auth
+            let User.Session.Session {..} = User.Session.get' auth
                 isAdmin = User.Session.isAdmin authInfo
                 isOwn = sessionUserId == id
 
@@ -188,12 +185,12 @@ server req send = do
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Userlist.get req >=> send200 . layout'
+          "GET" -> authenticatedOnly' $ User.viewListGet req >=> send200 . layout'
           _ -> send404
       ["nutzer", "neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ User.User.createPost req >=> send200 . layout'
-          "GET" -> adminOnly' (User.User.createGet >=> send200 . layout')
+          "POST" -> adminOnly' $ User.createPost req >=> send200 . layout'
+          "GET" -> adminOnly' (User.createGet >=> send200 . layout')
           _ -> send404
       ["nutzer", int, "editieren"] ->
         case readEither (Text.unpack int) of
@@ -203,11 +200,11 @@ server req send = do
              in case Wai.requestMethod req of
                   "GET" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      User.User.editGet id auth
+                      User.editGet id auth
                         >>= send200 . layout'
                   "POST" -> adminOnlyOrOwn userId $
                     \(id, auth) ->
-                      User.User.editPost req id auth
+                      User.editPost req id auth
                         >>= send200 . layout'
                   _ -> send404
       ["nutzer", int] ->
@@ -217,7 +214,7 @@ server req send = do
               Left _ -> throwString . Text.unpack $ "couldn't parse route param for User.Id as int: " <> int
               Right (parsed :: Int) ->
                 authenticatedOnly' $
-                  Userprofile.get parsed >=> \case
+                  User.viewGet parsed >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
           _ -> send404
@@ -227,8 +224,8 @@ server req send = do
           Right (parsed :: Int) ->
             let userId = User.Id parsed
              in case Wai.requestMethod req of
-                  "GET" -> adminOnly' $ User.User.deleteGet userId >=> send200 . layout'
-                  "POST" -> adminOnly' $ User.User.deletePost userId >=> send200 . layout'
+                  "GET" -> adminOnly' $ User.deleteGet userId >=> send200 . layout'
+                  "POST" -> adminOnly' $ User.deletePost userId >=> send200 . layout'
                   _ -> send404
       ["login"] ->
         case Wai.requestMethod req of

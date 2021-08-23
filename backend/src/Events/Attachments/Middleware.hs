@@ -4,7 +4,7 @@ import qualified Data.Text as Text
 import Network.Wai.Middleware.Static ((>->))
 import qualified Network.Wai.Middleware.Static as Static
 import qualified UnliftIO
-import qualified Wai.Class as Wai
+import qualified Wai
 
 -- This middleware intercepts requests to event attachments and rewrites them
 -- so that, relative to the event attachments storage location, the filepath is

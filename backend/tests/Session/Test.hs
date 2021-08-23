@@ -20,7 +20,7 @@ import Session.Middleware (middleware)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Time (timeDaysFromNow)
-import qualified Wai.Class as Wai
+import qualified Wai
 import qualified Web.ClientSession as ClientSession
 import Web.Cookie
 

@@ -1,26 +1,30 @@
-module Userlist (get) where
+module User.List
+  ( render,
+    Option (..),
+    RoleOption (..),
+    makeOptionFromSelection,
+    allOption,
+    allOptions,
+    adminOption,
+    boardOption,
+    passiveOption,
+    presidentOption,
+    rolesToBadge,
+  )
+where
 
-import qualified App
-import Control.Exception.Safe
-import Control.Monad (unless, when)
-import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader.Class (MonadReader)
+import Control.Monad (unless)
 import Data.List.NonEmpty (NonEmpty, toList)
-import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Katip as K
-import Layout (ActiveNavLink (..), LayoutStub (..), ariaLabel_)
+import Layout (ariaLabel_)
 import Lucid
-import qualified Network.Wai as Wai
 import qualified User.Email as UserEmail
 import qualified User.Id as User
 import User.Role.Role (Role (..))
-import qualified User.Session
 import qualified User.User as User
-import Wai (parseQueryParams)
 
 data Option a = Option {optionLabel :: Text, optionValue :: a} deriving (Show, Eq)
 
@@ -116,34 +120,3 @@ rolesToBadge = map showBadge . filter dropUser . toList
     showBadge Board = "Vorstand"
     showBadge Admin = "Administrator"
     showBadge User = "Nutzer"
-
-get ::
-  ( MonadIO m,
-    MonadReader env m,
-    K.KatipContext m,
-    App.HasDb env,
-    MonadThrow m
-  ) =>
-  Wai.Request ->
-  User.Session.Authenticated ->
-  m LayoutStub
-get req auth = do
-  let selectionRaw = Map.findWithDefault "all" "userselect" $ parseQueryParams req
-
-  users <- User.getAll
-
-  selectedOption <- case makeOptionFromSelection selectionRaw of
-    Left e -> throwString $ show e
-    Right v -> return v
-
-  let usersToShow = case optionValue selectedOption of
-        All -> users
-        Some role -> filter (elem role . User.userRoles . snd) users
-
-  return $
-    LayoutStub "Mitglieder" (Just Members) $
-      div_ [class_ "container p-2"] $ do
-        when (User.Session.isAdmin' auth) $ a_ [class_ "btn btn-sm btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
-        h1_ [class_ "h4 mb-5"] "Mitgliederliste"
-        div_ [class_ "row row-cols-1 g-2"] $
-          render usersToShow selectedOption $ filter (/= selectedOption) allOptions

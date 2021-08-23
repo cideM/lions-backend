@@ -15,7 +15,7 @@ import qualified Network.Wai as Wai
 import Session.Session (Session (..))
 import qualified Session.Session as Session
 import qualified Session.Valid
-import qualified Wai.Class as Wai
+import qualified Wai
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
 import Prelude hiding (id, log)

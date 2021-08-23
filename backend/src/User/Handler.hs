@@ -5,11 +5,14 @@ module User.Handler
     deleteGet,
     editPost,
     editGet,
+    viewGet,
+    viewListGet,
   )
 where
 
 import qualified App
 import Control.Exception.Safe
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.List.NonEmpty as NE
@@ -18,18 +21,20 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (i)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
-import Layout (LayoutStub (..))
+import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
 import qualified UnliftIO
 import qualified User.Email as UserEmail
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import qualified User.Id as User
+import qualified User.List
+import qualified User.Profile as UserProfile
 import qualified User.Role.DB as User.Role
 import User.Role.Role (Role (..))
 import qualified User.Session
 import qualified User.User as User
-import Wai (parseParams)
+import Wai (parseParams, parseQueryParams)
 
 createGet ::
   (MonadIO m) =>
@@ -253,3 +258,62 @@ editPost req userId auth = do
                 "Nutzer " <> UserEmail.show email <> " erfolgreich editiert"
   where
     userIsAdmin = User.Session.isAdmin' auth
+
+viewGet ::
+  ( MonadIO m,
+    Monad m,
+    MonadReader env m,
+    MonadThrow m,
+    App.HasDb env
+  ) =>
+  Int ->
+  User.Session.Authenticated ->
+  m (Maybe LayoutStub)
+viewGet paramId auth = do
+  let userIdToShow = User.Id paramId
+      userIsAdmin = User.Session.isAdmin' auth
+      User.Session.Session {..} = User.Session.get' auth
+      isOwnProfile = sessionUserId == userIdToShow
+  user <- User.get userIdToShow
+  return $ case user of
+    Nothing -> Nothing
+    Just userProfile -> do
+      Just . LayoutStub "Nutzerprofil" (Just Profile) $
+        div_
+          [class_ "container p-3"]
+          ( UserProfile.render
+              userProfile
+              (UserProfile.CanDelete userIsAdmin)
+              (UserProfile.CanEdit (isOwnProfile || userIsAdmin))
+          )
+
+viewListGet ::
+  ( MonadIO m,
+    MonadReader env m,
+    K.KatipContext m,
+    App.HasDb env,
+    MonadThrow m
+  ) =>
+  Wai.Request ->
+  User.Session.Authenticated ->
+  m LayoutStub
+viewListGet req auth = do
+  let selectionRaw = Map.findWithDefault "all" "userselect" $ parseQueryParams req
+
+  users <- User.getAll
+
+  selectedOption <- case User.List.makeOptionFromSelection selectionRaw of
+    Left e -> throwString $ show e
+    Right v -> return v
+
+  let usersToShow = case User.List.optionValue selectedOption of
+        User.List.All -> users
+        User.List.Some role -> filter (elem role . User.userRoles . snd) users
+
+  return $
+    LayoutStub "Mitglieder" (Just Members) $
+      div_ [class_ "container p-2"] $ do
+        when (User.Session.isAdmin' auth) $ a_ [class_ "btn btn-sm btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
+        h1_ [class_ "h4 mb-5"] "Mitgliederliste"
+        div_ [class_ "row row-cols-1 g-2"] $
+          User.List.render usersToShow selectedOption $ filter (/= selectedOption) User.List.allOptions

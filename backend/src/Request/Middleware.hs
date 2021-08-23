@@ -7,7 +7,7 @@ import Data.UUID (UUID)
 import Data.UUID.V4 (nextRandom)
 import qualified Data.Vault.Lazy as Vault
 import qualified Network.Wai as Wai
-import qualified Wai.Class as Wai
+import qualified Wai
 
 type IdVaultKey = Vault.Key UUID
 

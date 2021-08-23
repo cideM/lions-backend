@@ -1,17 +1,11 @@
-module Userprofile (get) where
+module User.Profile (render, CanDelete (..), CanEdit (..)) where
 
-import qualified App
-import Control.Exception.Safe
 import Control.Monad (unless, when)
-import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader.Class (MonadReader)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
-import Layout (ActiveNavLink (..), LayoutStub (..))
 import Lucid
 import qualified User.Email as UserEmail
-import qualified User.Session
 import qualified User.Id as User
 import User.Role.Role (Role (..))
 import qualified User.User as User
@@ -81,31 +75,3 @@ render (User.Id uid, User.Profile {..}) (CanDelete canDelete) (CanEdit canEdit) 
     showBadge Board = "Vorstand"
     showBadge Admin = "Administrator"
     showBadge User = "Nutzer"
-
-get ::
-  ( MonadIO m,
-    Monad m,
-    MonadReader env m,
-    MonadThrow m,
-    App.HasDb env
-  ) =>
-  Int ->
-  User.Session.Authenticated ->
-  m (Maybe LayoutStub)
-get paramId auth = do
-  let userIdToShow = User.Id paramId
-      userIsAdmin = User.Session.isAdmin' auth
-      User.Session.Session {..} = User.Session.get' auth
-      isOwnProfile = sessionUserId == userIdToShow
-  user <- User.get userIdToShow
-  return $ case user of
-    Nothing -> Nothing
-    Just userProfile -> do
-      Just . LayoutStub "Nutzerprofil" (Just Profile) $
-        div_
-          [class_ "container p-3"]
-          ( render
-              userProfile
-              (CanDelete userIsAdmin)
-              (CanEdit (isOwnProfile || userIsAdmin))
-          )
