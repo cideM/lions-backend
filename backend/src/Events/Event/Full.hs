@@ -1,6 +1,5 @@
-module Events.Event.Html
-  ( preview,
-    full,
+module Events.Event.Full
+  ( render,
     IsExpired (..),
     ShowAdminTools (..),
   )
@@ -26,8 +25,8 @@ newtype ShowAdminTools = ShowAdminTools Bool deriving (Show)
 
 newtype IsExpired = IsExpired Bool deriving (Show)
 
-full :: IsExpired -> ShowAdminTools -> Maybe Event.Reply -> Event.Id -> Events.Event Saved.FileName -> Html ()
-full (IsExpired isExpired) (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {..} =
+render :: IsExpired -> ShowAdminTools -> Maybe Event.Reply -> Event.Id -> Events.Event Saved.FileName -> Html ()
+render (IsExpired isExpired) (ShowAdminTools showAdminTools) ownReply (Event.Id eventId) Events.Event {..} =
   let date = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
       coming = eventReplies & filter Event.replyComing & length
       notComing = eventReplies & filter (not . Event.replyComing) & length
@@ -171,17 +170,3 @@ full (IsExpired isExpired) (ShowAdminTools showAdminTools) ownReply (Event.Id ev
       Just True -> maybe mempty (Text.pack . show . Event.replyGuests) ownReply
       _ -> mempty
     replyComing' = fmap Event.replyComing ownReply
-
-preview :: (Event.Id, Events.Event Saved.FileName, Maybe Event.Reply, IsExpired) -> Html ()
-preview (Event.Id eventid, Events.Event {..}, ownReply, IsExpired isExpired) = do
-  let formatted = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
-
-  div_ [class_ "mb-2"] $ do
-    span_ [class_ "me-2"] $ toHtml formatted
-    when isExpired $ span_ [class_ "badge bg-warning text-dark me-2"] "Bereits stattgefunden"
-    when eventFamilyAllowed $ span_ [class_ "badge bg-secondary me-2"] "Mit Familie"
-    when ((Event.replyComing <$> ownReply) == Just True) $ do span_ [class_ "badge bg-success text-white me-2"] "Zugesagt"
-    when ((Event.replyComing <$> ownReply) == Just False) $ do span_ [class_ "badge bg-danger text-white"] "Abgesagt"
-  p_ [class_ "mb-3 fs-4", style_ "max-width: 48rem"] $
-    a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ toHtml eventTitle
-  h2_ [class_ "card-subtitle fs-6 mb-3 text-muted"] $ toHtml $ "Ort: " <> eventLocation

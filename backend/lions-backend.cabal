@@ -146,7 +146,8 @@ library
     Events.Attachments.Saved
     Events.Event.Event
     Events.Event.Handlers
-    Events.Event.Html
+    Events.Event.Full
+    Events.Event.Preview
     Events.Event.Id
     Events.Event.Form
     Error

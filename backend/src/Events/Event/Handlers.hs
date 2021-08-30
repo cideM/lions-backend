@@ -27,7 +27,8 @@ import qualified Events.Attachments.Saved as Saved
 import qualified Events.Attachments.Temporary as Temporary
 import qualified Events.Event.Event as Event
 import qualified Events.Event.Form as EventForm
-import qualified Events.Event.Html as Event.Html
+import qualified Events.Event.Preview as Event.Preview
+import qualified Events.Event.Full as Event.Full
 import qualified Events.Event.Id as Event
 import Events.Reply.Reply (Reply (..))
 import qualified Events.Reply.Reply as Reply
@@ -65,7 +66,7 @@ getAll auth = do
     formatEventData now (eventid, event@Event.Event {..}) =
       let User.Session.Session {..} = User.Session.get' auth
           userReply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
-          isExpired = Event.Html.IsExpired (now >= eventDate)
+          isExpired = Event.Preview.IsExpired (now >= eventDate)
        in (eventid, event, userReply, isExpired)
 
     -- Ideally there's zero markup in the handler files.
@@ -73,7 +74,7 @@ getAll auth = do
       [ ( Event.Id,
           Event.Event Saved.FileName,
           Maybe Reply,
-          Event.Html.IsExpired
+          Event.Preview.IsExpired
         )
       ] ->
       Html ()
@@ -89,7 +90,7 @@ getAll auth = do
               [class_ "row row-cols-1 gy-4"]
               $ do
                 div_ [class_ "col"] $ infoBox "Zum Öffnen einer Veranstaltung einfach auf den Titel klicken"
-                (mapM_ (div_ [class_ "col"] . Event.Html.preview) events)
+                (mapM_ (div_ [class_ "col"] . Event.Preview.render) events)
 
 get ::
   ( MonadIO m,
@@ -109,10 +110,10 @@ get eventid auth = do
   Event.get eventid >>= \case
     Nothing -> return Nothing
     Just e@Event.Event {..} -> do
-      let isExpired = Event.Html.IsExpired (now >= eventDate)
+      let isExpired = Event.Full.IsExpired (now >= eventDate)
           ownReply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
-          isAdmin = Event.Html.ShowAdminTools userIsAdmin
-          html = Event.Html.full isExpired isAdmin ownReply eventid e
+          isAdmin = Event.Full.ShowAdminTools userIsAdmin
+          html = Event.Full.render isExpired isAdmin ownReply eventid e
 
       return . Just $ LayoutStub eventTitle (Just Events) html
 
