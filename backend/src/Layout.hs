@@ -8,6 +8,7 @@ module Layout
     LayoutStub (..),
     success,
     ariaLabel_,
+    ariaCurrent_,
     ariaLabelledBy_,
     ariaHidden_,
   )
@@ -15,10 +16,10 @@ where
 
 import Data.String.Interpolate (i)
 import Data.Text (Text)
-import qualified User.Id
 import qualified Data.Text as Text
 import Lucid
 import Lucid.Base (makeAttribute)
+import qualified User.Id
 import qualified User.Session
 
 data LayoutStub = LayoutStub
@@ -30,9 +31,17 @@ data LayoutStub = LayoutStub
 
 data ActiveNavLink = Welcome | Events | Members | Login | Profile deriving (Eq, Show)
 
-expanded_, describedBy_, ariaLabel_, ariaLabelledBy_, ariaHidden_, ariaControls_ :: Text -> Attribute
+expanded_,
+  describedBy_,
+  ariaLabel_,
+  ariaCurrent_,
+  ariaLabelledBy_,
+  ariaHidden_,
+  ariaControls_ ::
+    Text -> Attribute
 expanded_ = makeAttribute "aria-expanded"
 ariaControls_ = makeAttribute "aria-controls"
+ariaCurrent_ = makeAttribute "aria-current"
 describedBy_ = makeAttribute "aria-describedby"
 ariaLabel_ = makeAttribute "aria-label"
 ariaLabelledBy_ = makeAttribute "aria-labelledby"
@@ -84,7 +93,7 @@ layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = 
                         ]
                           ++ ( case User.Session.get auth of
                                  Nothing -> []
-                                 Just User.Session.Session {..} -> 
+                                 Just User.Session.Session {..} ->
                                    let (User.Id.Id uid) = sessionUserId
                                     in [([i|/nutzer/#{uid}|], "Mein Profil", Just Profile)]
                              )

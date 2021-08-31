@@ -27,9 +27,9 @@ import qualified Events.Attachments.Saved as Saved
 import qualified Events.Attachments.Temporary as Temporary
 import qualified Events.Event.Event as Event
 import qualified Events.Event.Form as EventForm
-import qualified Events.Event.Preview as Event.Preview
 import qualified Events.Event.Full as Event.Full
 import qualified Events.Event.Id as Event
+import qualified Events.Event.Preview as Event.Preview
 import Events.Reply.Reply (Reply (..))
 import qualified Events.Reply.Reply as Reply
 import GHC.Exts (sortWith)
@@ -98,11 +98,17 @@ get ::
     MonadThrow m,
     MonadReader env m
   ) =>
+  Wai.Request ->
   Event.Id ->
   User.Session.Authenticated ->
   m (Maybe LayoutStub)
-get eventid auth = do
+get req eventid auth = do
   now <- liftIO $ Time.getCurrentTime
+  let queryString = Wai.queryString req
+      whichReplyBoxToShow = case queryString of
+        [("reply_box", Just "yes")] -> Event.Full.Yes
+        [("reply_box", Just "no")] -> Event.Full.No
+        _ -> Event.Full.Own
 
   let userIsAdmin = User.Session.isAdmin' auth
       User.Session.Session {..} = User.Session.get' auth
@@ -113,7 +119,7 @@ get eventid auth = do
       let isExpired = Event.Full.IsExpired (now >= eventDate)
           ownReply = find ((==) sessionUserId . Reply.replyUserId) eventReplies
           isAdmin = Event.Full.ShowAdminTools userIsAdmin
-          html = Event.Full.render isExpired isAdmin ownReply eventid e
+          html = Event.Full.render whichReplyBoxToShow isExpired isAdmin ownReply eventid e
 
       return . Just $ LayoutStub eventTitle (Just Events) html
 

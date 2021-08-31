@@ -133,13 +133,14 @@ newtype DeleteHref = DeleteHref Text
 
 renderSingleMessage :: EditHref -> DeleteHref -> (Text, Time.ZonedTime) -> ShowEditBtn -> Html ()
 renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (msg, date) canEdit =
-  article_ [class_ ""] $ do
+  div_ [class_ "card"] $ do
     let formatted = Time.formatTime german "%A, %d. %B %Y" date
      in do
-          h2_ [class_ "h4"] $ toHtml formatted
-          p_ [class_ "", style_ "white-space: pre-wrap"] $ toHtml msg
-          when canEdit $
-            div_ [class_ "d-flex"] $ do
+          div_ [class_ "card-header"] $ toHtml formatted
+          div_ [class_ "card-body"] $
+            p_ [class_ "card-text", style_ "white-space: pre-wrap"] $ toHtml msg
+          div_ [class_ "card-footer"] $
+            when canEdit $ do
               a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
               a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
 
@@ -174,7 +175,7 @@ renderFeed zone userIsAdmin msgs =
                   let editHref = EditHref $ Text.pack $ "/editieren/" <> show id
                       deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show id
                       zoned = Time.utcToZonedTime zone datetime
-                   in (renderSingleMessage editHref deleteHref (content, zoned) userIsAdmin)
+                   in div_ [class_ "col"] (renderSingleMessage editHref deleteHref (content, zoned) userIsAdmin)
               )
               msgs
 

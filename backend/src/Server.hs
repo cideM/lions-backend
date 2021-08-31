@@ -128,7 +128,7 @@ server req send = do
             case Wai.requestMethod req of
               "GET" ->
                 authenticatedOnly' $
-                  Event.Handlers.get (Event.Id parsed) >=> \case
+                  Event.Handlers.get req (Event.Id parsed) >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' stub
               _ -> send404
