@@ -35,7 +35,7 @@ import qualified User.Handler as User
 import qualified User.Id as User
 import qualified User.Session
 import qualified Wai as Wai
-import WelcomeMessage (WelcomeMsgId (..))
+import qualified Feed.Message
 import qualified WelcomeMessage
 import Prelude hiding (id)
 
@@ -164,7 +164,7 @@ server req send = do
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
           Right (parsed :: Int) ->
-            let msgId = WelcomeMsgId parsed
+            let msgId = Feed.Message.Id parsed
              in case Wai.requestMethod req of
                   "POST" -> adminOnly' $ WelcomeMessage.handleDeleteMessage msgId >=> send200 . layout'
                   "GET" -> adminOnly' $ WelcomeMessage.showDeleteConfirmation msgId >=> send200 . layout'
@@ -178,7 +178,7 @@ server req send = do
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
           Right (parsed :: Int) ->
-            let msgId = WelcomeMsgId parsed
+            let msgId = Feed.Message.Id parsed
              in case Wai.requestMethod req of
                   "POST" -> adminOnly' $ WelcomeMessage.handleEditMessage req msgId >=> send200 . layout'
                   "GET" -> adminOnly' $ WelcomeMessage.showMessageEditForm msgId >=> send200 . layout'

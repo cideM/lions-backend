@@ -3,7 +3,7 @@
 , clientsession, containers, cookie, crypto-api
 , crypto-cipher-types, data-default, directory, email-validate
 , errors, filepath, filepattern, http-types, katip, lens, lib
-, lucid, mtl, optparse-generic, process, req, resourcet, retry
+, lucid, mtl, network, process, req, resourcet, retry
 , safe-exceptions, scrypt, sqlite-simple, string-interpolate, tasty
 , tasty-hunit, text, time, transformers, unliftio, uri-encode, uuid
 , vault, wai, wai-extra, wai-middleware-static, wai-session, warp
@@ -19,13 +19,12 @@ mkDerivation {
     bcrypt bytestring cipher-aes clientsession containers cookie
     crypto-api crypto-cipher-types data-default directory
     email-validate errors filepath filepattern http-types katip lens
-    lucid mtl resourcet safe-exceptions scrypt sqlite-simple
+    lucid mtl network resourcet safe-exceptions scrypt sqlite-simple
     string-interpolate text time transformers unliftio uri-encode uuid
     vault wai wai-extra wai-middleware-static wai-session warp
   ];
   executableHaskellDepends = [
-    base optparse-generic process req retry safe-exceptions tasty
-    tasty-hunit
+    base process req retry safe-exceptions tasty tasty-hunit
   ];
   testHaskellDepends = [
     amazonka-ses base bytestring clientsession containers cookie

@@ -121,6 +121,7 @@ library
     , time
     , uri-encode
     , mtl
+    , network
     , transformers
     , katip
     , uuid
@@ -151,6 +152,8 @@ library
     Events.Event.Id
     Events.Event.Form
     Error
+    Feed.Form
+    Feed.Message
     Server
     Form
     Layout

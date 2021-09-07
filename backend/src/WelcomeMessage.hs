@@ -3,8 +3,8 @@ module WelcomeMessage
     showMessageEditForm,
     showFeed,
     showAddMessageForm,
-    WelcomeMsgId (..),
-    WelcomeMsg (..),
+    Message.Id (..),
+    Message.Message (..),
     handleEditMessage,
     showDeleteConfirmation,
     handleDeleteMessage,
@@ -15,115 +15,21 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader.Class (MonadReader, asks)
+import Control.Monad.Reader.Class (MonadReader)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import qualified Database.SQLite.Simple as SQLite
-import Form (FormFieldState (..), notEmpty, processField, validDate)
-import Layout (ActiveNavLink (..), LayoutStub (..), describedBy_, infoBox, success)
+import qualified Feed.Form as Form
+import qualified Feed.Message as Message
+import Layout (ActiveNavLink (..), LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
 import qualified User.Session
 import Wai (parseParams)
 import Prelude hiding (id)
-
-newtype WelcomeMsgId = WelcomeMsgId Int deriving (Show)
-
-data WelcomeMsg = WelcomeMsg WelcomeMsgId Text Time.UTCTime deriving (Show)
-
--- | Returns the MOST RECENT welcome message, if there is one
-getWelcomeMsgFromDb ::
-  ( MonadIO m,
-    App.HasDb env,
-    MonadThrow m,
-    MonadReader env m
-  ) =>
-  WelcomeMsgId ->
-  m (Maybe WelcomeMsg)
-getWelcomeMsgFromDb (WelcomeMsgId id) = do
-  conn <- asks App.getDb
-  rows <- liftIO $ SQLite.query conn "SELECT id, content, date FROM welcome_text WHERE id = ?" [id]
-  case rows of
-    [(mid, msg, createdAt) :: (Int, Text, Time.UTCTime)] ->
-      return . Just $ WelcomeMsg (WelcomeMsgId mid) msg createdAt
-    [] -> return Nothing
-    other -> return . throwString $ "unexpected result from DB for welcome message" <> show other
-
--- | Returns all welcome messages in chronological order
-getAllWelcomeMsgsFromDb ::
-  ( MonadIO m,
-    App.HasDb env,
-    MonadThrow m,
-    MonadReader env m
-  ) =>
-  m [WelcomeMsg]
-getAllWelcomeMsgsFromDb = do
-  conn <- asks App.getDb
-  rows <- liftIO $ SQLite.query_ conn "SELECT id, content, date FROM welcome_text ORDER BY date DESC"
-  case rows of
-    (msgs :: [(Int, Text, Time.UTCTime)]) ->
-      return $ map (\(id, msg, createdAt) -> WelcomeMsg (WelcomeMsgId id) msg createdAt) msgs
-
-data FormState = FormState
-  { welcomeMsgStateDate :: FormFieldState Time.UTCTime,
-    welcomeMsgStateMessage :: FormFieldState Text
-  }
-  deriving (Show)
-
-data FormInput = FormInput
-  { welcomeMsgInputDate :: Text,
-    welcomeMsgInputMessage :: Text
-  }
-  deriving (Show)
-
-emptyState :: FormState
-emptyState = FormState NotValidated NotValidated
-
-makeMessage :: FormInput -> Either FormState (Text, Time.UTCTime)
-makeMessage FormInput {..} =
-  case FormState (validDate welcomeMsgInputDate) (notEmpty welcomeMsgInputMessage) of
-    FormState (Valid date) (Valid message) ->
-      Right (message, date)
-    state -> Left state
-
-form :: FormInput -> FormState -> Text -> Html ()
-form FormInput {..} FormState {..} formAction = do
-  form_ [method_ "post", class_ "row g-4", action_ formAction] $ do
-    div_ [class_ "col-12"] $ do
-      let (className, errMsg) = processField welcomeMsgStateDate
-      label_ [class_ "form-label", for_ "date"] "Datum"
-      input_
-        [ class_ className,
-          type_ "text",
-          name_ "date",
-          pattern_ "\\d{2}.\\d{2}.\\d{4} \\d{2}:\\d{2}",
-          value_ welcomeMsgInputDate,
-          id_ "date",
-          required_ "required",
-          describedBy_ "invalidDateFeedback"
-        ]
-      maybe mempty (div_ [class_ "invalid-feedback", id_ "invalidDateFeedback"] . toHtml) errMsg
-    div_ [class_ "col-12"] $ do
-      let (className, errMsg) = processField welcomeMsgStateMessage
-      label_ [class_ "form-label", for_ "message"] "Nachricht"
-      textarea_
-        [ class_ className,
-          type_ "textfield",
-          name_ "message",
-          id_ "message",
-          required_ "required",
-          autofocus_,
-          rows_ "10",
-          cols_ "10",
-          describedBy_ "invalidMessageFeedback"
-        ]
-        (toHtml welcomeMsgInputMessage)
-      maybe mempty (div_ [class_ "invalid-feedback", id_ "invalidMessageFeedback"] . toHtml) errMsg
-    button_ [class_ "btn btn-primary", type_ "submit"] "Speichern"
 
 type ShowEditBtn = Bool
 
@@ -144,7 +50,7 @@ renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (msg, date) canE
               a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
               a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
 
-renderFeed :: Time.TimeZone -> Bool -> [WelcomeMsg] -> LayoutStub
+renderFeed :: Time.TimeZone -> Bool -> [Message.Message] -> LayoutStub
 renderFeed zone userIsAdmin msgs =
   LayoutStub "Willkommen" (Just Welcome) $
     div_ [class_ "container"] $ do
@@ -171,52 +77,13 @@ renderFeed zone userIsAdmin msgs =
         div_ [class_ "col"] $ do
           div_ [class_ "row row-cols-1 g-5"] $ do
             mapM_
-              ( \(WelcomeMsg (WelcomeMsgId id) content datetime) ->
+              ( \(Message.Message (Message.Id id) content datetime) ->
                   let editHref = EditHref $ Text.pack $ "/editieren/" <> show id
                       deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show id
                       zoned = Time.utcToZonedTime zone datetime
                    in div_ [class_ "col"] (renderSingleMessage editHref deleteHref (content, zoned) userIsAdmin)
               )
               msgs
-
-updateWelcomeMsg ::
-  ( MonadIO m,
-    App.HasDb env,
-    MonadThrow m,
-    MonadReader env m
-  ) =>
-  WelcomeMsgId ->
-  Text ->
-  Time.UTCTime ->
-  m ()
-updateWelcomeMsg (WelcomeMsgId id) newMsg newDate = do
-  conn <- asks App.getDb
-  liftIO $ SQLite.execute conn "UPDATE welcome_text SET content = ?, date = ? WHERE id = ?" (newMsg, newDate, id)
-
-saveNewWelcomeMsg ::
-  ( MonadIO m,
-    App.HasDb env,
-    MonadThrow m,
-    MonadReader env m
-  ) =>
-  Text ->
-  Time.UTCTime ->
-  m ()
-saveNewWelcomeMsg msg date = do
-  conn <- asks App.getDb
-  liftIO $ SQLite.execute conn "INSERT INTO welcome_text (content, date) VALUES (?, ?)" (msg, date)
-
-deleteMessage ::
-  ( MonadIO m,
-    App.HasDb env,
-    MonadThrow m,
-    MonadReader env m
-  ) =>
-  WelcomeMsgId ->
-  m ()
-deleteMessage (WelcomeMsgId id) = do
-  conn <- asks App.getDb
-  liftIO $ SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]
 
 -- TODO: Something like this should probably exist for all pages. Maybe make
 -- the title smaller, so it's almost more like breadcrums?
@@ -244,15 +111,15 @@ saveNewMessage ::
 saveNewMessage req _ = do
   params <- liftIO $ parseParams req
   let input =
-        FormInput
+        Form.Input
           (Map.findWithDefault "" "date" params)
           (Map.findWithDefault "" "message" params)
 
-  case makeMessage input of
+  case Form.parse input of
     Left state ->
-      return . createPageLayout $ form input state "/neu"
+      return . createPageLayout $ Form.render input state "/neu"
     Right (message, date) -> do
-      saveNewWelcomeMsg message date
+      Message.save message date
       return . createPageLayout $ success "Nachricht erfolgreich erstellt"
 
 handleEditMessage ::
@@ -262,21 +129,21 @@ handleEditMessage ::
     MonadReader env m
   ) =>
   Wai.Request ->
-  WelcomeMsgId ->
+  Message.Id ->
   User.Session.Admin ->
   m LayoutStub
-handleEditMessage req mid@(WelcomeMsgId msgid) _ = do
+handleEditMessage req mid@(Message.Id msgid) _ = do
   params <- liftIO $ parseParams req
   let input =
-        FormInput
+        Form.Input
           (Map.findWithDefault "" "date" params)
           (Map.findWithDefault "" "message" params)
 
-  case makeMessage input of
+  case Form.parse input of
     Left state ->
-      return . editPageLayout $ form input state [i|/editieren/#{msgid}|]
+      return . editPageLayout $ Form.render input state [i|/editieren/#{msgid}|]
     Right (message, date) -> do
-      updateWelcomeMsg mid message date
+      Message.update mid message date
       return . editPageLayout $ success "Nachricht erfolgreich editiert"
 
 showDeleteConfirmation ::
@@ -285,13 +152,13 @@ showDeleteConfirmation ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  WelcomeMsgId ->
+  Message.Id ->
   User.Session.Admin ->
   m LayoutStub
-showDeleteConfirmation mid@(WelcomeMsgId msgid) _ = do
-  getWelcomeMsgFromDb mid >>= \case
+showDeleteConfirmation mid@(Message.Id msgid) _ = do
+  Message.get mid >>= \case
     Nothing -> throwString [i|delete request, but no message with ID: #{msgid}|]
-    Just (WelcomeMsg _ content _) -> do
+    Just (Message.Message _ content _) -> do
       return . deletePageLayout $ do
         p_ [] "Nachricht wirklich löschen?"
         p_ [class_ "border p-2 mb-4", role_ "alert"] $ toHtml content
@@ -304,11 +171,11 @@ handleDeleteMessage ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  WelcomeMsgId ->
+  Message.Id ->
   User.Session.Admin ->
   m LayoutStub
 handleDeleteMessage msgid _ = do
-  deleteMessage msgid
+  Message.delete msgid
   return . deletePageLayout $ success "Nachricht erfolgreich gelöscht"
 
 showAddMessageForm ::
@@ -318,7 +185,7 @@ showAddMessageForm ::
 showAddMessageForm _ = do
   now <- liftIO $ Time.getCurrentTime
   let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ now
-  return . createPageLayout $ form (FormInput formatted "") emptyState "/neu"
+  return . createPageLayout $ Form.render (Form.Input formatted "") Form.emptyState "/neu"
 
 showMessageEditForm ::
   ( MonadIO m,
@@ -326,15 +193,15 @@ showMessageEditForm ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  WelcomeMsgId ->
+  Message.Id ->
   User.Session.Admin ->
   m LayoutStub
-showMessageEditForm mid@(WelcomeMsgId msgid) _ = do
-  getWelcomeMsgFromDb mid >>= \case
+showMessageEditForm mid@(Message.Id msgid) _ = do
+  Message.get mid >>= \case
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
-    Just (WelcomeMsg _ content date) -> do
+    Just (Message.Message _ content date) -> do
       let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ date
-      return . editPageLayout $ form (FormInput formatted content) emptyState [i|/editieren/#{msgid}|]
+      return . editPageLayout $ Form.render (Form.Input formatted content) Form.emptyState [i|/editieren/#{msgid}|]
 
 showFeed ::
   ( MonadIO m,
@@ -345,6 +212,6 @@ showFeed ::
   User.Session.Authenticated ->
   m LayoutStub
 showFeed auth = do
-  msgs <- getAllWelcomeMsgsFromDb
+  msgs <- Message.getAll
   zone <- liftIO $ Time.getCurrentTimeZone
   return $ renderFeed zone (User.Session.isAdmin' auth) msgs
