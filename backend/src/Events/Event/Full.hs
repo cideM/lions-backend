@@ -76,18 +76,6 @@ renderAdminTools (Event.Id eventId) = do
     ]
     "Editieren"
 
-navLinks :: [(Text, ReplyBox, Text)]
-navLinks =
-  let paramName = "reply_box"
-      links = [("Deine Antwort", Own, "own"), ("Teilnehmer", Yes, "yes"), ("Absagen", No, "no")]
-   in map
-        ( \(label, boxType, value) ->
-            let (query :: URI.Query) = [(paramName, Just value)]
-                queryString = URI.renderQuery True query
-             in (label, boxType, T.decodeUtf8 queryString)
-        )
-        links
-
 renderOwnForm :: IsExpired -> Maybe Event.Reply -> Event.Id -> Html ()
 renderOwnForm (IsExpired isExpired) ownReply (Event.Id eventId) = do
   let replyGuests' = case replyComing' of
@@ -170,32 +158,45 @@ renderYesList users =
         )
         users
 
-renderReplies :: ReplyBox -> IsExpired -> Maybe Event.Reply -> Event.Id -> Events.Event Saved.FileName -> Html ()
-renderReplies whichReplyBoxToShow expired ownReply eid Events.Event {..} = do
+renderReplies ::
+  ReplyBox ->
+  IsExpired ->
+  Maybe Event.Reply ->
+  Event.Id ->
+  Events.Event Saved.FileName ->
+  Html ()
+renderReplies activeBox expired ownReply eid Events.Event {..} = do
   let coming = length (filter Event.replyComing eventReplies)
       withGuests = coming + sum (map Event.replyGuests (filter Event.replyComing eventReplies))
       notComing = length (filter (not . Event.replyComing) eventReplies)
   div_ [class_ "card border-primary"] $ do
     div_ [class_ "card-header"] $ do
-      ul_ [class_ "nav nav-tabs card-header-tabs"] $
-        mapM_
-          ( \(label, boxType, query) ->
-              li_ [class_ "nav-item position-relative"] $ do
-                let label' = case boxType of
-                      Own -> label
-                      Yes -> [i|#{label} (#{(show withGuests)})|]
-                      No -> [i|#{label} (#{(show notComing)})|]
-                a_
-                  ( [ class_ ("nav-link" <> (if boxType == whichReplyBoxToShow then " active" else "")),
-                      href_ query
-                    ]
-                      ++ (if boxType == whichReplyBoxToShow then [ariaCurrent_ "true"] else [])
-                  )
-                  $ toHtml label'
-          )
-          navLinks
+      ul_ [class_ "nav nav-tabs card-header-tabs"] $ do
+        let makeHref box =
+              href_ $ T.decodeUtf8 $ URI.renderQuery True [("reply_box", Just box)]
+            makeClass boxType =
+              class_ $ Text.pack $ unwords $ ["nav-link"] ++ ["active" | activeBox == boxType]
+            makeAttrs boxType box =
+              [makeClass boxType, makeHref box] ++ [ariaCurrent_ "true" | activeBox == boxType]
+
+        a_ (makeAttrs Own "own") "Antwort"
+
+        a_ (makeAttrs Yes "yes") $ do
+          span_ [class_ "d-none d-md-block"]
+            [i|Teilnehmer (#{toHtml $ show withGuests})|]
+          span_ [class_ "d-md-none text-success"] $ do
+            checkSvg
+            [i|(#{toHtml $ show withGuests})|]
+
+        a_ (makeAttrs No "no") $ do
+          span_ [class_ "d-none d-md-block"]
+            [i|Absagen (#{toHtml $ show notComing})|]
+          span_ [class_ "d-md-none text-danger"] $ do
+            xCrossSvg
+            [i|(#{toHtml $ show notComing})|]
+
     div_ [class_ "card-body"] $
-      case whichReplyBoxToShow of
+      case activeBox of
         Own -> renderOwnForm expired ownReply eid
         Yes -> renderYesList (filter Event.replyComing eventReplies)
         No -> renderNoList (filter (not . Event.replyComing) eventReplies)
@@ -210,10 +211,28 @@ render ::
   Event.Id ->
   Events.Event Saved.FileName ->
   Html ()
-render whichReplyBoxToShow expiration showAdminTools ownReply eid event =
+render activeBox expiration showAdminTools ownReply eid event =
   div_ [class_ "container"] $
     div_ [class_ "row gy-3 gx-lg-4"] $ do
       section_ [class_ "col-lg-7"] $ renderEvent showAdminTools expiration eid event
 
       section_ [class_ "col-lg-5"] $
-        renderReplies whichReplyBoxToShow expiration ownReply eid event
+        renderReplies activeBox expiration ownReply eid event
+
+checkSvg :: Html ()
+checkSvg =
+  toHtmlRaw
+    ( [i|
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+  |] ::
+        Text
+    )
+
+xCrossSvg :: Html ()
+xCrossSvg =
+  toHtmlRaw
+    ( [i|
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x-circle"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+  |] ::
+        Text
+    )
