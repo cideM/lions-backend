@@ -6,6 +6,7 @@ module Feed.Message
     delete,
     save,
     update,
+    render,
   )
 where
 
@@ -13,9 +14,13 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Data.List as List
 import Data.Text (Text)
+import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
+import Lucid
+import qualified Network.URI as URI
 import Prelude hiding (id)
 
 newtype Id = Id Int deriving (Show)
@@ -93,3 +98,22 @@ update ::
 update (Id id) newMsg newDate = do
   conn <- asks App.getDb
   liftIO $ SQLite.execute conn "UPDATE welcome_text SET content = ?, date = ? WHERE id = ?" (newMsg, newDate, id)
+
+-- render converts the plain text message into HTML and converts URLs into
+-- actual anchor links. An empty line is used to generate <p> tags.
+render :: Text -> Html ()
+render text =
+  mapM_ convertParagraph $ Text.splitOn "\r\n\r\n" text
+  where
+    convertParagraph :: Text -> Html ()
+    convertParagraph content =
+      p_ []
+        . mconcat
+        . List.intersperse (toHtml (" " :: Text) :: Html ())
+        . map maybeInsertUrl
+        $ Text.words content
+
+    maybeInsertUrl word =
+      case URI.parseURI (Text.unpack word) of
+        Just _ -> a_ [href_ word] $ toHtml word
+        Nothing -> toHtml word

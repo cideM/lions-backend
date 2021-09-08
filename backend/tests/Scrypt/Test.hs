@@ -28,4 +28,3 @@ memcost = 14
 
 rounds :: Integer
 rounds = 8
-

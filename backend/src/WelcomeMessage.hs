@@ -44,7 +44,7 @@ renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (msg, date) canE
      in do
           div_ [class_ "card-header"] $ toHtml formatted
           div_ [class_ "card-body"] $
-            p_ [class_ "card-text", style_ "white-space: pre-wrap"] $ toHtml msg
+            p_ [class_ "card-text"] $ Message.render msg
           div_ [class_ "card-footer"] $
             when canEdit $ do
               a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
@@ -212,6 +212,6 @@ showFeed ::
   User.Session.Authenticated ->
   m LayoutStub
 showFeed auth = do
-  msgs <- Message.getAll
+  msgs :: [Message.Message] <- Message.getAll
   zone <- liftIO $ Time.getCurrentTimeZone
   return $ renderFeed zone (User.Session.isAdmin' auth) msgs

@@ -1,5 +1,6 @@
 import qualified Events.Attachments.Actions.Test
 import qualified Events.Event.Event.Test
+import qualified Feed.Message.Test
 import qualified Login.Test
 import qualified Password.Change.Test
 import qualified Password.Reset.Test
@@ -22,6 +23,7 @@ tests =
         ],
       Login.Test.tests,
       Session.Test.tests,
+      Feed.Message.Test.tests,
       testGroup
         "Events"
         [ Events.Event.Event.Test.tests,

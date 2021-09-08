@@ -50,6 +50,7 @@ test-suite tests
     Helpers
     Scrypt.Test
     Session.Test
+    Feed.Message.Test
     Login.Test
     Events.Event.Event.Test
     Events.Attachments.Actions.Test
@@ -121,7 +122,8 @@ library
     , time
     , uri-encode
     , mtl
-    , network
+    , network-uri
+    , parsec
     , transformers
     , katip
     , uuid
