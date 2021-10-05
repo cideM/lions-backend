@@ -135,11 +135,14 @@ VM the `known_hosts` needs to be updated.
   modules but overall it's easier to work with fewer, slightly bigger modules.
 - Layouting is very ad-hoc
 - The project would benefit from more tests
-- CI broke randomly and now gives me `error: a 'x86_64-darwin' with features {} is required to build '/nix/store/zin2czycwviah6nghq6s0i4gnqxqm0am-source.drv', but I am a 'x86_64-linux' with features {benchmark, big-parallel, nixos-test, recursive-nix}` which makes no sense whatsoever. Why is CI trying to build a darwin thing, when it works locally?
 - Not all modules were cleaned up when I added the `mtl` everywhere. So some of
   the code might still be a little rough around the edges.
 - I think I'd like to go back to no `mtl` in the end. It's simpler, just a bit
   more typing, less foot guns.
+- Routing would benefit from more type safety and more uniformity. Maybe define
+  a result that route handlers can return which also allows errors. That way
+  route handlers are easier to test and it's clearer to see what the possible
+  returned responses are
 
 ## Known UX Problems
 
