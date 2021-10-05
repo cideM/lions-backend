@@ -26,8 +26,8 @@
           # Make sure we use the development SOPS setup, meaning a SOPS file
           # with dummy secrets and the corresponding GPG key.
           sops.defaultSopsFile = ../secrets/vm.yaml;
-          sops.gnupgHome = "/etc/pgpstuff/";
-          sops.sshKeyPaths = [ ];
+          sops.gnupg.home = "/etc/pgpstuff/";
+          sops.gnupg.sshKeyPaths = [ ];
           environment.etc."pgpstuff/pubring.kbx~".source = ../. + "vm-pgp/pubring.kbx~";
           environment.etc."pgpstuff/pubring.kbx".source = ../vm-pgp/pubring.kbx;
           environment.etc."pgpstuff/private-keys-v1.d/ADC6091860174378DC87EFB03C23963A1B4EACA0.key".source = ../vm-pgp/private-keys-v1.d/ADC6091860174378DC87EFB03C23963A1B4EACA0.key;
