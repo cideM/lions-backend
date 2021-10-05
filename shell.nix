@@ -65,7 +65,6 @@ pkgs.mkShell {
       pkgs.purescript
       pkgs.spago
       pkgs.nodePackages.pscid
-      pkgs.nodePackages.purescript-language-server
       pkgs.nodePackages.purty
 
       # Scripts
