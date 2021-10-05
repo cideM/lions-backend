@@ -129,7 +129,9 @@ Use `$ ssh -o StrictHostKeyChecking=no root@localhost -p 2221 systemctl status` 
 Disabling the check is necessary because whenever you delete and recreate the
 VM the `known_hosts` needs to be updated.
 
-## Known Problems
+## TODO
+
+### Code
 
 - The modules are super granular, which is annoying. I don't like Haskell
   modules but overall it's easier to work with fewer, slightly bigger modules.
@@ -144,7 +146,7 @@ VM the `known_hosts` needs to be updated.
   route handlers are easier to test and it's clearer to see what the possible
   returned responses are
 
-## Known UX Problems
+### UX
 
 - URLs are plain text in news feed
 - Profile pictures are missing
