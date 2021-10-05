@@ -23,7 +23,7 @@ import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Feed.Form as Form
 import qualified Feed.Message as Message
-import Layout (ActiveNavLink (..), LayoutStub (..), infoBox, success)
+import Layout (LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
@@ -52,7 +52,7 @@ renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (msg, date) canE
 
 renderFeed :: Time.TimeZone -> Bool -> [Message.Message] -> LayoutStub
 renderFeed zone userIsAdmin msgs =
-  LayoutStub "Willkommen" (Just Welcome) $
+  LayoutStub "Willkommen" $
     div_ [class_ "container"] $ do
       div_ [class_ "row row-cols-1 g-4"] $ do
         div_ [class_ "col"] $ do
@@ -89,7 +89,7 @@ renderFeed zone userIsAdmin msgs =
 -- the title smaller, so it's almost more like breadcrums?
 pageLayout :: Text -> Html () -> LayoutStub
 pageLayout title content =
-  LayoutStub title (Just Welcome) $
+  LayoutStub title  $
     div_ [class_ "container p-2"] $ do
       h1_ [class_ "h4 mb-3"] $ toHtml title
       content

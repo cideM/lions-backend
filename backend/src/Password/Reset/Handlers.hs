@@ -19,7 +19,7 @@ import Wai (parseParams)
 import Prelude hiding (id, log)
 
 layout :: Html () -> LayoutStub
-layout = LayoutStub "Passwort Zurücksetzen" Nothing
+layout = LayoutStub "Passwort Zurücksetzen"
 
 post ::
   ( MonadIO m,

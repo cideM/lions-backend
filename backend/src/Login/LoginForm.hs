@@ -2,7 +2,7 @@ module Login.LoginForm (render, FormState (..), FormInput (..), emptyForm) where
 
 import Data.Text (Text)
 import Form (FormFieldState (..), processField)
-import Layout (ActiveNavLink (..), LayoutStub (..), describedBy_)
+import Layout (LayoutStub (..), describedBy_)
 import Lucid
 import User.Session (Authentication, isAuthenticated)
 import Prelude hiding (id)
@@ -36,14 +36,14 @@ data FormInput = FormInput
 render :: Authentication -> FormInput -> FormState -> LayoutStub
 render auth FormInput {..} FormState {..} =
   if isAuthenticated auth
-    then LayoutStub "Login" (Just Login) $ do
+    then LayoutStub "Login" $ do
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Du bist bereits eingelogged!"
           form_ [class_ "p-0", method_ "post", action_ "/logout"] $ do
             button_ [class_ "btn btn-primary", type_ "submit", autofocus_] "Ausloggen"
     else do
-      LayoutStub "Login" (Just Login) $
+      LayoutStub "Login" $
         div_ [class_ "container-md d-flex justify-content-center p-3"] $ do
           form_ [class_ "col-8", method_ "post", action_ "/login"] $ do
             div_ [class_ "row row-cols-8 g-2"] $ do

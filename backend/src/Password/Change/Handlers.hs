@@ -23,7 +23,7 @@ import Prelude hiding (id, log)
 
 -- ... the continuation of the above comment. This is for actually typing in the new PW
 layout :: Html () -> LayoutStub
-layout = LayoutStub "Passwort Ändern" Nothing
+layout = LayoutStub "Passwort Ändern"
 
 post ::
   ( MonadIO m,
@@ -108,7 +108,7 @@ get req = do
     Nothing -> throwString "password change form requires ?token= to be set, but it's empty"
     Just token ->
       return $
-        LayoutStub "Passwort Ändern" Nothing $
+        LayoutStub "Passwort Ändern" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             F.form token F.emptyForm F.emptyState
   where

@@ -24,7 +24,6 @@ import qualified User.Session
 
 data LayoutStub = LayoutStub
   { layoutStubTitle :: Text,
-    layoutStubActiveNavLink :: Maybe ActiveNavLink,
     layoutStubContent :: Html ()
   }
   deriving (Show)
@@ -47,8 +46,8 @@ ariaLabel_ = makeAttribute "aria-label"
 ariaLabelledBy_ = makeAttribute "aria-labelledby"
 ariaHidden_ = makeAttribute "aria-hidden"
 
-layout :: User.Session.Authentication -> LayoutStub -> Html ()
-layout auth (LayoutStub {layoutStubTitle = pageTitle, layoutStubActiveNavLink = activeNavLink, layoutStubContent = pageContent}) =
+layout :: User.Session.Authentication -> Maybe ActiveNavLink -> LayoutStub -> Html ()
+layout auth activeNavLink (LayoutStub {layoutStubTitle = pageTitle, layoutStubContent = pageContent}) =
   doctype_ *> do
     html_ [lang_ "de-DE"] $ do
       head_ $ do

@@ -21,7 +21,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (i)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
-import Layout (ActiveNavLink (..), LayoutStub (..))
+import Layout (LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
 import qualified UnliftIO
@@ -42,7 +42,7 @@ createGet ::
   m LayoutStub
 createGet _ =
   return $
-    LayoutStub "Nutzer Hinzufügen" Nothing $
+    LayoutStub "Nutzer Hinzufügen" $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         User.Form.render
           (CanEditRoles True)
@@ -86,7 +86,7 @@ createPost req _ = do
   (liftIO $ makeProfile input) >>= \case
     Left state ->
       return $
-        LayoutStub "Nutzer Hinzufügen" Nothing $
+        LayoutStub "Nutzer Hinzufügen" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             User.Form.render
               (CanEditRoles True)
@@ -105,7 +105,7 @@ createPost req _ = do
           )
       let (UserEmail.Email email) = userEmail
       return $
-        LayoutStub "Nutzer Hinzufügen" Nothing $
+        LayoutStub "Nutzer Hinzufügen" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
@@ -127,7 +127,7 @@ deletePost userId _ = do
     Just (_, userProfile) -> do
       User.delete userId
       return $
-        LayoutStub "Nutzerprofil" Nothing $
+        LayoutStub "Nutzerprofil" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
@@ -147,7 +147,7 @@ deleteGet userId@(User.Id uid) _ = do
   User.get userId >>= \case
     Nothing -> throwString $ "delete user but no user for eid found: " <> show userId
     Just (_, userProfile) -> do
-      return . LayoutStub "Nutzerprofil" Nothing $
+      return . LayoutStub "Nutzerprofil" $
         div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
@@ -172,13 +172,13 @@ editGet ::
 editGet userIdToEdit@(User.Id uid) auth = do
   user <- User.get userIdToEdit
   return $ case user of
-    Nothing -> LayoutStub "Fehler" Nothing $
+    Nothing -> LayoutStub "Fehler" $
       div_ [class_ "container p-3 d-flex justify-content-center"] $
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just (_, User.Profile {..}) ->
       let (UserEmail.Email email) = userEmail
-       in LayoutStub "Nutzer Editieren" Nothing $
+       in LayoutStub "Nutzer Editieren" $
             div_ [class_ "container p-3 d-flex justify-content-center"] $
               User.Form.render
                 (CanEditRoles $ User.Session.isAdmin' auth)
@@ -239,7 +239,7 @@ editPost req userId auth = do
   (liftIO $ makeProfile input) >>= \case
     Left state ->
       return $
-        LayoutStub "Nutzer Editieren" Nothing $
+        LayoutStub "Nutzer Editieren" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             User.Form.render
               (CanEditRoles userIsAdmin)
@@ -251,7 +251,7 @@ editPost req userId auth = do
       User.update userId profile
       let (UserEmail.Email email) = User.userEmail profile
       return $
-        LayoutStub "Nutzer Editieren" Nothing $
+        LayoutStub "Nutzer Editieren" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
@@ -278,7 +278,7 @@ viewGet paramId auth = do
   return $ case user of
     Nothing -> Nothing
     Just userProfile -> do
-      Just . LayoutStub "Nutzerprofil" (Just Profile) $
+      Just . LayoutStub "Nutzerprofil" $
         div_
           [class_ "container p-3"]
           ( UserProfile.render
@@ -311,7 +311,7 @@ viewListGet req auth = do
         User.List.Some role -> filter (elem role . User.userRoles . snd) users
 
   return $
-    LayoutStub "Mitglieder" (Just Members) $
+    LayoutStub "Mitglieder" $
       div_ [class_ "container p-2"] $ do
         when (User.Session.isAdmin' auth) $ a_ [class_ "btn btn-sm btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
         h1_ [class_ "h4 mb-5"] "Mitgliederliste"

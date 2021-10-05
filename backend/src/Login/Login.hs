@@ -17,7 +17,7 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Error as E
 import Form (FormFieldState (..))
 import qualified Katip as K
-import Layout (layout)
+import Layout (ActiveNavLink (..), layout)
 import qualified Login.LoginForm as LoginForm
 import Lucid
 import Network.HTTP.Types (status302, status401)
@@ -181,7 +181,7 @@ postLogin req send = do
       send
         . Wai.responseLBS status401 [("Content-Type", "text/html; charset=UTF-8")]
         . renderBS
-        . layout User.Session.notAuthenticated
+        . layout User.Session.notAuthenticated (Just Login)
         $ ( LoginForm.render
               User.Session.notAuthenticated
               (LoginForm.FormInput email formPw)
@@ -194,4 +194,4 @@ postLogin req send = do
 
 getLogin :: (MonadIO m) => User.Session.Authentication -> m (Html ())
 getLogin auth =
-  return . layout auth $ LoginForm.render auth (LoginForm.FormInput "" "") LoginForm.emptyForm
+  return . layout auth (Just Login) $ LoginForm.render auth (LoginForm.FormInput "" "") LoginForm.emptyForm

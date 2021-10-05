@@ -34,7 +34,7 @@ import Events.Reply.Reply (Reply (..))
 import qualified Events.Reply.Reply as Reply
 import GHC.Exts (sortWith)
 import qualified Katip as K
-import Layout (ActiveNavLink (..), LayoutStub (..), infoBox, success)
+import Layout (LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
@@ -61,7 +61,7 @@ getAll auth = do
       upcomingSorted = sortWith (Event.eventDate . snd) upcoming
       formatted = map (formatEventData now) (upcomingSorted ++ past)
 
-  return . LayoutStub "Veranstaltungen" (Just Events) $ eventPreviewsHtml formatted
+  return . LayoutStub "Veranstaltungen" $ eventPreviewsHtml formatted
   where
     formatEventData now (eventid, event@Event.Event {..}) =
       let User.Session.Session {..} = User.Session.get' auth
@@ -121,7 +121,7 @@ get req eventid auth = do
           isAdmin = Event.Full.ShowAdminTools userIsAdmin
           html = Event.Full.render whichReplyBoxToShow isExpired isAdmin ownReply eventid e
 
-      return . Just $ LayoutStub eventTitle (Just Events) html
+      return . Just $ LayoutStub eventTitle html
 
 getConfirmDelete ::
   ( MonadIO m,
@@ -136,7 +136,7 @@ getConfirmDelete eid@(Event.Id eventid) _ = do
   (Event.get eid) >>= \case
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
-      return . LayoutStub "Veranstaltung Löschen" (Just Events) $
+      return . LayoutStub "Veranstaltung Löschen" $
         div_ [class_ "container p-3 d-flex justify-content-center"] $
           div_ [class_ "row col-6"] $ do
             p_ [class_ "alert alert-danger mb-4", role_ "alert"] $
@@ -166,7 +166,7 @@ postDelete eventid _ = do
       Saved.removeAll eventid
       Event.delete eventid
       return $
-        LayoutStub "Veranstaltung" (Just Events) $
+        LayoutStub "Veranstaltung" $
           success $ "Veranstaltung " <> Event.eventTitle event <> " erfolgreich gelöscht"
 
 getEdit ::
@@ -191,7 +191,7 @@ getEdit eid@(Event.Id eventid) _ = do
               eventFamilyAllowed
               (zip (map Saved.unFileName eventAttachments) (repeat True))
               []
-       in return . LayoutStub "Veranstaltung Editieren" (Just Events) $
+       in return . LayoutStub "Veranstaltung Editieren" $
             div_ [class_ "container p-2"] $ do
               h1_ [class_ "h4 mb-3"] "Veranstaltung editieren"
               EventForm.render "Speichern" (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren") input EventForm.emptyState
@@ -200,7 +200,7 @@ getEdit eid@(Event.Id eventid) _ = do
 
 getCreate :: (MonadIO m) => User.Session.Admin -> m LayoutStub
 getCreate _ = do
-  return . LayoutStub "Neue Veranstaltung" (Just Events) $
+  return . LayoutStub "Neue Veranstaltung" $
     div_ [class_ "container p-2"] $ do
       h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
       EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
@@ -268,7 +268,7 @@ postCreate req _ = do
 
     case EventForm.makeEvent input of
       Left state -> do
-        return . LayoutStub "Neue Veranstaltung" (Just Events) $
+        return . LayoutStub "Neue Veranstaltung" $
           div_ [class_ "container p-2"] $ do
             h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
             EventForm.render "Speichern" "/veranstaltungen/neu" input state
@@ -277,7 +277,7 @@ postCreate req _ = do
 
         Attachments.Actions.apply eid actions
 
-        return . LayoutStub "Neue Veranstaltung" (Just Events) $
+        return . LayoutStub "Neue Veranstaltung" $
           success $ "Neue Veranstaltung " <> eventTitle <> " erfolgreich erstellt!"
 
 postUpdate ::
@@ -335,7 +335,7 @@ postUpdate req eid@(Event.Id eventid) _ = do
         case EventForm.makeEvent input of
           Left state ->
             return $
-              LayoutStub "Veranstaltung Editieren" (Just Events) $
+              LayoutStub "Veranstaltung Editieren" $
                 div_ [class_ "container p-3 d-flex justify-content-center"] $
                   EventForm.render
                     "Speichern"
@@ -348,5 +348,5 @@ postUpdate req eid@(Event.Id eventid) _ = do
             Event.update eid newEvent
 
             return $
-              LayoutStub "Veranstaltung Editieren" (Just Events) $
+              LayoutStub "Veranstaltung Editieren" $
                 success $ "Veranstaltung " <> Event.eventTitle newEvent <> " erfolgreich editiert"
