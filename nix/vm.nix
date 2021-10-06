@@ -36,6 +36,12 @@
           environment.etc."pgpstuff/private-keys-v1.d/ADC6091860174378DC87EFB03C23963A1B4EACA0.key".source = ../vm-pgp/private-keys-v1.d/ADC6091860174378DC87EFB03C23963A1B4EACA0.key;
           environment.etc."pgpstuff/openpgp-revocs.d/27BAD88E87C18A972AC5D6DF54189C237851DE5D.rev".source = ../vm-pgp/openpgp-revocs.d/27BAD88E87C18A972AC5D6DF54189C237851DE5D.rev;
 
+          virtualisation.qemu = {
+            networkingOptions = [
+              "-netdev user,id=user.0,\${QEMU_NET_OPTS:+$QEMU_NET_OPTS}"
+            ];
+          };
+
           # Load some seed data into the SQLite database so we can at least login.
           # Use "foo@bar.com" and "foobar"
           systemd.services.prepareDb = {
