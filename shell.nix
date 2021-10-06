@@ -13,12 +13,11 @@ let
   # derivation if more data is needed, rather than trying to somehow mirror the
   # local SQLite DB into the QEMU VM.
   lions-vm = pkgs.writeShellScriptBin "lions-vm" (if pkgs.stdenv.isDarwin then ''
-    docker run -it -p 127.0.0.1:81:8081 -p 127.0.0.1:80:8080 --rm -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes bash -c 'nix build .#packages.x86_64-linux.vm && QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443" ./result/bin/run-lions-server-vm'
+    docker run -it -p 127.0.0.1:81:8081 -p 127.0.0.1:80:8080 --rm -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes bash -c 'nix build .#packages.x86_64-linux.vm ./result/bin/run-lions-server-vm'
   '' else ''
     nix build .#packages.x86_64-linux.vm || exit 1
     echo "visit https://localhost:8081/"
     echo "or http://localhost:8080/"
-    export QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"
     ./result/bin/run-lions-server-vm
   '');
 
