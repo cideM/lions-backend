@@ -55,7 +55,8 @@ main = do
             currentEnv <- getEnvironment
 
             let run = Proc.proc "./result/bin/run-lions-server-vm" []
-                run' = run {Proc.env = Just currentEnv}
+                qemuNetOpts = "hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"
+                run' = run {Proc.env = Just (("QEMU_NET_OPTS", qemuNetOpts) : currentEnv)}
 
             (_, _, _, runHandle) <- Proc.createProcess run'
             return runHandle

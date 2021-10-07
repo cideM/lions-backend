@@ -23,8 +23,6 @@
           serverWorkingDir = serverWorkingDir;
           serverExe = serverExe;
 
-          boot.kernelParams = [ "edd=off" ];
-
           # Make sure we use the development SOPS setup, meaning a SOPS file
           # with dummy secrets and the corresponding GPG key.
           sops.defaultSopsFile = ../secrets/vm.yaml;
@@ -38,23 +36,9 @@
           environment.etc."pgpstuff/private-keys-v1.d/ADC6091860174378DC87EFB03C23963A1B4EACA0.key".source = ../vm-pgp/private-keys-v1.d/ADC6091860174378DC87EFB03C23963A1B4EACA0.key;
           environment.etc."pgpstuff/openpgp-revocs.d/27BAD88E87C18A972AC5D6DF54189C237851DE5D.rev".source = ../vm-pgp/openpgp-revocs.d/27BAD88E87C18A972AC5D6DF54189C237851DE5D.rev;
 
-          virtualisation = {
-            forwardPorts = [
-              {
-                from = "host";
-                host.port = 8080;
-                guest.port = 80;
-              }
-              {
-                from = "host";
-                host.port = 8081;
-                guest.port = 443;
-              }
-              {
-                from = "host";
-                host.port = 2221;
-                guest.port = 22;
-              }
+          virtualisation.qemu = {
+            networkingOptions = [
+              "-netdev user,id=user.0,\${QEMU_NET_OPTS:+$QEMU_NET_OPTS}"
             ];
           };
 
