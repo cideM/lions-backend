@@ -129,6 +129,103 @@ Use `$ ssh -o StrictHostKeyChecking=no root@localhost -p 2221 systemctl status` 
 Disabling the check is necessary because whenever you delete and recreate the
 VM the `known_hosts` needs to be updated.
 
+Last time I updated the flake I broke CI. The QEMU image seems to be stuck at
+"Booting from ROM..." but GitHub actions logs seem a bit strange, since they
+sometimes show certain logs and sometimes they don't. So there might be obvious
+errors that I'm just not seeing. The QEMU image definitely works locally.
+
+I compared the QEMU invocation scripts but I was too lazy to really look into it.
+
+Here's the old one that worked at some point:
+```text
+#! /nix/store/9ywr69qi622lrmx5nn88gk8jpmihy0dz-bash-4.4-p23/bin/bash
+
+NIX_DISK_IMAGE=$(readlink -f ${NIX_DISK_IMAGE:-./lions-server.qcow2})
+
+if ! test -e "$NIX_DISK_IMAGE"; then
+    /nix/store/rwbwjmpjw6yc19ya0l66ivrdj7nk9qnk-qemu-host-cpu-only-for-vm-tests-5.2.0/bin/qemu-img create -f qcow2 "$NIX_DISK_IMAGE" \
+      512M || exit 1
+fi
+
+# Create a directory for storing temporary data of the running VM.
+if [ -z "$TMPDIR" -o -z "$USE_TMPDIR" ]; then
+    TMPDIR=$(mktemp -d nix-vm.XXXXXXXXXX --tmpdir)
+fi
+
+# Create a directory for exchanging data with the VM.
+mkdir -p $TMPDIR/xchg
+
+
+
+cd $TMPDIR
+idx=0
+
+
+# Start QEMU.
+exec /nix/store/rwbwjmpjw6yc19ya0l66ivrdj7nk9qnk-qemu-host-cpu-only-for-vm-tests-5.2.0/bin/qemu-kvm -cpu max \
+    -name lions-server \
+    -m 384 \
+    -smp 1 \
+    -device virtio-rng-pci \
+    -netdev user,id=user.0,${QEMU_NET_OPTS:+$QEMU_NET_OPTS} \
+    -virtfs local,path=/nix/store,security_model=none,mount_tag=store \
+    -virtfs local,path=$TMPDIR/xchg,security_model=none,mount_tag=xchg \
+    -virtfs local,path=${SHARED_DIR:-$TMPDIR/xchg},security_model=none,mount_tag=shared \
+    -drive cache=writeback,file=$NIX_DISK_IMAGE,id=drive1,if=none,index=1,werror=report -device virtio-blk-pci,drive=drive1 \
+    -usb -device usb-tablet,bus=usb-bus.0 -kernel /nix/store/slv0s03g2sirb7n26a4pvkllq9d5l0aj-nixos-system-lions-server-20.09pre-git/kernel -initrd /nix/store/slv0s03g2sirb7n26a4pvkllq9d5l0aj-nixos-system-lions-server-20.09pre-git/initrd -append "$(cat /nix/store/slv0s03g2sirb7n26a4pvkllq9d5l0aj-nixos-system-lions-server-20.09pre-git/kernel-params) init=/nix/store/slv0s03g2sirb7n26a4pvkllq9d5l0aj-nixos-system-lions-server-20.09pre-git/init regInfo=/nix/store/r86zwlb8s2f53wx0yab1zw70w7w7hlab-closure-info/registration console=tty0 console=ttyS0,115200n8 $QEMU_KERNEL_PARAMS" -nographic \
+    $QEMU_OPTS \
+    "$@"
+```
+
+And the new one:
+```text
+#! /nix/store/qfb4j7w2fjjq953nd9xncz5mymj5n0kb-bash-5.1-p8/bin/bash
+
+set -e
+
+NIX_DISK_IMAGE=$(readlink -f "${NIX_DISK_IMAGE:-./lions-server.qcow2}")
+
+if ! test -e "$NIX_DISK_IMAGE"; then
+    /nix/store/9d288g1vld0jwfzrmfm238wfcsdz5z8i-qemu-6.1.0/bin/qemu-img create -f qcow2 "$NIX_DISK_IMAGE" \
+      512M
+fi
+
+# Create a directory for storing temporary data of the running VM.
+if [ -z "$TMPDIR" ] || [ -z "$USE_TMPDIR" ]; then
+    TMPDIR=$(mktemp -d nix-vm.XXXXXXXXXX --tmpdir)
+fi
+
+# Create a directory for exchanging data with the VM.
+mkdir -p "$TMPDIR/xchg"
+
+
+
+cd "$TMPDIR"
+
+
+
+
+# Start QEMU.
+exec /nix/store/9d288g1vld0jwfzrmfm238wfcsdz5z8i-qemu-6.1.0/bin/qemu-kvm -cpu max \
+    -name lions-server \
+    -m 384 \
+    -smp 1 \
+    -device virtio-rng-pci \
+    -net nic,netdev=user.0,model=virtio -netdev user,id=user.0,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443,hostfwd=tcp::2221-:22,${QEMU_NET_OPTS:+,$QEMU_NET_OPTS} \
+    -virtfs local,path=/nix/store,security_model=none,mount_tag=nix-store \
+    -virtfs local,path="${SHARED_DIR:-$TMPDIR/xchg}",security_model=none,mount_tag=shared \
+    -virtfs local,path="$TMPDIR"/xchg,security_model=none,mount_tag=xchg \
+    -drive cache=writeback,file="$NIX_DISK_IMAGE",id=drive1,if=none,index=1,werror=report -device virtio-blk-pci,drive=drive1 \
+    -usb \
+    -device usb-tablet,bus=usb-bus.0 \
+    -kernel /nix/store/n2is7mhax0h8w5rz4z287nxb5sqybd8l-nixos-system-lions-server-21.11pre-git/kernel \
+    -initrd /nix/store/n2is7mhax0h8w5rz4z287nxb5sqybd8l-nixos-system-lions-server-21.11pre-git/initrd \
+    -append "$(cat /nix/store/n2is7mhax0h8w5rz4z287nxb5sqybd8l-nixos-system-lions-server-21.11pre-git/kernel-params) init=/nix/store/n2is7mhax0h8w5rz4z287nxb5sqybd8l-nixos-system-lions-server-21.11pre-git/init regInfo=/nix/store/8m6h3j6iwyf9ivj3521xbzmkhgybwlj9-closure-info/registration console=tty0 console=ttyS0,115200n8 $QEMU_KERNEL_PARAMS" \
+    -nographic \
+    $QEMU_OPTS \
+    "$@"
+```
+
 ## TODO
 
 ### Code

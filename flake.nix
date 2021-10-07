@@ -159,7 +159,8 @@
             # Note that we're using the test server which is just a wrapper
             # around the normal server with LIONS_ENV set to "test"
             vm = (import ./nix/vm.nix {
-              inherit nixpkgs sops-nix;
+              nixpkgs = nixpkgs-20-09;
+              inherit sops-nix;
               # Yes, this is correct. If we use "testServer" we just end up in
               # the directory of the wrapper, which includes only a "bin"
               # folder.
