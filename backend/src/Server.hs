@@ -104,6 +104,8 @@ server req send = do
       send404 = render status404 . layout' Nothing . LayoutStub "Nicht gefunden" $ warning "Nicht Gefunden"
 
   K.katipAddContext (K.sl "request_id" requestId) $ do
+    -- TODO: Add the encrypted cookie to the request so I know which requests
+    -- come from the same client without exposing anything
     K.logLocM K.InfoS "request received"
 
     case Wai.pathInfo req of
@@ -270,6 +272,7 @@ run = do
 
       -- Set up JSON logging. It's not using Katip but I'm too lazy right now
       -- to make all the necessary adjustments.
+      -- TODO: Use Katip here
       let jsonFormatter = RequestLogger.CustomOutputFormatWithDetails $ RequestLogger.formatAsJSON
           defaultLoggerSettings = (Def.def :: RequestLogger.RequestLoggerSettings)
           customSettings = defaultLoggerSettings {RequestLogger.outputFormat = jsonFormatter}
