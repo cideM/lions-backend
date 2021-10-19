@@ -9,6 +9,7 @@ import qualified Data.Default as Def
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified Env
+import qualified Logging
 import qualified Error as E
 import qualified Events.Attachments.Middleware as AttachmentsMiddleware
 import qualified Events.Event.Handlers as Event.Handlers
@@ -23,8 +24,6 @@ import Network.HTTP.Types (status200, status403, status404, status500)
 import qualified Network.Wai as Wai
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import qualified Network.Wai.Middleware.Gzip as Gzip
-import qualified Network.Wai.Middleware.RequestLogger as RequestLogger
-import qualified Network.Wai.Middleware.RequestLogger.JSON as RequestLogger
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Password.Change.Handlers
 import qualified Password.Reset.Handlers
@@ -270,20 +269,11 @@ run = do
             AttachmentsMiddleware.middleware envEventAttachmentStorageDir
               . (Wai.liftMiddleware $ staticPolicy (addBase envEventAttachmentStorageDir))
 
-      -- Set up JSON logging. It's not using Katip but I'm too lazy right now
-      -- to make all the necessary adjustments.
-      -- TODO: Use Katip here
-      let jsonFormatter = RequestLogger.CustomOutputFormatWithDetails $ RequestLogger.formatAsJSON
-          defaultLoggerSettings = (Def.def :: RequestLogger.RequestLoggerSettings)
-          customSettings = defaultLoggerSettings {RequestLogger.outputFormat = jsonFormatter}
-
-      reqLogger <- liftIO $ RequestLogger.mkRequestLogger customSettings
-
       let middlewares =
             (Wai.liftMiddleware gzipMiddleware)
               . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
-              . (Wai.liftMiddleware reqLogger)
               . Request.middleware
+              . Logging.middleware
               -- It's important that the attachments middleware comes after the session
               -- middleware, so that the event attachments are not accessible by the
               -- public.
