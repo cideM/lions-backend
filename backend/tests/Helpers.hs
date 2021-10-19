@@ -121,29 +121,30 @@ withTestEnv appEnv f = do
       ( \internalState -> do
           withDB $ \conn -> do
             Logging.withKatip K.DebugS "main" (K.Environment . T.pack $ show appEnv) $ do
-              ctx <- K.getKatipContext
-              ns <- K.getKatipNamespace
-              logEnv <- K.getLogEnv
+              K.katipNoLogging $ do
+                ctx <- K.getKatipContext
+                ns <- K.getKatipNamespace
+                logEnv <- K.getLogEnv
 
-              let env =
-                    App.Env
-                      { envDatabaseConnection = conn,
-                        envEnvironment = appEnv,
-                        envScryptSignerKey = signerKey,
-                        envScryptSaltSeparator = saltSep,
-                        envMail = Mail.sendIoRef mailRef,
-                        envInternalState = internalState,
-                        -- TODO: Remove from env since not used in tests
-                        envPort = 5000,
-                        envEventAttachmentStorageDir = storageDir,
-                        envSessionDataVaultKey = sessionDataVaultKey,
-                        envRequestIdVaultKey = requestIdVaultKey,
-                        envSessionEncryptionKey = sessionKey,
-                        envLogNamespace = ns,
-                        envLogContext = ctx,
-                        envLogEnv = logEnv
-                      }
-               in liftIO $ App.unApp (f mailRef) env
+                let env =
+                      App.Env
+                        { envDatabaseConnection = conn,
+                          envEnvironment = appEnv,
+                          envScryptSignerKey = signerKey,
+                          envScryptSaltSeparator = saltSep,
+                          envMail = Mail.sendIoRef mailRef,
+                          envInternalState = internalState,
+                          -- TODO: Remove from env since not used in tests
+                          envPort = 5000,
+                          envEventAttachmentStorageDir = storageDir,
+                          envSessionDataVaultKey = sessionDataVaultKey,
+                          envRequestIdVaultKey = requestIdVaultKey,
+                          envSessionEncryptionKey = sessionKey,
+                          envLogNamespace = ns,
+                          envLogContext = ctx,
+                          envLogEnv = logEnv
+                        }
+                 in liftIO $ App.unApp (f mailRef) env
       )
   where
     signerKey :: B.ByteString
