@@ -103,10 +103,6 @@ server req send = do
       send404 = render status404 . layout' Nothing . LayoutStub "Nicht gefunden" $ warning "Nicht Gefunden"
 
   K.katipAddContext (K.sl "request_id" requestId) $ do
-    -- TODO: Add the encrypted cookie to the request so I know which requests
-    -- come from the same client without exposing anything
-    K.logLocM K.InfoS "request received"
-
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
