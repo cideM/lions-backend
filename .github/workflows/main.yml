@@ -33,7 +33,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      - uses: cachix/install-nix-action@v13
+      - uses: cachix/install-nix-action@v14
         name: Install Nix
         with:
           install_url: https://nixos-nix-install-tests.cachix.org/serve/i6laym9jw3wg9mw6ncyrk6gjx4l34vvx/install
