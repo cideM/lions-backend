@@ -4,6 +4,7 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Katip as K
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -25,6 +26,7 @@ post ::
   ( MonadIO m,
     MonadReader env m,
     UnliftIO.MonadUnliftIO m,
+    K.KatipContext m,
     App.HasEnvironment env,
     App.HasPort env,
     App.HasMail env,
@@ -38,35 +40,42 @@ post req = do
   port <- asks App.getPort
   sendMail <- asks App.getMail
 
-  params <- liftIO $ parseParams req
+  K.katipAddNamespace "password_reset_post" $ do
+    params <- liftIO $ parseParams req
 
-  case Map.lookup "email" params of
-    Nothing -> return $ formInvalid "Email darf nicht leer sein"
-    Just emailAddr -> do
-      Token.update emailAddr >>= \case
-        Nothing ->
-          return $
-            formInvalid "Diese Email-Adresse ist nicht beim Lions Club Achern registiert"
-        Just token -> do
-          let resetHost =
-                if env == App.Production
-                  then "https://members.lions-achern.de"
-                  else T.pack $ "http://localhost:" <> show port
+    case Map.lookup "email" params of
+      Nothing -> do
+        K.logLocM K.InfoS "no email param found"
+        return $ formInvalid "Email darf nicht leer sein"
+      Just emailAddr -> do
+        K.katipAddContext (K.sl "email" emailAddr) $ do
+          Token.update emailAddr >>= \case
+            Nothing -> do
+              K.logLocM K.InfoS "email not found"
+              return $
+                formInvalid "Diese Email-Adresse ist nicht beim Lions Club Achern registiert"
+            Just token -> do
+              K.logLocM K.InfoS "email found"
 
-              resetLink = resetHost <> "/passwort/aendern?token=" <> token
+              let resetHost =
+                    if env == App.Production
+                      then "https://members.lions-achern.de"
+                      else T.pack $ "http://localhost:" <> show port
 
-              email =
-                Mail.Mail
-                  { -- This isn't type safe at all since I could pass any kind of
-                    -- text
-                    mailPlainText = Mail.PlainText $ makePlainEmail resetLink,
-                    mailHtml = Mail.Html $ makeHtmlEmail resetLink,
-                    mailTitle = "Passwort Zurücksetzen"
-                  }
+                  resetLink = resetHost <> "/passwort/aendern?token=" <> token
 
-          _ <- liftIO $ sendMail emailAddr email
+                  email =
+                    Mail.Mail
+                      { -- This isn't type safe at all since I could pass any kind of
+                        -- text
+                        mailPlainText = Mail.PlainText $ makePlainEmail resetLink,
+                        mailHtml = Mail.Html $ makeHtmlEmail resetLink,
+                        mailTitle = "Passwort Zurücksetzen"
+                      }
 
-          return . layout $ success "Email mit Link wurde verschickt!"
+              _ <- liftIO $ sendMail emailAddr email
+
+              return . layout $ success "Email mit Link wurde verschickt!"
   where
     formInvalid = layout . Password.Reset.Form.render . Just
 
