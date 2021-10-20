@@ -37,7 +37,10 @@ middleware ::
 middleware nextApp req send = do
   (E.runExceptT $ login req) >>= \case
     Left e -> do
-      K.logLocM K.InfoS $ K.ls e
+      case e of
+        Nothing -> return ()
+        Just err -> K.logLocM K.InfoS $ K.ls err
+
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send
@@ -51,7 +54,7 @@ middleware nextApp req send = do
 
 login ::
   ( MonadIO m,
-    E.MonadError Text m,
+    E.MonadError (Maybe Text) m,
     MonadReader env m,
     MonadThrow m,
     App.HasDb env,
@@ -62,31 +65,17 @@ login ::
   m Wai.Request
 login req = do
   sessionDataVaultKey <- asks App.getSessionDataVaultKey
-  sessionKey <- asks App.getSessionEncryptionKey
-
-  case lookup "cookie" $ Wai.requestHeaders req of
-    Nothing -> return req
-    Just sessionCookieHeader -> do
-      sessionCookieEncrypted <-
-        E.note' "no session cookie"
-          . lookup "lions_session"
-          $ Cookie.parseCookies sessionCookieHeader
-
-      if sessionCookieEncrypted == ""
-        then return req
-        else do
-          decrypted <-
-            E.note' "empty session cookie" $
-              ClientSession.decrypt sessionKey sessionCookieEncrypted
-
-          let sessionId = Session.Id $ decodeUtf8 decrypted
-
-          session@(Session _ _ userId) <-
-            Session.get sessionId >>= E.note' "no session found"
-
-          _ <- Session.Valid.parse session
-
-          roles <- Role.get userId >>= E.note' "no roles found"
-
-          let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
-          return $ req {Wai.vault = vault'}
+  sessionId <- getSessionId
+  session@(Session _ _ userId) <- Session.get sessionId >>= E.note' (Just "no session found")
+  _ <- E.withExceptT' Just $ Session.Valid.parse session
+  roles <- Role.get userId >>= E.note' (Just "no roles found")
+  let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
+  return $ req {Wai.vault = vault'}
+  where
+    getSessionId = do
+      sessionKey <- asks App.getSessionEncryptionKey
+      cookie <- E.note' Nothing . lookup "cookie" $ Wai.requestHeaders req
+      session <- E.note' Nothing . lookup "lions_session" $ Cookie.parseCookies cookie
+      E.when (session == "") (E.liftEither $ Left Nothing)
+      decrypted <- E.note' (Just "empty session cookie") $ ClientSession.decrypt sessionKey session
+      return . Session.Id $ decodeUtf8 decrypted
