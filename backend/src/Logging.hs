@@ -7,6 +7,7 @@ import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Text.Encoding (decodeUtf8)
+import qualified User.Session as Session
 import qualified Data.Text as T
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
@@ -43,7 +44,8 @@ middleware ::
   ( MonadIO m,
     K.KatipContext m,
     MonadReader env m,
-    App.HasRequestIdVaultKey env
+    App.HasRequestIdVaultKey env,
+    App.HasSessionDataVaultKey env
   ) =>
   Wai.MiddlewareT m
 middleware nextApp req send = do
@@ -52,6 +54,9 @@ middleware nextApp req send = do
   let vault = Wai.vault req
   vaultKey <- asks App.getRequestIdVaultKey
   let requestId = maybe "" (T.pack . show) $ Vault.lookup vaultKey vault
+
+  sessionVaultKey <- asks App.getSessionDataVaultKey
+  let sessionUserId = Session.sessionUserId <$> Session.get (Session.fromVault sessionVaultKey vault)
 
   nextApp req $ \response -> do
     afterResponse <- liftIO $ Time.getCurrentTime
@@ -66,6 +71,7 @@ middleware nextApp req send = do
         ( (K.sl "time" now)
             -- <> (K.sl "response_size" responseSize)
             <> (K.sl "status" status)
+            <> (K.sl "session_user_id" sessionUserId)
             <> (K.sl "request_path" (decodeUtf8 $ Wai.rawPathInfo req))
             -- Just give me this as seconds please. Why is this so hard.
             <> (K.sl "duration" (printf "%.3f" (realToFrac duration :: Double) :: String))

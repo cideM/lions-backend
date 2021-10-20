@@ -269,11 +269,11 @@ run = do
             (Wai.liftMiddleware gzipMiddleware)
               . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
               . Request.middleware
-              . Logging.middleware
               -- It's important that the attachments middleware comes after the session
               -- middleware, so that the event attachments are not accessible by the
               -- public.
               . Session.middleware
+              . Logging.middleware
               . attchmentMiddleware
 
       let settings = setPort envPort $ setHost "localhost" defaultSettings
