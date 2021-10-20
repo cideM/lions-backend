@@ -49,7 +49,7 @@ withAppEnv f = do
 
       verbosity = case appEnv of
         App.Production -> K.V2
-        _ -> K.V1
+        _ -> K.V2
 
   System.Directory.createDirectoryIfMissing True storageDir
 
