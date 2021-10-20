@@ -47,6 +47,10 @@ withAppEnv f = do
         App.Production -> K.InfoS
         _ -> K.DebugS
 
+      verbosity = case appEnv of
+        App.Production -> K.V2
+        _ -> K.V1
+
   System.Directory.createDirectoryIfMissing True storageDir
 
   sessionKey <- ClientSession.getKey sessionKeyFile
@@ -60,6 +64,7 @@ withAppEnv f = do
           withInternalState
             ( \internalState -> do
                 Logging.withKatip
+                  verbosity
                   logLevel
                   "main"
                   (K.Environment . Text.pack $ show appEnv)
@@ -69,9 +74,6 @@ withAppEnv f = do
                     logEnv <- K.getLogEnv
 
                     let port = (3000 :: Int)
-
-                    K.katipAddContext (K.sl "min_log_level" logLevel) $ do
-                      K.logLocM K.InfoS "running at log level"
 
                     f
                       ( App.Env

@@ -10,11 +10,11 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Error as E
 import qualified Katip as K
 import Network.HTTP.Types (status302)
-import qualified User.Role.DB as Role
 import qualified Network.Wai as Wai
 import Session.Session (Session (..))
 import qualified Session.Session as Session
 import qualified Session.Valid
+import qualified User.Role.DB as Role
 import qualified Wai
 import qualified Web.ClientSession as ClientSession
 import qualified Web.Cookie as Cookie
@@ -62,16 +62,31 @@ login ::
   m Wai.Request
 login req = do
   sessionDataVaultKey <- asks App.getSessionDataVaultKey
-  sessionId <- getSessionId
-  session@(Session _ _ userId) <- Session.get sessionId >>= E.note' "no session found"
-  _ <- Session.Valid.parse session
-  roles <- Role.get userId >>= E.note' "no roles found"
-  let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
-  return $ req {Wai.vault = vault'}
-  where
-    getSessionId = do
-      sessionKey <- asks App.getSessionEncryptionKey
-      cookie <- E.note' "no cookie header" . lookup "cookie" $ Wai.requestHeaders req
-      session <- E.note' "no session cookie" . lookup "lions_session" $ Cookie.parseCookies cookie
-      decrypted <- E.note' "empty session cookie" $ ClientSession.decrypt sessionKey session
-      return . Session.Id $ decodeUtf8 decrypted
+  sessionKey <- asks App.getSessionEncryptionKey
+
+  case lookup "cookie" $ Wai.requestHeaders req of
+    Nothing -> return req
+    Just sessionCookieHeader -> do
+      sessionCookieEncrypted <-
+        E.note' "no session cookie"
+          . lookup "lions_session"
+          $ Cookie.parseCookies sessionCookieHeader
+
+      if sessionCookieEncrypted == ""
+        then return req
+        else do
+          decrypted <-
+            E.note' "empty session cookie" $
+              ClientSession.decrypt sessionKey sessionCookieEncrypted
+
+          let sessionId = Session.Id $ decodeUtf8 decrypted
+
+          session@(Session _ _ userId) <-
+            Session.get sessionId >>= E.note' "no session found"
+
+          _ <- Session.Valid.parse session
+
+          roles <- Role.get userId >>= E.note' "no roles found"
+
+          let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
+          return $ req {Wai.vault = vault'}

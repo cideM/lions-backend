@@ -16,14 +16,14 @@ import qualified System.IO
 import Text.Printf (printf)
 import qualified Wai
 
-withKatip :: K.Severity -> K.Namespace -> K.Environment -> K.KatipContextT IO b -> IO b
-withKatip minLevel namespace env f = do
+withKatip :: K.Verbosity -> K.Severity -> K.Namespace -> K.Environment -> K.KatipContextT IO b -> IO b
+withKatip verbosity minLevel namespace env f = do
   handleScribe <-
     K.mkHandleScribe
       K.ColorIfTerminal
       System.IO.stdout
       (K.permitItem minLevel)
-      K.V2
+      verbosity
 
   let makeLogEnv =
         K.registerScribe

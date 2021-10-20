@@ -120,7 +120,7 @@ withTestEnv appEnv f = do
     withInternalState
       ( \internalState -> do
           withDB $ \conn -> do
-            Logging.withKatip K.DebugS "main" (K.Environment . T.pack $ show appEnv) $ do
+            Logging.withKatip K.V3 K.DebugS "main" (K.Environment . T.pack $ show appEnv) $ do
               K.katipNoLogging $ do
                 ctx <- K.getKatipContext
                 ns <- K.getKatipNamespace
