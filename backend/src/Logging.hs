@@ -6,6 +6,7 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Text as T
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
@@ -65,6 +66,7 @@ middleware nextApp req send = do
         ( (K.sl "time" now)
             -- <> (K.sl "response_size" responseSize)
             <> (K.sl "status" status)
+            <> (K.sl "request_path" (decodeUtf8 $ Wai.rawPathInfo req))
             -- Just give me this as seconds please. Why is this so hard.
             <> (K.sl "duration" (printf "%.3f" (realToFrac duration :: Double) :: String))
             <> (K.sl "request_id" requestId)
