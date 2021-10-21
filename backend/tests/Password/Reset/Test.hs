@@ -62,6 +62,22 @@ tests =
               (Just _, Just Mail.Mail {..}) <- readIORef ref
               let (Mail.PlainText content) = mailPlainText
               T.isInfixOf token content @?= True
+            r -> assertFailure $ "unexpected DB result: " <> show r,
+      testCase "works with different case" $ do
+        withTestEnvProd $ \ref -> do
+          conn <- asks App.getDb
+          liftIO $ SQLite.execute_ conn "insert into users (password_digest, email) values ('foo', 'foo@bar.com')"
+
+          _ <- withFormRequest "email=%20fOO@bar.com%20" (withRender200 ResetHandlers.post)
+
+          rows <- liftIO $ SQLite.query_ conn "select token,expires,userid from reset_tokens"
+
+          liftIO $ case rows of
+            [(token, _, userid) :: (T.Text, T.Text, Integer)] -> do
+              userid @?= 1
+              (Just _, Just Mail.Mail {..}) <- readIORef ref
+              let (Mail.PlainText content) = mailPlainText
+              T.isInfixOf token content @?= True
             r -> assertFailure $ "unexpected DB result: " <> show r
     ]
   where

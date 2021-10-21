@@ -364,7 +364,7 @@ getCredentials ::
 getCredentials email = do
   conn <- asks App.getDb
   let withoutSpace = Text.strip email
-  r <- liftIO $ SQLite.query conn "SELECT id, salt, password_digest FROM users WHERE email = ?" [withoutSpace]
+  r <- liftIO $ SQLite.query conn "select id, salt, password_digest from users where email = ? collate nocase" [withoutSpace]
   return $ case r of
     [(userid, salt, pw)] ->
       case salt of

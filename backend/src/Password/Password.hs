@@ -94,7 +94,7 @@ get ::
   m (Maybe (Password Hashed))
 get email = do
   conn <- asks App.getDb
-  rows <- liftIO $ SQLite.query conn "SELECT salt, password_digest FROM users WHERE email = ?" [email]
+  rows <- liftIO $ SQLite.query conn "SELECT salt, password_digest FROM users WHERE email = ? collate nocase" [email]
   return $ case rows of
     [(salt, pw)] ->
       if salt == ""
