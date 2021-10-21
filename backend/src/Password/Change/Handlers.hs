@@ -76,16 +76,19 @@ post req = do
 
               E.runExceptT (Token.parse tok) >>= \case
                 Left (Token.NotFound token) -> do
+                  K.logLocM K.InfoS "token not found"
                   return . layout $
                     warning
                       [i|Der Verifizierungs-Code aus der Email wurde nicht gefunden, bitte an
                          einen Administrator wenden: #{token}|]
-                Left (Token.NoUser userid) ->
+                Left (Token.NoUser userid) -> do
+                  K.logLocM K.ErrorS "user not found for token"
                   return . layout $
                     warning
                       [i|Kein Nutzer zu diesem Verifizierungs-Code registriert. Bitte an einen
                          Administrator wenden: #{userid}|]
-                Left (Token.Expired expired) ->
+                Left (Token.Expired expired) -> do
+                  K.logLocM K.InfoS "token expired"
                   return . layout $
                     warning
                       [i|Der Verifizierungs-Code ist bereits abgelaufen. Bitte nochmals einen
@@ -93,8 +96,10 @@ post req = do
                          weiterhin besteht bitte an einen Administrator wenden. Der Code ist am
                          #{expired} abgelaufen.|]
                 Right (Token.Valid (Token.Token {..})) -> do
-                  Password.update tokenUserId hashed
-                  return . layout $ success "Password erfolgreich geändert"
+                  K.katipAddContext (K.sl "token_user_id" tokenUserId) $ do
+                    K.logLocM K.InfoS "successfully changed password"
+                    Password.update tokenUserId hashed
+                    return . layout $ success "Password erfolgreich geändert"
 
 -- GET handler that shows the form that lets users enter a new password.
 -- Expects a token to be passed via query string parameters. That token is

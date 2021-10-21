@@ -4,11 +4,11 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import qualified Katip as K
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Katip as K
 import Layout (LayoutStub (..), success)
 import Lucid
 import qualified Network.Wai as Wai
@@ -48,7 +48,7 @@ post req = do
         K.logLocM K.InfoS "no email param found"
         return $ formInvalid "Email darf nicht leer sein"
       Just emailAddr -> do
-        K.katipAddContext (K.sl "email" emailAddr) $ do
+        K.katipAddContext (K.sl "email" ([i|'#{emailAddr}'|] :: Text)) $ do
           Token.update emailAddr >>= \case
             Nothing -> do
               K.logLocM K.InfoS "email not found"
