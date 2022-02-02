@@ -114,6 +114,11 @@ render text =
         $ Text.words content
 
     maybeInsertUrl word =
-      case URI.parseURI (Text.unpack word) of
+      -- This is an ugly hack and also I'm done with Haskell and this project
+      -- and all of this crazy complexity. Haskell seems to have several
+      -- competing URI libraries but all of them recognize foo: as a URI
+      -- whereas I just want a URL parser that recognizes stuff like foo.com
+      -- but not foo:
+      case URI.parseURI (Text.unpack (Text.dropEnd 1 word)) of
         Just _ -> a_ [href_ word] $ toHtml word
         Nothing -> toHtml word
