@@ -10,9 +10,9 @@ tests =
   testGroup
     "Message.render"
     [ testCase "Converts empty lines into paragraphs" $
-        "<p>foo bar</p>" @=? renderText (Message.render "foo\r\nbar"),
+        "<p>foo\nbar</p>\n" @=? renderText (Message.render "foo\r\nbar"),
       testCase "Converts URLs" $
-        "<p><a href=\"http://www.google.de\">http://www.google.de</a></p>" @=? renderText (Message.render "http://www.google.de"),
+        "<p><a href=\"http://www.google.de\">http://www.google.de</a></p>\n" @=? renderText (Message.render "http://www.google.de"),
       testCase "Does not recognize colon as a URL" $
-        "<p>foo:</p>" @=? renderText (Message.render "foo:")
+        "<p>foo:</p>\n" @=? renderText (Message.render "foo:")
     ]

@@ -122,11 +122,12 @@ library
     , time
     , uri-encode
     , mtl
-    , network-uri
     , parsec
     , transformers
     , katip
     , uuid
+    , cmark-gfm
+    , xss-sanitize
     , vault
     , directory
     , filepath
