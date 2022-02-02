@@ -28,6 +28,8 @@ in
   config = {
     systemd.services.prepareDbFile = {
       wantedBy = [ "multi-user.target" ];
+      before = [ "migrations.service" ];
+      conflicts = [ "litestream.service" ];
       serviceConfig = {
         Type = "oneshot";
         Environment = [
@@ -38,8 +40,6 @@ in
         User = "lions-server";
         ProtectHome = "yes";
         PrivateDevices = "yes";
-        Conflicts = "litestream.service";
-        Before = "migrations.service";
         PrivateTmp = "yes";
         DynamicUser = "yes";
         StateDirectory = "lions-server";
@@ -50,7 +50,8 @@ in
 
     systemd.services.migrations = {
       wantedBy = [ "multi-user.target" ];
-
+      conflicts = [ "litestream.service" ];
+      before = [ "server.service" ];
       serviceConfig = {
         Environment = [
           "LIONS_SQLITE_PATH=%S/lions-server/db"
@@ -62,8 +63,6 @@ in
         Type = "oneshot";
         ProtectHome = "yes";
         PrivateDevices = "yes";
-        Conflicts = "litestream.service";
-        Before = "server.service";
         PrivateTmp = "yes";
         DynamicUser = "yes";
         StateDirectory = "lions-server";
