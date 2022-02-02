@@ -15,6 +15,8 @@ nixpkgs.lib.nixosSystem {
           "${nixpkgs}/nixos/modules/virtualisation/digital-ocean-image.nix"
         ];
 
+        nixpkgs.overlays = [ (import ./migrate.nix) ];
+
         config = {
           boot.loader.grub.enable = true;
 
