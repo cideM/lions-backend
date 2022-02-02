@@ -25,6 +25,7 @@ let
   spago2nix' = import spago2nix { inherit pkgs; };
 
   clientShell = pkgs.npmlock2nix.shell {
+    nodejs = pkgs.nodejs-14_x;
     src = ./client/.;
   };
 
@@ -66,6 +67,8 @@ pkgs.mkShell {
       pkgs.spago
       pkgs.nodePackages.pscid
       pkgs.nodePackages.purty
+
+      pkgs.nodePackages.npm-check-updates
 
       # Scripts
       lions-vm

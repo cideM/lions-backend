@@ -1,6 +1,7 @@
 { pkgs }:
 let
   nodeModules = pkgs.npmlock2nix.node_modules {
+    nodejs = pkgs.nodejs-14_x;
     src = ./.;
   };
 
