@@ -4,6 +4,7 @@
 nixpkgs.lib.nixosSystem {
   system = "x86_64-linux";
   modules = [
+    ({ pkgs, config, ... }: { nixpkgs.overlays = [ (import ./migrate.nix) ]; })
     sops-nix.nixosModules.sops
     ./sops.nix
     ./systemd-server.nix
@@ -14,8 +15,6 @@ nixpkgs.lib.nixosSystem {
         imports = [
           "${nixpkgs}/nixos/modules/virtualisation/digital-ocean-image.nix"
         ];
-
-        nixpkgs.overlays = [ (import ./migrate.nix) ];
 
         config = {
           boot.loader.grub.enable = true;

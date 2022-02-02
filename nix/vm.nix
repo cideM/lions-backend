@@ -61,9 +61,6 @@
             wantedBy = [ "multi-user.target" ];
           };
 
-          # Make sure to load the overlay so migrate is built with the correct
-          # drivers. In the server.nix file this is not necessary since the
-          # overlay is applied one level above, when creating a "pkgs"
           nixpkgs.overlays = [ (import ./migrate.nix) ];
 
           # For debugging
