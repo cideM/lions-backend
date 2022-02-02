@@ -85,7 +85,6 @@ pkgs.mkShell {
       pkgs.cli53
       pkgs.nodePackages.sass
       pkgs.nodePackages.postcss-cli
-      pkgs.packer
       pkgs.awscli2
       deploy-rs
     ] ++ clientShell.buildInputs;
