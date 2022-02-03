@@ -25,6 +25,11 @@ nixpkgs.lib.nixosSystem {
           serverWorkingDir = serverWorkingDir;
           serverExe = serverExe;
 
+          nix.gc = {
+            automatic = true;
+            dates = "weekly";
+          };
+
           environment.systemPackages = with pkgs; [
             pkgs.litestream
             sqlite-interactive
