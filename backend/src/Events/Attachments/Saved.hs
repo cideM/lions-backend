@@ -7,12 +7,13 @@ module Events.Attachments.Saved
 where
 
 import qualified App
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Aeson (FromJSON, ToJSON, defaultOptions, genericToEncoding, toEncoding)
 import Data.Text (Text)
-import GHC.Generics
-import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Events.Event.Id as Event
+import GHC.Generics
 import qualified System.Directory
 import System.FilePath ((</>))
 
@@ -29,6 +30,8 @@ instance FromJSON FileName
 unFileName :: FileName -> Text
 unFileName (FileName s) = s
 
+-- removeAll removes all attachments for the event ID and is safe to use even
+-- if no event directory was ever created
 removeAll ::
   ( MonadIO m,
     App.HasEventStorage env,
@@ -38,7 +41,11 @@ removeAll ::
   m ()
 removeAll (Event.Id eid) = do
   destinationDir <- asks App.getStorageDir
-  liftIO $ System.Directory.removeDirectoryRecursive $ destinationDir </> show eid
+  let eventAttachmentDir = destinationDir </> show eid
+  exists <- liftIO $ System.Directory.doesDirectoryExist eventAttachmentDir
+  when
+    exists
+    (liftIO $ System.Directory.removeDirectoryRecursive eventAttachmentDir)
 
 remove ::
   ( MonadIO m,
