@@ -108,6 +108,10 @@ $ fd -e hs | entr -c cabal v2-test
 
 ### End-To-End Tests
 
+```shell
+$ nix run .#e2e
+```
+
 There's one simple end-to-end test which only works on Linux. You can make this
 work on MacOS as well by running QEMU in Docker. Probably won't work for M1
 though.
