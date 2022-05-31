@@ -15,6 +15,7 @@ import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Aeson (ToJSON, defaultOptions, genericToEncoding, toEncoding)
+import Data.Containers.ListUtils (nubOrd)
 import qualified Data.Aeson as Aeson
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -48,7 +49,7 @@ parseRow :: EventRow -> Either Text (Id, Event Saved.FileName)
 parseRow (id, title, date, family, desc, loc, replies, attachments) = do
   (replies' :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
   (attachments' :: [Saved.FileName]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
-  return (Id id, Event title date family desc loc replies' attachments')
+  return (Id id, Event title date family desc loc replies' (nubOrd attachments'))
 
 get ::
   ( MonadIO m,

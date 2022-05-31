@@ -20,7 +20,7 @@ import System.FilePath ((</>))
 -- An attachment that's stored permanently is just a string representing a file
 -- name in the database and a file with that same name on disk.
 newtype FileName = FileName Text
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Generic, Ord)
 
 instance ToJSON FileName where
   toEncoding = genericToEncoding defaultOptions
