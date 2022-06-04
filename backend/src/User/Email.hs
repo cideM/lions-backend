@@ -12,7 +12,7 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Text.Email.Validate (EmailAddress, emailAddress, toByteString)
 
-newtype Email = Email EmailAddress deriving (Show, Eq)
+newtype Email = Email EmailAddress deriving (Show, Eq, Ord)
 
 instance ToJSON Email where
   toJSON (Email email) = String $ User.Email.show email

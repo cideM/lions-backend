@@ -13,6 +13,7 @@ newtype Id = Id Int
   deriving (Show)
   deriving (Generic)
   deriving (Eq)
+  deriving (Ord)
 
 instance ToJSON Id where
   toEncoding = genericToEncoding defaultOptions

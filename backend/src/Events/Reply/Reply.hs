@@ -29,7 +29,7 @@ data Reply = Reply
     replyUserId :: User.Id,
     replyGuests :: Int
   }
-  deriving (Show, Generic, Eq)
+  deriving (Show, Generic, Eq, Ord)
 
 instance FromJSON Reply where
   parseJSON = A.genericParseJSON defaultOptions {A.fieldLabelModifier = lower1 . drop 5}
