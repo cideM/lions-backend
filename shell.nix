@@ -1,4 +1,4 @@
-{ pkgs, spago2nix, projectEnv, deploy-rs, sopsHook }:
+{ pkgs, spago2nix, projectEnv }:
 let
   # Generate tags based on the exposed Haskell modules. "fast-tags" doesn't
   # respect .gitignore and as such just calling fast-tags will result in lots
@@ -6,21 +6,6 @@ let
   lions-tags = pkgs.writeShellScriptBin "lions-tags" ''
     ${pkgs.haskellPackages.fast-tags}/bin/fast-tags --cabal ./backend/lions-backend.cabal
   '';
-
-  # Run this command to BUILD AND START a QEMU VM. This should work on both
-  # MacOS and Linux. On MacOS it uses Docker, since virtfs is not supported.
-  # The VM uses hardcoded DB values as seed data. Please update the vm nix
-  # derivation if more data is needed, rather than trying to somehow mirror the
-  # local SQLite DB into the QEMU VM.
-  lions-vm = pkgs.writeShellScriptBin "lions-vm" (if pkgs.stdenv.isDarwin then ''
-    docker run -it -p 127.0.0.1:81:8081 -p 127.0.0.1:80:8080 --rm -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes bash -c 'nix build .#packages.x86_64-linux.vm && QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443" ./result/bin/run-lions-server-vm'
-  '' else ''
-    nix build .#packages.x86_64-linux.vm || exit 1
-    echo "visit https://localhost:8081/"
-    echo "or http://localhost:8080/"
-    export QEMU_NET_OPTS="hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8081-:443"
-    ./result/bin/run-lions-server-vm
-  '');
 
   spago2nix' = import spago2nix { inherit pkgs; };
 
@@ -31,13 +16,8 @@ let
 
 in
 pkgs.mkShell {
-  sopsPGPKeyDirs = [
-    "./keys/hosts"
-    "./keys/users"
-  ];
   inputsFrom = [ projectEnv ];
   nativeBuildInputs = [
-    sopsHook
     spago2nix'
   ] ++ clientShell.buildInputs;
   propagatedBuildInputs = clientShell.propagatedBuildInputs;
@@ -71,7 +51,6 @@ pkgs.mkShell {
       pkgs.nodePackages.npm-check-updates
 
       # Scripts
-      lions-vm
       lions-tags
 
       # Infra
@@ -86,6 +65,5 @@ pkgs.mkShell {
       pkgs.nodePackages.sass
       pkgs.nodePackages.postcss-cli
       pkgs.awscli2
-      deploy-rs
     ] ++ clientShell.buildInputs;
 }

@@ -6,7 +6,6 @@
     nixpkgs-20-09.url = "github:NixOS/nixpkgs/nixos-20.09";
     npmlock2nix.url = "github:nix-community/npmlock2nix";
     npmlock2nix.flake = false;
-    deploy-rs.url = "github:serokell/deploy-rs";
     spago2nix = {
       url = "github:justinwoo/spago2nix/master";
       flake = false;
@@ -20,7 +19,6 @@
       flake = false;
     };
     flake-utils.url = "github:numtide/flake-utils";
-    sops-nix.url = "github:Mic92/sops-nix";
   };
 
   outputs =
@@ -32,8 +30,6 @@
     , flake-utils
     , nixpkgs-20-09
     , npmlock2nix
-    , deploy-rs
-    , sops-nix
     }:
     let
       allSystems = flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ]
@@ -142,18 +138,6 @@
             lionsE2e = pkgs.writeShellScriptBin "lions-e2e" ''
               exec ${backend}/bin/run-lions-e2e
             '';
-
-            # Note that we're using the test server which is just a wrapper
-            # around the normal server with LIONS_ENV set to "test"
-            vm = (import ./nix/vm.nix {
-              nixpkgs = nixpkgs-20-09;
-              inherit sops-nix;
-              # Yes, this is correct. If we use "testServer" we just end up in
-              # the directory of the wrapper, which includes only a "bin"
-              # folder.
-              serverWorkingDir = "${pkgs.lionsServer}/";
-              serverExe = "${pkgs.lionsServerTest}/bin/lions-server-test";
-            });
           in
           rec {
             packages = flake-utils.lib.flattenTree
@@ -163,9 +147,7 @@
                 e2e = lionsE2e;
                 testServer = pkgs.lionsServerTest;
                 allAssets = clientStuff.allAssets;
-              } // (nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
-                vm = vm.vm;
-              }));
+              });
 
             defaultPackage = packages.server;
 
@@ -177,29 +159,10 @@
 
             devShell = import ./shell.nix {
               inherit pkgs spago2nix projectEnv;
-              sopsHook = sops-nix.packages.${system}.sops-import-keys-hook;
-              deploy-rs = deploy-rs.packages.${system}.deploy-rs;
             };
           }
         );
 
-      serverSystem = (import ./nix/server.nix {
-        inherit nixpkgs sops-nix;
-        serverWorkingDir = "${allSystems.packages.x86_64-linux.server}/";
-        serverExe = "${allSystems.packages.x86_64-linux.server}/server";
-      });
-
     in
-    allSystems // rec {
-      deploy.nodes.server = {
-        sshUser = "root";
-        hostname = "134.122.81.69";
-        profiles.system = {
-          user = "root";
-          path = deploy-rs.lib.x86_64-linux.activate.nixos serverSystem;
-        };
-      };
-      nixosConfigurations.server = serverSystem;
-      checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
-    };
+    allSystems;
 }
