@@ -57,7 +57,7 @@ test-suite tests
     Password.Reset.Test
     Password.Change.Test
   build-depends:
-    , base
+    , base                   == 4.14.3.0
     , filepattern
     , lions-backend
     , unliftio
@@ -102,20 +102,18 @@ library
     , data-default
     , bcrypt
     , bytestring
-    , cipher-aes
     , clientsession
     , filepattern
+    , memory
     , containers
     , cookie
     , resourcet
-    , crypto-api
-    , crypto-cipher-types
     , email-validate
     , http-types
     , lens
     , lucid
     , safe-exceptions
-    , scrypt
+    , cryptonite
     , sqlite-simple
     , string-interpolate
     , text
@@ -197,7 +195,7 @@ executable run-lions-backend
   import:         shared-props
   main-is:        Main.hs
   build-depends:
-    , base
+    , base                   == 4.14.3.0
     , lions-backend
 
   hs-source-dirs: app
@@ -206,7 +204,7 @@ executable run-lions-e2e
   import:         shared-props
   main-is:        Main.hs
   build-depends:
-    , base
+    , base                   == 4.14.3.0
     , safe-exceptions
     , tasty
     , req

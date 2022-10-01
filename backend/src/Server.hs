@@ -276,7 +276,7 @@ run = do
               . Logging.middleware
               . attchmentMiddleware
 
-      let settings = setPort envPort $ setHost "localhost" defaultSettings
+      let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
 
       liftIO . runSettings settings $
         ( \r s ->

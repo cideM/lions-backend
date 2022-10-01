@@ -17,11 +17,14 @@ module Scrypt (verifyPassword, firebaseHashPw) where
 --     Encode the result using base64
 
 import Crypto.Cipher.AES
-import Crypto.Cipher.Types (IV, nullIV)
-import Crypto.Scrypt
+import Crypto.Cipher.Types (IV, cipherInit, ctrCombine, nullIV)
+import Crypto.Error (CryptoFailable (..))
+import Crypto.KDF.Scrypt (Parameters (..), generate)
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.ByteString.Base64
 import Data.Text
+import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 
 firebaseHashPw ::
@@ -41,12 +44,18 @@ firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
        ) of
     Left e -> Left e
     Right (userSaltDec, signerKeyDec, saltSepDec) ->
-      case scryptParams memcost rounds 1 of
-        Nothing -> Left "couldn't create scrypt params"
-        Just params ->
-          let derivedKey = getHash $ scrypt params (Salt (userSaltDec <> saltSepDec)) (Pass pw)
-              aes = initAES (BS.take 32 derivedKey)
-           in Right . encodeBase64 $ encryptCTR aes (nullIV :: IV AES) signerKeyDec
+      let params =
+            Parameters
+              { n = (fromIntegral $ (2 :: Integer) ^ memcost), -- \^ Cpu/Memory cost ratio. must be a power of 2 greater than 1. also known as N.
+                r = (fromIntegral rounds), -- \^ Must satisfy r * p < 2^30
+                p = 1, -- \^ Must satisfy r * p < 2^30
+                outputLength = 32 -- \^ the number of bytes to generate out of Scrypt
+              }
+          (derivedKey :: ByteString) = generate params pw (userSaltDec <> saltSepDec)
+       in case cipherInit derivedKey of
+            CryptoFailed e -> Left (Text.pack $ show e)
+            CryptoPassed context ->
+              Right . encodeBase64 $ ctrCombine context (nullIV :: IV AES256) signerKeyDec
 
 verifyPassword ::
   BS.ByteString -> -- Project's base64_signer_key

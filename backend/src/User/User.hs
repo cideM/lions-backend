@@ -15,7 +15,7 @@ import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Crypto.BCrypt as BCrypt
-import Crypto.Random (SystemRandom, genBytes, newGenIO)
+import qualified Crypto.Random
 import Data.Aeson
   ( ToJSON,
     defaultOptions,
@@ -318,11 +318,7 @@ save ::
 save profile = do
   conn <- asks App.getDb
 
-  g <- liftIO (newGenIO :: IO SystemRandom)
-
-  password <- case genBytes 20 g of
-    Left e -> throwString $ show e
-    Right (pw, _) -> return pw
+  password <- liftIO $ do Crypto.Random.getRandomBytes 20
 
   hashed <-
     (liftIO $ BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy password) >>= \case

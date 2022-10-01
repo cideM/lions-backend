@@ -15,7 +15,7 @@ import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Crypto.BCrypt as BCrypt
-import Crypto.Random (SystemRandom, genBytes, newGenIO)
+import qualified Crypto.Random
 import Data.Text (Text)
 import qualified User.User as User
 import qualified Data.Text as T
@@ -102,14 +102,10 @@ create ::
   m (Text, Time.UTCTime)
 create = do
   expires <- liftIO $ timeDaysFromNow 10
-  (g :: SystemRandom) <- liftIO $ newGenIO
-  token <- case genBytes 20 g of
-    Left e -> throwString $ show e
-    Right (token', _) ->
-      (liftIO $ BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy token') >>= \case
-        Nothing -> throwString "hashing reset token failed"
-        Just token'' -> return $ decodeUtf8 token''
-  return (token, expires)
+  token <- liftIO $ do Crypto.Random.getRandomBytes 20
+  (liftIO $ BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy token) >>= \case
+    Nothing -> throwString "hashing reset token failed"
+    Just token'' -> return (decodeUtf8 token'', expires)
 
 -- Generates a new password reset token for the given user email and stores it
 -- in the DB, removing whatever old tokens existed
