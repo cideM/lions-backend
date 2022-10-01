@@ -2,8 +2,6 @@
   description = "Lions Club Website";
 
   inputs = {
-    litestream-src.url = "github:benbjohnson/litestream/v0.3.4";
-    litestream-src.flake = false;
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixpkgs-20-09.url = "github:NixOS/nixpkgs/nixos-20.09";
     npmlock2nix.url = "github:nix-community/npmlock2nix";
@@ -36,7 +34,6 @@
     , npmlock2nix
     , deploy-rs
     , sops-nix
-    , litestream-src
     }:
     let
       allSystems = flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ]
@@ -80,16 +77,6 @@
                       mkdir $out
                       cp *.svg $out/
                     '';
-                  };
-                })
-
-                (self: super: {
-                  litestream = pkgs.buildGoModule rec {
-                    pname = "litestream";
-                    version = "0.3.4";
-
-                    src = litestream-src;
-                    vendorSha256 = "sha256-O1d2xQ+1Xn88JCaVv4ge8HmrFqEl3lRTJIhgZoAri7U=";
                   };
                 })
 
