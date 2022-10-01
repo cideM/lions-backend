@@ -138,6 +138,13 @@
             lionsE2e = pkgs.writeShellScriptBin "lions-e2e" ''
               exec ${backend}/bin/run-lions-e2e
             '';
+
+            docker = pkgs.dockerTools.buildImage {
+              name = "server";
+              config = {
+                Cmd = [ "${pkgs.lionsServer}/server" ];
+              };
+            };
           in
           rec {
             packages = flake-utils.lib.flattenTree
@@ -147,6 +154,7 @@
                 e2e = lionsE2e;
                 testServer = pkgs.lionsServerTest;
                 allAssets = clientStuff.allAssets;
+                docker = docker;
               });
 
             defaultPackage = packages.server;
