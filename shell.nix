@@ -42,12 +42,6 @@ pkgs.mkShell {
       pkgs.sqlite-web
       pkgs.litestream
 
-      # Purescript
-      pkgs.purescript
-      pkgs.spago
-      pkgs.nodePackages.pscid
-      pkgs.nodePackages.purty
-
       pkgs.nodePackages.npm-check-updates
 
       # Scripts

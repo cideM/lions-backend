@@ -98,7 +98,8 @@ layout auth activeNavLink (LayoutStub {layoutStubTitle = pageTitle, layoutStubCo
                              )
                       )
           div_ [class_ "py-4 content"] pageContent
-          script_ [src_ "/index.js"] ("" :: Text.Text)
+          -- TODO: Rebuild
+          -- script_ [src_ "/index.js"] ("" :: Text.Text)
           script_ [src_ "/bootstrap.bundle.min.js"] ("" :: Text.Text)
   where
     f :: (Text, Text, Maybe ActiveNavLink) -> Html ()

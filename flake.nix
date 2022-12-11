@@ -6,10 +6,6 @@
     nixpkgs.url = "github:zhaofengli/nixpkgs/darwin-cross-linux";
     npmlock2nix.url = "github:nix-community/npmlock2nix";
     npmlock2nix.flake = false;
-    spago2nix = {
-      url = "github:justinwoo/spago2nix/master";
-      flake = false;
-    };
     bootstrapsrc = {
       url = "https://github.com/twbs/bootstrap/archive/v5.0.2.zip";
       flake = false;
@@ -23,7 +19,6 @@
 
   outputs =
     { self
-    , spago2nix
     , bootstrap-icons
     , bootstrapsrc
     , nixpkgs
@@ -180,7 +175,7 @@
             defaultApp = apps.server;
 
             devShell = import ./shell.nix {
-              inherit pkgs spago2nix projectEnv;
+              inherit pkgs projectEnv;
             };
           }
         );
