@@ -97,7 +97,9 @@ library
     , amazonka-ses
     , amazonka-s3
     , amazonka-core
-    , base                   ^>=4.14.1.0
+    , amazonka-sts
+    , amazonka-sso
+    , base                   >=4.3
     , base64
     , data-default
     , bcrypt
@@ -112,6 +114,7 @@ library
     , crypto-cipher-types
     , email-validate
     , http-types
+    , http-client
     , lens
     , lucid
     , safe-exceptions

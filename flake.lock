@@ -26,11 +26,11 @@
     },
     "flake-utils": {
       "locked": {
-        "lastModified": 1644229661,
-        "narHash": "sha256-1YdnJAsNy69bpcjuoKdOYQX0YxZBiCYZo4Twxerqv7k=",
+        "lastModified": 1659877975,
+        "narHash": "sha256-zllb8aq3YO3h8B/U0/J1WBgAL8EX5yWf5pMj3G0NAmc=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "3cecb5b042f7f209c56ffd8371b2711a290ec797",
+        "rev": "c0e246b9b83f637f4681389ecabcb2681b4f3af0",
         "type": "github"
       },
       "original": {
@@ -41,32 +41,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1646470760,
-        "narHash": "sha256-dQISyucVCCPaFioUhy5ZgfBz8rOMKGI8k13aPDFTqEs=",
-        "owner": "NixOS",
+        "lastModified": 1666085244,
+        "narHash": "sha256-P2FU3vXmFVjZ3AxwwqqtToXTnmK0fY8HsCveqCdYJm0=",
+        "owner": "zhaofengli",
         "repo": "nixpkgs",
-        "rev": "1fc7212a2c3992eedc6eedf498955c321ad81cc2",
+        "rev": "bc8e7bae1568aa9f209562fc7bdebfddfc2162ad",
         "type": "github"
       },
       "original": {
-        "owner": "NixOS",
-        "ref": "nixpkgs-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs-20-09": {
-      "locked": {
-        "lastModified": 1635350005,
-        "narHash": "sha256-tAMJnUwfaDEB2aa31jGcu7R7bzGELM9noc91L2PbVjg=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "1c1f5649bb9c1b0d98637c8c365228f57126f361",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-20.09",
+        "owner": "zhaofengli",
+        "ref": "darwin-cross-linux",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -74,11 +58,11 @@
     "npmlock2nix": {
       "flake": false,
       "locked": {
-        "lastModified": 1645047048,
-        "narHash": "sha256-5nLXWhniuFvYD45iXdqx2xS3kdPt+Uj1Z+UgjttXY4o=",
+        "lastModified": 1666460237,
+        "narHash": "sha256-HME6rnysvCwUVtH+BDWDGahmweMaLgD2wqHeRuGp6QI=",
         "owner": "nix-community",
         "repo": "npmlock2nix",
-        "rev": "beca8b49d2dbe9739ca45786b5a5a0f65fcb5350",
+        "rev": "eeed152290ec2425f96c5e74e469c40b621e1468",
         "type": "github"
       },
       "original": {
@@ -93,7 +77,6 @@
         "bootstrapsrc": "bootstrapsrc",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-20-09": "nixpkgs-20-09",
         "npmlock2nix": "npmlock2nix",
         "spago2nix": "spago2nix"
       }

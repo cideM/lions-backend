@@ -2,8 +2,8 @@
 , amazonka-ses, base, base64, bcrypt, bytestring, cipher-aes
 , clientsession, cmark-gfm, containers, cookie, crypto-api
 , crypto-cipher-types, data-default, directory, email-validate
-, errors, filepath, filepattern, http-types, katip, lens, lib
-, lucid, mtl, parsec, process, req, resourcet, retry
+, errors, filepath, filepattern, http-client, http-types, katip
+, lens, lib, lucid, mtl, parsec, process, req, resourcet, retry
 , safe-exceptions, scrypt, sqlite-simple, string-interpolate, tasty
 , tasty-hunit, text, time, transformers, unliftio, uri-encode, uuid
 , vault, wai, wai-extra, wai-middleware-static, wai-session, warp
@@ -19,11 +19,11 @@ mkDerivation {
     aeson amazonka amazonka-core amazonka-s3 amazonka-ses base base64
     bcrypt bytestring cipher-aes clientsession cmark-gfm containers
     cookie crypto-api crypto-cipher-types data-default directory
-    email-validate errors filepath filepattern http-types katip lens
-    lucid mtl parsec resourcet safe-exceptions scrypt sqlite-simple
-    string-interpolate text time transformers unliftio uri-encode uuid
-    vault wai wai-extra wai-middleware-static wai-session warp
-    xss-sanitize
+    email-validate errors filepath filepattern http-client http-types
+    katip lens lucid mtl parsec resourcet safe-exceptions scrypt
+    sqlite-simple string-interpolate text time transformers unliftio
+    uri-encode uuid vault wai wai-extra wai-middleware-static
+    wai-session warp xss-sanitize
   ];
   executableHaskellDepends = [
     base process req retry safe-exceptions tasty tasty-hunit
@@ -36,5 +36,4 @@ mkDerivation {
     unliftio uri-encode vault wai wai-extra warp
   ];
   license = "unknown";
-  hydraPlatforms = lib.platforms.none;
 }

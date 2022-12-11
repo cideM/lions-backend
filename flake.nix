@@ -2,8 +2,8 @@
   description = "Lions Club Website";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    nixpkgs-20-09.url = "github:NixOS/nixpkgs/nixos-20.09";
+    # nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:zhaofengli/nixpkgs/darwin-cross-linux";
     npmlock2nix.url = "github:nix-community/npmlock2nix";
     npmlock2nix.flake = false;
     spago2nix = {
@@ -28,7 +28,6 @@
     , bootstrapsrc
     , nixpkgs
     , flake-utils
-    , nixpkgs-20-09
     , npmlock2nix
     }:
     let
@@ -36,6 +35,7 @@
         (system':
           let
             # This is a hopefully temporary workaround until GHC works with aarch64
+            # nope, Purescript also doesn't work so
             system =
               if system' == "aarch64-darwin" then "x86_64-darwin"
               else system';
@@ -44,6 +44,20 @@
               inherit system;
               overlays = [
                 (import ./nix/migrate.nix)
+
+                (self: super: {
+                  haskellPackages = super.haskellPackages.override {
+                    overrides = haskellPackagesNew: haskellPackagesOld: rec {
+                      amazonka-core = haskellPackagesNew.callPackage ./amazonka-core.nix { };
+                      amazonka = haskellPackagesNew.callPackage ./amazonka.nix { };
+                      amazonka-ses = haskellPackagesNew.callPackage ./amazonka-ses.nix { };
+                      amazonka-s3 = haskellPackagesNew.callPackage ./amazonka-s3.nix { };
+                      amazonka-sts = haskellPackagesNew.callPackage ./amazonka-sts.nix { };
+                      amazonka-sso = haskellPackagesNew.callPackage ./amazonka-sso.nix { };
+                      amazonka-test = haskellPackagesNew.callPackage ./amazonka-test.nix { };
+                    };
+                  };
+                })
 
                 # TODO: Use this for bootstrap etc. as well
                 (self: super: {
@@ -142,7 +156,7 @@
             docker = pkgs.dockerTools.buildImage {
               name = "server";
               config = {
-                Cmd = [ "${pkgs.lionsServer}/server" ];
+                Cmd = [ "${pkgs.pkgsCross.gnu64.lionsServer}/server" ];
               };
             };
           in

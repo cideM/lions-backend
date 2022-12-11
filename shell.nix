@@ -54,14 +54,9 @@ pkgs.mkShell {
       lions-tags
 
       # Infra
-      # This doesn't work on NixOS because of yet another fucking NPM package
-      # that tries to reimplement an OS package manager and downloads random
-      # binaries from the internet. The problem here is `node-re2`. I really
-      # hate NPM and Javascript. https://github.com/uhop/node-re2/issues/107
-      # pkgs.nodePackages.firebase-tools
-      pkgs.terraform_0_15
+      pkgs.terraform
       pkgs.nodejs
-      pkgs.cli53
+      # pkgs.cli53
       pkgs.nodePackages.sass
       pkgs.nodePackages.postcss-cli
       pkgs.awscli2

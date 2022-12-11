@@ -12,7 +12,8 @@ import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Katip as K
 import qualified Logging
-import qualified Network.AWS as AWS
+import qualified Amazonka as AWS
+import qualified Amazonka.Auth as AWS.Auth
 import qualified Password.Reset.Mail as Mail
 import qualified System.Directory
 import System.Environment (getEnv)
@@ -40,7 +41,7 @@ withAppEnv f = do
         mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
         let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
             sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
-        awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
+        awsEnv <- AWS.newEnv $ pure . AWS.Auth.fromKeys aKey sKey
         return (Mail.sendAws awsEnv)
 
   let logLevel = case appEnv of
