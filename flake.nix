@@ -2,8 +2,7 @@
   description = "Lions Club Website";
 
   inputs = {
-    # nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    nixpkgs.url = "github:zhaofengli/nixpkgs/darwin-cross-linux";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     npmlock2nix.url = "github:nix-community/npmlock2nix";
     npmlock2nix.flake = false;
     bootstrapsrc = {
@@ -148,10 +147,15 @@
               exec ${backend}/bin/run-lions-e2e
             '';
 
+            entrypoint = pkgs.writeShellScriptBin "entrypoint" ''
+              ${pkgs.pkgsCross.gnu64.litestream}/bin/litestream restore -if-db-not-exists -o $SQLITE_DB_PATH s3://$LITESTREAM_BUCKET/$LITESTREAM_RESTORE_PATH
+              exec ${pkgs.pkgsCross.gnu64.litestream}/bin/litestream replicate -exec "${pkgs.pkgsCross.gnu64.lionsServer}/server" $SQLITE_DB_PATH s3://$LITESTREAM_BUCKET/$LITESTREAM_REPLICATE_PATH
+            '';
+
             docker = pkgs.dockerTools.buildImage {
               name = "server";
               config = {
-                Cmd = [ "${pkgs.pkgsCross.gnu64.lionsServer}/server" ];
+                Entrypoint = [ "${entrypoint}/bin/entrypoint" ];
               };
             };
           in

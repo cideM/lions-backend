@@ -17,3 +17,4 @@ COPY . /opt/app
 RUN cabal install
 
 CMD ["server"]
+ENTRYPOINT ["./entrypoint.sh"]
