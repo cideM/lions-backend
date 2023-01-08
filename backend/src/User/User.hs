@@ -12,9 +12,10 @@ where
 
 import qualified App
 import Control.Exception.Safe
+import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import qualified Crypto.BCrypt as BCrypt
+import Crypto.KDF.BCrypt (hashPassword)
 import qualified Crypto.Random
 import Data.Aeson
   ( ToJSON,
@@ -317,13 +318,8 @@ save ::
   m ()
 save profile = do
   conn <- asks App.getDb
-
-  password <- liftIO $ do Crypto.Random.getRandomBytes 20
-
-  hashed <-
-    (liftIO $ BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy password) >>= \case
-      Nothing -> throwString "hashing password failed"
-      Just pw -> return $ decodeUtf8 pw
+  (password :: ByteString) <- liftIO $ do Crypto.Random.getRandomBytes 20
+  (hashed :: ByteString) <- liftIO $ hashPassword 12 password
 
   liftIO $
     SQLite.execute
@@ -343,7 +339,7 @@ save profile = do
       birthday_partner 
     ) VALUES (?, ?, ?, ?, ?, ?, ? , ? , ? , ? , ?)
     |]
-      $ ProfileCreateWithPw (hashed, profile)
+      $ ProfileCreateWithPw ((decodeUtf8 hashed), profile)
 
 -- Returns ID, hashed password and salt used for hashing. This will be a
 -- non-empty text for firebase data that was imported. It will be empty for all

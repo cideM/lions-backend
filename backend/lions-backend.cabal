@@ -100,7 +100,6 @@ library
     , base                   ^>=4.14.1.0
     , base64
     , data-default
-    , bcrypt
     , bytestring
     , clientsession
     , filepattern

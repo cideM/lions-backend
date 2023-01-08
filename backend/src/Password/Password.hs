@@ -9,9 +9,10 @@ where
 
 import qualified App
 import Control.Exception.Safe
+import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import qualified Crypto.BCrypt as BCrypt
+import Crypto.KDF.BCrypt (hashPassword)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Database.SQLite.Simple as SQLite
@@ -78,11 +79,9 @@ hash ::
   ) =>
   Text ->
   m Hashed
-hash pw =
-  liftIO $
-    BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy (encodeUtf8 pw) >>= \case
-      Nothing -> throwString "hashing password failed"
-      Just pw' -> return . Hashed $ decodeUtf8 pw'
+hash pw = do
+  (hashed :: ByteString) <- liftIO $ hashPassword 12 (encodeUtf8 pw)
+  return (Hashed $ decodeUtf8 hashed)
 
 get ::
   ( MonadIO m,

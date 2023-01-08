@@ -4,7 +4,7 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import qualified Crypto.BCrypt as BCrypt
+import Crypto.KDF.BCrypt (validatePassword)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
@@ -118,7 +118,7 @@ login email formPw = do
     -- BCrypt, new credentials
     Nothing -> do
       K.logLocM K.DebugS "found bcrypt credentials"
-      E.unless (BCrypt.validatePassword dbPw' formPw') $ do
+      E.unless (validatePassword formPw' dbPw') $ do
         K.logLocM K.DebugS "incorrect password"
         E.throwError "incorrect password"
       K.logLocM K.DebugS "successful bcrypt login"
