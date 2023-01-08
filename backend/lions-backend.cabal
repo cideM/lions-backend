@@ -106,7 +106,7 @@ library
     , resourcet
     , email-validate
     , http-types
-    , lens
+    , microlens
     , lucid
     , safe-exceptions
     , cryptonite

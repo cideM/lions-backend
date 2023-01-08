@@ -9,7 +9,7 @@ module Password.Reset.Mail
 where
 
 import Control.Exception.Safe
-import Control.Lens
+import Lens.Micro (set)
 import Data.IORef (IORef)
 import qualified Data.IORef as IORef
 import Control.Monad.IO.Class (MonadIO, liftIO)
