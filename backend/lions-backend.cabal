@@ -92,8 +92,6 @@ library
     , aeson
     , amazonka
     , amazonka-ses
-    , amazonka-s3
-    , amazonka-core
     , base                   ^>=4.14.1.0
     , base64
     , data-default
