@@ -32,14 +32,11 @@ common shared-props
     GADTs
     QuasiQuotes
     DeriveGeneric
-    NamedFieldPuns
     LambdaCase
     FlexibleInstances
     FlexibleContexts
     OverloadedStrings
-    TupleSections
     ScopedTypeVariables
-
 
 test-suite tests
   import:         shared-props
