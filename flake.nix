@@ -26,7 +26,7 @@
             moreutils
             jq
             awscli2
-            sqlite
+            sqlite-interactive
             cabal2nix
             litestream
             flyctl
