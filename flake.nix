@@ -25,6 +25,7 @@
             coreutils
             moreutils
             jq
+            go-migrate
             awscli2
             sqlite-interactive
             cabal2nix
