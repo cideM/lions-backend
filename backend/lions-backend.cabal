@@ -100,7 +100,6 @@ library
     , bytestring
     , clientsession
     , filepattern
-    , memory
     , containers
     , cookie
     , resourcet
