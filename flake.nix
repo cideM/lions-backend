@@ -29,6 +29,7 @@
             sqlite
             cabal2nix
             litestream
+            flyctl
             nodePackages.typescript-language-server
             nodePackages.prettier
             (workaround140774 haskellPackages.ormolu)
