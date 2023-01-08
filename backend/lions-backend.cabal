@@ -199,17 +199,3 @@ executable run-lions-backend
     , lions-backend
 
   hs-source-dirs: app
-
-executable run-lions-e2e
-  import:         shared-props
-  main-is:        Main.hs
-  build-depends:
-    , base                   == 4.14.3.0
-    , safe-exceptions
-    , tasty
-    , req
-    , tasty-hunit
-    , retry
-    , process
-
-  hs-source-dirs: e2e
