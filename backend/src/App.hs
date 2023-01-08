@@ -20,7 +20,7 @@ where
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks, local)
-import Control.Monad.Trans.Reader (ReaderT (..))
+import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Trans.Resource (InternalState)
 import Data.ByteString (ByteString)
 import qualified Database.SQLite.Simple as SQLite
