@@ -45,6 +45,7 @@ import Network.Wai.Parse
     setMaxRequestFileSize,
     tempFileBackEnd,
   )
+import qualified UnliftIO
 import qualified User.Session
 import Wai (paramsToMap)
 
@@ -163,11 +164,11 @@ postDelete eventid _ = do
   case maybeEvent of
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
-      Saved.removeAll eventid
       Event.delete eventid
       return $
         LayoutStub "Veranstaltung" $
-          success $ "Veranstaltung " <> Event.eventTitle event <> " erfolgreich gelöscht"
+          success $
+            "Veranstaltung " <> Event.eventTitle event <> " erfolgreich gelöscht"
 
 getEdit ::
   ( MonadIO m,
@@ -213,6 +214,7 @@ postCreate ::
     MonadReader env m,
     MonadThrow m,
     K.KatipContext m,
+    UnliftIO.MonadUnliftIO m,
     App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
     App.HasInternalState env,
@@ -273,12 +275,13 @@ postCreate req _ = do
             h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
             EventForm.render "Speichern" "/veranstaltungen/neu" input state
       Right newEvent@Event.Event {..} -> do
-        eid <- Event.save newEvent
+        eid <- Event.save newEvent actionsUpload
 
         Attachments.Actions.apply eid actions
 
         return . LayoutStub "Neue Veranstaltung" $
-          success $ "Neue Veranstaltung " <> eventTitle <> " erfolgreich erstellt!"
+          success $
+            "Neue Veranstaltung " <> eventTitle <> " erfolgreich erstellt!"
 
 postUpdate ::
   ( MonadThrow m,
@@ -286,6 +289,7 @@ postUpdate ::
     K.KatipContext m,
     App.HasEventStorage env,
     App.HasInternalState env,
+    UnliftIO.MonadUnliftIO m,
     App.HasSessionEncryptionKey env,
     MonadReader env m,
     App.HasDb env
@@ -319,7 +323,9 @@ postUpdate req eid@(Event.Id eventid) _ = do
             uploadCheckbox = zip (map Temporary.attachmentFileName actionsUpload) (repeat True)
 
             checkboxes =
-              keepCheckbox ++ savedButDeleteCheckbox ++ notSavedAndDeleteCheckbox
+              keepCheckbox
+                ++ savedButDeleteCheckbox
+                ++ notSavedAndDeleteCheckbox
                 ++ uploadCheckbox
 
             input =
@@ -345,8 +351,9 @@ postUpdate req eid@(Event.Id eventid) _ = do
           Right newEvent -> do
             Attachments.Actions.apply eid actions
 
-            Event.update eid newEvent
+            Event.update eid actionsDelete actionsUpload newEvent
 
             return $
               LayoutStub "Veranstaltung Editieren" $
-                success $ "Veranstaltung " <> Event.eventTitle newEvent <> " erfolgreich editiert"
+                success $
+                  "Veranstaltung " <> Event.eventTitle newEvent <> " erfolgreich editiert"

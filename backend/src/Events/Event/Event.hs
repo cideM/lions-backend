@@ -11,23 +11,29 @@ where
 import qualified App
 import Control.Arrow (left)
 import Control.Exception.Safe
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Aeson (ToJSON, defaultOptions, genericToEncoding, toEncoding)
-import Data.Containers.ListUtils (nubOrd)
 import qualified Data.Aeson as Aeson
+import Data.ByteString (readFile)
+import Data.Containers.ListUtils (nubOrd)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.QQ (sql)
 import qualified Events.Attachments.Saved as Saved
+import qualified Events.Attachments.Temporary as Temporary
 import Events.Event.Id (Id (..))
 import Events.Reply.Reply (Reply)
 import GHC.Generics
-import Prelude hiding (id)
+import qualified System.Directory
+import System.FilePath ((</>))
+import qualified UnliftIO
+import Prelude hiding (id, readFile)
 
 data Event attachment = Event
   { eventTitle :: Text,
@@ -47,8 +53,14 @@ type EventRow = (Int, Text, Time.UTCTime, Bool, Text, Text, Text, Text)
 
 parseRow :: EventRow -> Either Text (Id, Event Saved.FileName)
 parseRow (id, title, date, family, desc, loc, replies, attachments) = do
-  (replies' :: [Reply]) <- (\e -> [i|error decoding replies JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
-  (attachments' :: [Saved.FileName]) <- (\e -> [i|error decoding attachments JSON: #{e}|]) `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
+  (replies' :: [Reply]) <-
+    (\e -> [i|error decoding replies JSON: #{e}|])
+      `left` Aeson.eitherDecodeStrict (encodeUtf8 replies)
+
+  (attachments' :: [Saved.FileName]) <-
+    (\e -> [i|error decoding attachments JSON: #{e}|])
+      `left` Aeson.eitherDecodeStrict (encodeUtf8 attachments)
+
   return (Id id, Event title date family desc loc (nubOrd replies') (nubOrd attachments'))
 
 get ::
@@ -146,12 +158,20 @@ getAll = do
 delete ::
   ( MonadIO m,
     MonadReader env m,
+    App.HasEventStorage env,
     App.HasDb env
   ) =>
   Id ->
   m ()
 delete (Id eventid) = do
+  destinationDir <- asks App.getStorageDir
   conn <- asks App.getDb
+  let eventidText = [i|#{eventid}|] :: Text
+  let destDir = destinationDir </> (Text.unpack eventidText)
+  exists <- liftIO $ System.Directory.doesDirectoryExist destDir
+  when
+    exists
+    (liftIO $ System.Directory.removeDirectoryRecursive destDir)
   liftIO $ SQLite.execute conn "delete from event_replies where eventid = ?" [eventid]
   liftIO $ SQLite.execute conn "delete from event_attachments where eventid = ?" [eventid]
   liftIO $ SQLite.execute conn "delete from events where id = ?" [eventid]
@@ -159,69 +179,108 @@ delete (Id eventid) = do
 save ::
   ( MonadIO m,
     MonadReader env m,
+    UnliftIO.MonadUnliftIO m,
     App.HasDb env
   ) =>
   Event Text ->
+  [Temporary.Attachment] ->
   m Id
-save Event {..} = do
+save Event {..} toUpload = do
   conn <- asks App.getDb
 
-  liftIO $
-    SQLite.execute
+  id <- UnliftIO.withRunInIO $ \runInIO ->
+    SQLite.withTransaction
       conn
-      [sql|
-            insert into events (
-              title,
-              date,
-              family_allowed,
-              description,
-              location
-            ) values (?,?,?,?,?)
-          |]
-      (eventTitle, eventDate, eventFamilyAllowed, eventDescription, eventLocation)
+      ( runInIO . liftIO $ do
+          SQLite.execute
+            conn
+            [sql|
+                  insert into events (
+                    title,
+                    date,
+                    family_allowed,
+                    description,
+                    location
+                  ) values (?,?,?,?,?)
+                |]
+            (eventTitle, eventDate, eventFamilyAllowed, eventDescription, eventLocation)
 
-  id <- liftIO $ SQLite.lastInsertRowId conn
+          id <- SQLite.lastInsertRowId conn
 
-  forM_ eventAttachments $ \filename ->
-    liftIO $
-      SQLite.execute
-        conn
-        [sql|insert into event_attachments (eventid, filename) values (?,?)|]
-        (id, filename)
+          forM_ toUpload $ \Temporary.Attachment {..} -> do
+            content <- readFile attachmentFilePath
+            SQLite.execute
+              conn
+              [sql|insert into event_attachments (eventid, filename, content) values (?,?,?)|]
+              (id, attachmentFileName, content)
+            System.Directory.removeFile attachmentFilePath
+
+          return id
+      )
 
   return . Id $ fromIntegral id
 
 update ::
   ( MonadIO m,
     MonadReader env m,
+    App.HasEventStorage env,
+    UnliftIO.MonadUnliftIO m,
     App.HasDb env
   ) =>
   Id ->
+  [Saved.FileName] ->
+  [Temporary.Attachment] ->
   Event Text ->
   m ()
-update (Id eventid) Event {..} = do
+update (Id eventid) toDelete toUpload Event {..} = do
   conn <- asks App.getDb
+  destinationDir <- asks App.getStorageDir
 
-  liftIO $ SQLite.execute conn [sql|delete from event_attachments where eventid = ?|] [eventid]
-
-  liftIO $
-    SQLite.execute
+  UnliftIO.withRunInIO $ \runInIO ->
+    SQLite.withTransaction
       conn
-      [sql|
-        update events
-        set
-          title = ?,
-          date = ?,
-          family_allowed = ?,
-          description = ?,
-          location = ?
-        where id = ?
-      |]
-      (eventTitle, eventDate, eventFamilyAllowed, eventDescription, eventLocation, eventid)
+      ( runInIO $ do
+          forM_ toDelete $ \savedAttachment -> do
+            let filename = Saved.unFileName savedAttachment
+            let eventidText = [i|#{eventid}|] :: Text
 
-  forM_ eventAttachments $ \filename ->
-    liftIO $
-      SQLite.execute
-        conn
-        [sql|insert into event_attachments (eventid, filename) values (?,?)|]
-        (eventid, filename)
+            -- try deleting old attachments stored on disk
+            let destDir = destinationDir </> (Text.unpack eventidText)
+            let dest = destDir </> (Text.unpack filename)
+            exists <- liftIO $ System.Directory.doesFileExist dest
+            when
+              exists
+              (liftIO $ System.Directory.removeFile dest)
+
+            -- delete new attachments stored entirely in the DB, which also
+            -- deletes the metadata for the old attachments
+            liftIO $
+              SQLite.execute
+                conn
+                [sql|delete from event_attachments where eventid = ? and filename = ? |]
+                (eventid, Saved.unFileName savedAttachment)
+
+          liftIO $
+            SQLite.execute
+              conn
+              [sql|
+                update events
+                set
+                  title = ?,
+                  date = ?,
+                  family_allowed = ?,
+                  description = ?,
+                  location = ?
+                where id = ?
+              |]
+              (eventTitle, eventDate, eventFamilyAllowed, eventDescription, eventLocation, eventid)
+
+          forM_ toUpload $ \Temporary.Attachment {..} -> do
+            content <- liftIO $ readFile attachmentFilePath
+            liftIO $
+              SQLite.execute
+                conn
+                [sql|insert into event_attachments (eventid, filename, content) values (?,?,?)|]
+                (eventid, attachmentFileName, content)
+            liftIO $ System.Directory.removeFile attachmentFilePath
+      )

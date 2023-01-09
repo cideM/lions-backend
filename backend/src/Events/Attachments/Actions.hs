@@ -58,19 +58,9 @@ apply ::
   Event.Id ->
   Actions ->
   m ()
-apply eid actions@Actions {..} = do
+apply _ actions@Actions {..} = do
   K.katipAddContext (K.sl "file_actions" actions) $ do
-    forM_ actionsUpload $ \(Temporary.Attachment {..}) -> do
-      K.logLocM K.DebugS "saving file"
-      Temporary.save eid attachmentFilePath $ Text.unpack attachmentFileName
-
-      K.logLocM K.DebugS "removing temp file"
-      liftIO $ System.Directory.removeFile attachmentFilePath
-
-    forM_ actionsDelete $ \(Saved.FileName filename) -> do
-      K.logLocM K.DebugS "removing attachment"
-      Saved.remove eid $ Text.unpack filename
-
+    -- Why is this even needed?
     forM_ actionsDontUpload $ \(Temporary.Attachment {..}) -> do
       K.logLocM K.DebugS "removing temp file"
       liftIO $ System.Directory.removeFile attachmentFilePath

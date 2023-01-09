@@ -259,12 +259,6 @@ run = do
                   Gzip.gzipCheckMime = Gzip.defaultCheckMime
                 }
 
-      let attchmentMiddleware =
-            -- This middleware rewrites file paths for the following middleware,
-            -- which serves them
-            AttachmentsMiddleware.middleware envEventAttachmentStorageDir
-              . (Wai.liftMiddleware $ staticPolicy (addBase envEventAttachmentStorageDir))
-
       let middlewares =
             (Wai.liftMiddleware gzipMiddleware)
               . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
@@ -274,7 +268,7 @@ run = do
               -- public.
               . Session.middleware
               . Logging.middleware
-              . attchmentMiddleware
+              . AttachmentsMiddleware.middleware
 
       let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
 
