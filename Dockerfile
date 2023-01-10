@@ -37,7 +37,7 @@ COPY ./backend /opt/app/backend
 # > Various combinations of configure/build/install and
 # > --enable-executable-static / --enable-executable-stripping do not produce a
 # > static + stripped executable.
-RUN cabal install run-lions-backend --install-method=copy --installdir /opt/app
+RUN cabal install run-lions-backend --enable-executable-stripping --install-method=copy --installdir /opt/app
 
 FROM public.ecr.aws/docker/library/haskell:${HASKELL_VERSION}
 WORKDIR /opt/app
