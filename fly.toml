@@ -6,10 +6,21 @@ kill_timeout = 5
 processes = []
 
 [env]
+  # Secrets:
+  # * LITESTREAM_ACCESS_KEY_ID
+  # * LITESTREAM_SECRET_ACCESS_KEY
+  # * LIONS_SCRYPT_SIGNER_KEY
+  # * LIONS_SCRYPT_SALT_SEP
+  # * LIONS_AWS_SES_ACCESS_KEY
+  # * LIONS_AWS_SES_SECRET_ACCESS_KEY
   LITESTREAM_BUCKET = "lions-achern-litestream-replica-1"
-  LITESTREAM_RESTORE_PATH = "dev-db"
-  LITESTREAM_REPLICATE_PATH = "dev-db"
-  SQLITE_DB_PATH = "/usr/local/lib/sqlite/sqlite.db"
+  LITESTREAM_RESTORE_PATH = "prod"
+  LITESTREAM_REPLICATE_PATH = "fly-members-1"
+  LIONS_SQLITE_PATH = "/usr/local/lib/sqlite/sqlite.db"
+  LIONS_STORAGE_DIR = "/usr/local/lib/"
+  LIONS_ENV = "production"
+  LIONS_SERVER_LISTEN_ADDR = "127.0.0.1"
+  LIONS_SESSION_KEY_FILE = "/usr/local/lib/sqlite/session.aes"
 
 [mounts]
   source = "sqlite"
