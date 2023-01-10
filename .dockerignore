@@ -3,3 +3,5 @@ result
 .direnv
 flake.*
 tags
+client/node_modules
+dist-newstyle/
