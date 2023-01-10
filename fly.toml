@@ -23,7 +23,7 @@ processes = []
   LIONS_SESSION_KEY_FILE = "/usr/local/lib/sqlite/session.aes"
 
 [mounts]
-  source = "sqlite"
+  source = "data"
   destination = "/usr/local/lib"
 
 [experimental]
