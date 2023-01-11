@@ -12,19 +12,18 @@ where
 
 import qualified App
 import Control.Exception.Safe
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Foldable (find)
-import Data.List (partition)
+import Data.List (partition, (\\))
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
 import qualified Data.Text as Text
+import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
-import Events.Attachments.Actions (Actions (..))
-import qualified Events.Attachments.Actions as Attachments.Actions
-import qualified Events.Attachments.Saved as Saved
-import qualified Events.Attachments.Temporary as Temporary
+import qualified Database.SQLite.Simple as SQLite
+import Database.SQLite.Simple.QQ (sql)
 import qualified Events.Event.Event as Event
 import qualified Events.Event.Form as EventForm
 import qualified Events.Event.Full as Event.Full
@@ -39,7 +38,8 @@ import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
 import Network.Wai.Parse
-  ( ParseRequestBodyOptions,
+  ( FileInfo (..),
+    ParseRequestBodyOptions,
     defaultParseRequestBodyOptions,
     parseRequestBodyEx,
     setMaxRequestFileSize,
@@ -47,14 +47,15 @@ import Network.Wai.Parse
   )
 import qualified UnliftIO
 import qualified User.Session
-import Wai (paramsToMap)
+import Prelude hiding (id)
 
 getAll ::
   (MonadIO m, MonadReader env m, MonadThrow m, App.HasDb env) =>
   User.Session.Authenticated ->
   m LayoutStub
 getAll auth = do
-  events <- Event.getAll
+  conn <- asks App.getDb
+  events <- Event.getAll conn
 
   now <- liftIO $ Time.getCurrentTime
 
@@ -73,7 +74,7 @@ getAll auth = do
     -- Ideally there's zero markup in the handler files.
     eventPreviewsHtml ::
       [ ( Event.Id,
-          Event.Event Saved.FileName,
+          Event.Event,
           Maybe Reply,
           Event.Preview.IsExpired
         )
@@ -104,6 +105,7 @@ get ::
   User.Session.Authenticated ->
   m (Maybe LayoutStub)
 get req eventid auth = do
+  conn <- asks App.getDb
   now <- liftIO $ Time.getCurrentTime
   let queryString = Wai.queryString req
       whichReplyBoxToShow = case queryString of
@@ -114,7 +116,7 @@ get req eventid auth = do
   let userIsAdmin = User.Session.isAdmin' auth
       User.Session.Session {..} = User.Session.get' auth
 
-  Event.get eventid >>= \case
+  Event.get conn eventid >>= \case
     Nothing -> return Nothing
     Just e@Event.Event {..} -> do
       let isExpired = Event.Full.IsExpired (now >= eventDate)
@@ -134,7 +136,8 @@ getConfirmDelete ::
   User.Session.Admin ->
   m LayoutStub
 getConfirmDelete eid@(Event.Id eventid) _ = do
-  (Event.get eid) >>= \case
+  conn <- asks App.getDb
+  (Event.get conn eid) >>= \case
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
       return . LayoutStub "Veranstaltung Löschen" $
@@ -160,11 +163,12 @@ postDelete ::
   User.Session.Admin ->
   m LayoutStub
 postDelete eventid _ = do
-  maybeEvent <- Event.get eventid
+  conn <- asks App.getDb
+  maybeEvent <- Event.get conn eventid
   case maybeEvent of
     Nothing -> throwString $ "delete event but no event for id: " <> show eventid
     Just event -> do
-      Event.delete eventid
+      Event.delete conn eventid
       return $
         LayoutStub "Veranstaltung" $
           success $
@@ -180,22 +184,28 @@ getEdit ::
   User.Session.Admin ->
   m LayoutStub
 getEdit eid@(Event.Id eventid) _ = do
-  (Event.get eid) >>= \case
+  conn <- asks App.getDb
+  (Event.get conn eid) >>= \case
     Nothing -> throwString $ "edit event but no event for id: " <> show eventid
     Just Event.Event {..} ->
       let input =
+            -- (zip (map Saved.unFileName eventAttachments) (repeat True))
+            -- TODO: checkboxes?
             EventForm.FormInput
               eventTitle
               (renderDateForInput eventDate)
               eventLocation
               eventDescription
               eventFamilyAllowed
-              (zip (map Saved.unFileName eventAttachments) (repeat True))
-              []
        in return . LayoutStub "Veranstaltung Editieren" $
             div_ [class_ "container p-2"] $ do
               h1_ [class_ "h4 mb-3"] "Veranstaltung editieren"
-              EventForm.render "Speichern" (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren") input EventForm.emptyState
+              EventForm.render
+                "Speichern"
+                (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
+                [] -- TODO?
+                input
+                EventForm.emptyState
   where
     renderDateForInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
 
@@ -204,7 +214,7 @@ getCreate _ = do
   return . LayoutStub "Neue Veranstaltung" $
     div_ [class_ "container p-2"] $ do
       h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
-      EventForm.render "Speichern" "/veranstaltungen/neu" EventForm.emptyForm EventForm.emptyState
+      EventForm.render "Speichern" "/veranstaltungen/neu" [] EventForm.emptyForm EventForm.emptyState
 
 fileUploadOpts :: ParseRequestBodyOptions
 fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
@@ -223,74 +233,81 @@ postCreate ::
   Wai.Request ->
   User.Session.Admin ->
   m LayoutStub
-postCreate req _ = do
+postCreate request _ = do
+  -- This internalState should be short lived since we're creating it for each request, hopefully
   internalState <- asks App.getInternalState
-  -- There's no point in trying to catch an exception arising from a payload
-  -- that's too large. The connection will be closed, so no more bytes are read
-  -- by the server, and the browser will likely just show a connection reset
-  -- browser error. Meaning the user will have no idea what's going on.
-  -- Therefore the limit is set really high. If I want to enforce a lower limit
-  -- but also show nice errors that means always reading the entire request
-  -- payload and then doing a check for its size. For now I just won't enforce
-  -- any file limit other than the hard 100MB.
+  (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) request
+
   K.katipAddNamespace "postCreate" $ do
-    body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
-
-    let params = paramsToMap $ fst body
-        fromParams key = Map.findWithDefault "" key params
-
-    (actions@Actions {..}, encryptedFileInfos) <- Attachments.Actions.make [] body
-
-    -- Most of this code shows up in the postUpdate handler as well, at least
-    -- in some form. Not sure if I want to further extract shared code.
-    -- Dependencies are always a double-edged sword.
-    -- makeActions includes all the logic for combining the various sources of input:
-    --   - New files
-    --   - Checkboxes from previous request
-    --   - Files already uploaded and stored in DB
-    --  The code here is then just to turn that state into UI
-    let notSavedAndDeleteCheckbox =
-          map
-            (\(Temporary.Attachment {..}) -> (attachmentFileName, False))
-            actionsDontUpload
-
-        uploadCheckbox = zip (map Temporary.attachmentFileName actionsUpload) (repeat True)
-
-        checkboxes = notSavedAndDeleteCheckbox ++ uploadCheckbox
-
+    let paramsMap = Map.fromList [(decodeUtf8 k, decodeUtf8 v) | (k, v) <- params]
+        fromParams key = Map.findWithDefault "" key paramsMap
         input =
           EventForm.FormInput
             (fromParams "eventTitleInput")
             (fromParams "eventDateInput")
             (fromParams "eventLocationInput")
             (fromParams "eventDescriptionInput")
-            (isJust $ Map.lookup "eventFamAllowedInput" params)
-            checkboxes
-            encryptedFileInfos
+            (isJust $ Map.lookup "eventFamAllowedInput" paramsMap)
 
     case EventForm.makeEvent input of
       Left state -> do
         return . LayoutStub "Neue Veranstaltung" $
           div_ [class_ "container p-2"] $ do
             h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
-            EventForm.render "Speichern" "/veranstaltungen/neu" input state
-      Right newEvent@Event.Event {..} -> do
-        eid <- Event.save newEvent actionsUpload
-
-        Attachments.Actions.apply eid actions
+            EventForm.render "Speichern" "/veranstaltungen/neu" [] input state
+      Right fields@(title, _, _, _, _) -> do
+        conn <- asks App.getDb
+        UnliftIO.withRunInIO $ \runInIO ->
+          SQLite.withTransaction
+            conn
+            ( runInIO $ do
+                eventid <- save fields
+                -- An empty string is the expected behavior when no file is selected, according to MDN
+                -- > A file input's value attribute contains a string that represents the
+                -- > path to the selected file(s). If no file is selected yet, the value is an
+                -- > empty string ("")
+                let newFiles = [file | file@(_, fileInfo) <- files, fileName fileInfo /= "\"\""]
+                storeAttachments eventid newFiles
+            )
 
         return . LayoutStub "Neue Veranstaltung" $
           success $
-            "Neue Veranstaltung " <> eventTitle <> " erfolgreich erstellt!"
+            "Neue Veranstaltung " <> title <> " erfolgreich erstellt!"
+  where
+    storeAttachments eventid files = do
+      conn <- asks App.getDb
+      forM_ files $ \(_, fileInfo) -> do
+        liftIO $
+          SQLite.execute
+            conn
+            [sql|insert into event_attachments (eventid, filename, content) values (?,?,?)|]
+            (eventid, decodeUtf8 $ fileName fileInfo, fileContent fileInfo)
+
+    save (title, date, location, description, familyAllowed) = do
+      conn <- asks App.getDb
+      liftIO $
+        SQLite.execute
+          conn
+          [sql|
+              insert into events (
+                title,
+                date,
+                family_allowed,
+                description,
+                location
+              ) values (?,?,?,?,?)
+            |]
+          (title, date, familyAllowed, description, location)
+
+      id <- liftIO $ SQLite.lastInsertRowId conn
+      return id
 
 postUpdate ::
   ( MonadThrow m,
     MonadIO m,
     K.KatipContext m,
-    App.HasEventStorage env,
     App.HasInternalState env,
     UnliftIO.MonadUnliftIO m,
-    App.HasSessionEncryptionKey env,
     MonadReader env m,
     App.HasDb env
   ) =>
@@ -298,62 +315,87 @@ postUpdate ::
   Event.Id ->
   User.Session.Admin ->
   m LayoutStub
-postUpdate req eid@(Event.Id eventid) _ = do
+postUpdate request (Event.Id eventid) _ = do
+  -- This internalState should be short lived since we're creating it for each request, hopefully
   internalState <- asks App.getInternalState
-  body <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) req
+  (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) request
 
-  K.katipAddNamespace "postUpdate" $ do
-    Event.get eid >>= \case
-      Nothing -> throwString $ "edit event but no event for id: " <> show eventid
-      Just Event.Event {..} -> do
-        (actions@Actions {..}, encryptedFileInfos) <- Attachments.Actions.make eventAttachments body
+  let paramsMap = Map.fromList [(decodeUtf8 k, decodeUtf8 v) | (k, v) <- params]
+      fromParams key = Map.findWithDefault "" key paramsMap
+      input =
+        EventForm.FormInput
+          (fromParams "eventTitleInput")
+          (fromParams "eventDateInput")
+          (fromParams "eventLocationInput")
+          (fromParams "eventDescriptionInput")
+          (isJust $ Map.lookup "eventFamAllowedInput" paramsMap)
 
-        let params = paramsToMap $ fst body
-            fromParams key = Map.findWithDefault "" key params
+  case EventForm.makeEvent input of
+    Left state ->
+      return $
+        LayoutStub "Veranstaltung Editieren" $
+          div_ [class_ "container p-3 d-flex justify-content-center"] $
+            EventForm.render
+              "Speichern"
+              (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
+              []
+              input
+              state
+    Right fields@(title, _, _, _, _) -> do
+      conn <- asks App.getDb
+      UnliftIO.withRunInIO $ \runInIO ->
+        SQLite.withTransaction
+          conn
+          ( runInIO $ do
+              -- An empty string is the expected behavior when no file is selected, according to MDN
+              -- > A file input's value attribute contains a string that represents the
+              -- > path to the selected file(s). If no file is selected yet, the value is an
+              -- > empty string ("")
+              let newFiles = [file | file@(_, fileInfo) <- files, fileName fileInfo /= "\"\""]
+              storeAttachments newFiles
 
-            savedButDeleteCheckbox = zip (map Saved.unFileName actionsDelete) (repeat False)
+              -- TODO: Change name of newFileCheckbox
+              -- need to flatten [[filename]]
+              current <- liftIO $ concat <$> SQLite.query conn [sql|select filename from event_attachments where eventid = ?|] [eventid]
+              let keep = [decodeUtf8 value | (key, value) <- params, key == "newFileCheckbox"]
+              deleteAttachments (current \\ keep)
 
-            keepCheckbox = zip (map Saved.unFileName actionsKeep) (repeat True)
+              updateEvent fields
+          )
+      return $
+        LayoutStub "Veranstaltung Editieren" $
+          success $
+            "Veranstaltung " <> title <> " erfolgreich editiert"
+  where
+    updateEvent (title, date, location, description, familyAllowed) = do
+      conn <- asks App.getDb
+      liftIO $
+        SQLite.execute
+          conn
+          [sql| update events set
+                title = ?,
+                date = ?,
+                family_allowed = ?,
+                description = ?,
+                location = ?
+                where id = ?
+            |]
+          (title, date, familyAllowed, description, location, eventid)
 
-            notSavedAndDeleteCheckbox =
-              map
-                (\(Temporary.Attachment {..}) -> (attachmentFileName, False))
-                actionsDontUpload
+    storeAttachments files = do
+      conn <- asks App.getDb
+      forM_ files $ \(_, fileInfo) -> do
+        liftIO $
+          SQLite.execute
+            conn
+            [sql|insert into event_attachments (eventid, filename, content) values (?,?,?)|]
+            (eventid, decodeUtf8 $ fileName fileInfo, fileContent fileInfo)
 
-            uploadCheckbox = zip (map Temporary.attachmentFileName actionsUpload) (repeat True)
-
-            checkboxes =
-              keepCheckbox
-                ++ savedButDeleteCheckbox
-                ++ notSavedAndDeleteCheckbox
-                ++ uploadCheckbox
-
-            input =
-              EventForm.FormInput
-                (fromParams "eventTitleInput")
-                (fromParams "eventDateInput")
-                (fromParams "eventLocationInput")
-                (fromParams "eventDescriptionInput")
-                (isJust $ Map.lookup "eventFamAllowedInput" params)
-                checkboxes
-                encryptedFileInfos
-
-        case EventForm.makeEvent input of
-          Left state ->
-            return $
-              LayoutStub "Veranstaltung Editieren" $
-                div_ [class_ "container p-3 d-flex justify-content-center"] $
-                  EventForm.render
-                    "Speichern"
-                    (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
-                    input
-                    state
-          Right newEvent -> do
-            Attachments.Actions.apply eid actions
-
-            Event.update eid actionsDelete actionsUpload newEvent
-
-            return $
-              LayoutStub "Veranstaltung Editieren" $
-                success $
-                  "Veranstaltung " <> Event.eventTitle newEvent <> " erfolgreich editiert"
+    deleteAttachments filenames = do
+      conn <- asks App.getDb
+      forM_ filenames $ \fileName -> do
+        liftIO $
+          SQLite.execute
+            conn
+            [sql|delete from event_attachments where eventid = ? and filename = ? |]
+            (eventid, fileName)

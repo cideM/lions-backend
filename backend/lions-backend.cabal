@@ -50,7 +50,6 @@ test-suite tests
     Feed.Message.Test
     Login.Test
     Events.Event.Event.Test
-    Events.Attachments.Actions.Test
     Password.Reset.Test
     Password.Change.Test
   build-depends:
@@ -133,10 +132,7 @@ library
     Env
     Events.Reply.Reply
     Events.Reply.Handlers
-    Events.Attachments.Actions
-    Events.Attachments.Temporary
     Events.Attachments.Middleware
-    Events.Attachments.Saved
     Events.Event.Event
     Events.Event.Handlers
     Events.Event.Full

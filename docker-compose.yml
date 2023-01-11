@@ -7,7 +7,6 @@ services:
       context: .
     volumes:
       - sqlite:/var/www/db/:rw
-      - attachments:/var/www/images/:rw
       - ./client/assets/index.js:/opt/app/public/index.js
     ports:
       - "3555:3000"
@@ -29,4 +28,3 @@ services:
 
 volumes:
   sqlite:
-  attachments:

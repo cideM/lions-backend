@@ -13,7 +13,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding as T
 import qualified Data.Time as Time
-import qualified Events.Attachments.Saved as Saved
 import qualified Events.Event.Event as Events
 import qualified Events.Event.Id as Event
 import qualified Events.Reply.Reply as Event
@@ -32,7 +31,7 @@ renderEvent ::
   ShowAdminTools ->
   IsExpired ->
   Event.Id ->
-  Events.Event Saved.FileName ->
+  Events.Event ->
   Html ()
 renderEvent
   (ShowAdminTools showAdminTools)
@@ -55,9 +54,10 @@ renderEvent
           ul_ [class_ "m-0"] $ do
             forM_
               eventAttachments
-              ( \(Saved.FileName filename) ->
+              ( \filename ->
                   li_ [] $
-                    a_ [href_ [i|/events/#{eventId}/#{filename}|]] $ toHtml filename
+                    a_ [href_ [i|/events/#{eventId}/#{filename}|]] $
+                      toHtml filename
               )
       when showAdminTools $ div_ [class_ "card-footer"] $ renderAdminTools eid
 
@@ -163,7 +163,7 @@ renderReplies ::
   IsExpired ->
   Maybe Event.Reply ->
   Event.Id ->
-  Events.Event Saved.FileName ->
+  Events.Event ->
   Html ()
 renderReplies activeBox expired ownReply eid Events.Event {..} = do
   let coming = length (filter Event.replyComing eventReplies)
@@ -182,14 +182,16 @@ renderReplies activeBox expired ownReply eid Events.Event {..} = do
         a_ (makeAttrs Own "own") "Antwort"
 
         a_ (makeAttrs Yes "yes") $ do
-          span_ [class_ "d-none d-md-block"]
+          span_
+            [class_ "d-none d-md-block"]
             [i|Teilnehmer (#{toHtml $ show withGuests})|]
           span_ [class_ "d-md-none text-success"] $ do
             checkSvg
             [i|(#{toHtml $ show withGuests})|]
 
         a_ (makeAttrs No "no") $ do
-          span_ [class_ "d-none d-md-block"]
+          span_
+            [class_ "d-none d-md-block"]
             [i|Absagen (#{toHtml $ show notComing})|]
           span_ [class_ "d-md-none text-danger"] $ do
             xCrossSvg
@@ -209,7 +211,7 @@ render ::
   ShowAdminTools ->
   Maybe Event.Reply ->
   Event.Id ->
-  Events.Event Saved.FileName ->
+  Events.Event ->
   Html ()
 render activeBox expiration showAdminTools ownReply eid event =
   div_ [class_ "container"] $

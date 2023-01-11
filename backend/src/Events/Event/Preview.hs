@@ -6,7 +6,6 @@ import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import qualified Events.Attachments.Saved as Saved
 import qualified Events.Event.Event as Events
 import qualified Events.Event.Id as Event
 import qualified Events.Reply.Reply as Event
@@ -15,7 +14,7 @@ import Lucid
 
 newtype IsExpired = IsExpired Bool deriving (Show)
 
-render :: (Event.Id, Events.Event Saved.FileName, Maybe Event.Reply, IsExpired) -> Html ()
+render :: (Event.Id, Events.Event, Maybe Event.Reply, IsExpired) -> Html ()
 render (Event.Id eventid, Events.Event {..}, ownReply, IsExpired isExpired) = do
   let dateFormatted = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ eventDate
       coming = eventReplies & filter Event.replyComing & length
@@ -37,14 +36,16 @@ render (Event.Id eventid, Events.Event {..}, ownReply, IsExpired isExpired) = do
       when youreNotComing $ do span_ [class_ "badge bg-danger text-white"] "Abgesagt"
     div_ [class_ "card-body"] $ do
       h1_ [class_ "card-title h5"] $
-        a_ [href_ [i|/veranstaltungen/#{eventid}|]] $ toHtml eventTitle
+        a_ [href_ [i|/veranstaltungen/#{eventid}|]] $
+          toHtml eventTitle
       h2_ [class_ "card-subtitle text-muted h6"] $ toHtml $ "Ort: " <> eventLocation
       p_ [class_ "card-text"] ""
       when (coming > 0 || notComing > 0) $
         div_ [class_ "d-flex"] $ do
           when (coming > 0) $
             span_ [class_ "badge rounded-pill bg-success me-2"] $
-              toHtml $ ([i|Teilnehmer: #{coming + guests}|] :: Text)
+              toHtml $
+                ([i|Teilnehmer: #{coming + guests}|] :: Text)
           when (notComing > 0) $
             span_ [class_ "badge rounded-pill bg-danger"] $
               toHtml $

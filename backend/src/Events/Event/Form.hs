@@ -9,12 +9,9 @@ module Events.Event.Form
 where
 
 import Control.Monad (when)
-import Data.ByteString (ByteString)
 import Data.Text (Text)
-import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
-import Events.Event.Event (Event (..))
-import Form (FormFieldState (..), notEmpty, processField, validDate)
+import Form (FormFieldState (..), notEmpty, validDate)
 import Layout (describedBy_)
 import Lucid
 
@@ -31,9 +28,7 @@ data FormInput = FormInput
     createEventInputDate :: Text,
     createEventInputLocation :: Text,
     createEventInputDescription :: Text,
-    createEventInputFamilyAllowed :: Bool,
-    createEventInputCheckboxes :: [(Text, Bool)],
-    createEventInputFilesHidden :: [ByteString]
+    createEventInputFamilyAllowed :: Bool
   }
   deriving (Show)
 
@@ -44,39 +39,31 @@ emptyForm =
       createEventInputDate = "",
       createEventInputLocation = "",
       createEventInputDescription = "",
-      createEventInputFamilyAllowed = False,
-      createEventInputCheckboxes = [],
-      createEventInputFilesHidden = []
+      createEventInputFamilyAllowed = False
     }
 
 emptyState :: FormState
 emptyState = FormState NotValidated NotValidated NotValidated NotValidated
 
-makeEvent :: FormInput -> Either FormState (Event Text)
-makeEvent FormInput {..} =
+makeEvent :: FormInput -> Either FormState (Text, Time.UTCTime, Bool, Text, Text)
+makeEvent input =
   case FormState
-    (notEmpty createEventInputTitle)
-    (validDate createEventInputDate)
-    (notEmpty createEventInputLocation)
-    (Valid createEventInputDescription) of
+    (notEmpty $ createEventInputTitle input)
+    (validDate $ createEventInputDate input)
+    (notEmpty $ createEventInputLocation input)
+    (Valid $ createEventInputDescription input) of
     FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
-      let filesToKeep = [name | (name, checked) <- createEventInputCheckboxes, checked]
-       in Right $
-            Event
-              title
-              date
-              createEventInputFamilyAllowed
-              description
-              location
-              []
-              filesToKeep
+      Right $ (title, date, (createEventInputFamilyAllowed input), description, location)
     state -> Left state
 
-render :: Text -> Text -> FormInput -> FormState -> Html ()
-render btnLabel action FormInput {..} FormState {..} = do
+render :: Text -> Text -> [(Text, Bool)] -> FormInput -> FormState -> Html ()
+render btnLabel action checkboxes FormInput {..} FormState {..} = do
   form_ [class_ "row g-4", action_ action, method_ "post", enctype_ "multipart/form-data"] $ do
     div_ [class_ "col-md-6"] $ do
-      let (className, errMsg) = processField createEventStateTitle
+      let (className, errMsg) = case createEventStateTitle of
+            NotValidated -> ("", Nothing)
+            Valid _ -> ("is-valid", Nothing)
+            Invalid msg -> ("is-invalid", Just msg)
       label_ [for_ "eventTitleInput", class_ "form-label"] "Name"
       input_
         [ type_ "text",
@@ -89,7 +76,10 @@ render btnLabel action FormInput {..} FormState {..} = do
         ]
       maybe mempty (div_ [id_ "eventTitleFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-6"] $ do
-      let (className, errMsg) = processField createEventStateLocation
+      let (className, errMsg) = case createEventStateLocation of
+            NotValidated -> ("", Nothing)
+            Valid _ -> ("is-valid", Nothing)
+            Invalid msg -> ("is-invalid", Just msg)
       label_ [for_ "eventLocationInput", class_ "form-label"] "Ort"
       input_
         [ type_ "text",
@@ -102,7 +92,10 @@ render btnLabel action FormInput {..} FormState {..} = do
         ]
       maybe mempty (div_ [id_ "eventLocationFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-6 d-flex flex-column"] $ do
-      let (className, errMsg) = processField createEventStateDate
+      let (className, errMsg) = case createEventStateDate of
+            NotValidated -> ("", Nothing)
+            Valid _ -> ("is-valid", Nothing)
+            Invalid msg -> ("is-invalid", Just msg)
       label_ [for_ "eventDateInput", class_ "form-label"] "Datum"
       input_
         [ type_ "text",
@@ -117,7 +110,10 @@ render btnLabel action FormInput {..} FormState {..} = do
       div_ [id_ "eventDateHelp", class_ "form-text"] "Bitte als Format '12.01.2022 15:00' verwenden."
       maybe mempty (div_ [id_ "eventDateFeedback", class_ "invalid-feedback"] . toHtml) errMsg
     div_ [class_ "col-md-12 d-flex flex-column"] $ do
-      let (className, errMsg) = processField createEventStateDescription
+      let (className, errMsg) = case createEventStateDescription of
+            NotValidated -> ("", Nothing)
+            Valid _ -> ("is-valid", Nothing)
+            Invalid msg -> ("is-invalid", Just msg)
       label_ [for_ "eventDescriptionInput", class_ "form-label"] "Beschreibung"
       textarea_
         [ class_ className,
@@ -152,7 +148,7 @@ render btnLabel action FormInput {..} FormState {..} = do
           )
         label_ [class_ "form-check-label", for_ "eventFamAllowedInput"] "Mit Familie?"
     div_ [class_ "col-md-12"] $
-      when (length createEventInputCheckboxes > 0) $ do
+      when (length checkboxes > 0) $ do
         mapM_
           ( \(name, checked) ->
               div_ [class_ "form-check"] $ do
@@ -166,15 +162,7 @@ render btnLabel action FormInput {..} FormState {..} = do
                     ++ [checked_ | checked]
                 label_ [for_ name, class_ "form-check-label"] $ toHtml name
           )
-          createEventInputCheckboxes
-        mapM_
-          ( \value ->
-              input_ $
-                [ type_ "hidden",
-                  name_ "allFiles",
-                  value_ $ decodeUtf8 value
-                ]
-          )
-          createEventInputFilesHidden
+          checkboxes
     div_ [class_ "col-md-4"] $
-      button_ [class_ "btn btn-primary", type_ "submit"] $ toHtml btnLabel
+      button_ [class_ "btn btn-primary", type_ "submit"] $
+        toHtml btnLabel
