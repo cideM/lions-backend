@@ -10,6 +10,7 @@ import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
+import Database.SQLite.Simple (NamedParam (..))
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.QQ (sql)
 import Events.Event
@@ -112,7 +113,7 @@ dbFetchEvent conn eventid = do
         liftIO $
           SQLite.query
             conn
-            [sql|select userid, coming, guests, email
+            [sql|select coming, email, userid, guests
                  from event_replies
                  left join users on users.id = userid
                  where eventid = ?|]
@@ -149,15 +150,20 @@ dbUpdateEvent ::
   EventID ->
   (EventTitle, EventDate, Bool, EventLocation, EventDescription) ->
   m ()
-dbUpdateEvent conn eventid (title, date, familyAllowed, description, location) = do
+dbUpdateEvent conn eventid (title, date, familyAllowed, location, description) = do
   liftIO $
-    SQLite.execute
+    SQLite.executeNamed
       conn
-      [sql| update events set title = ?, date = ?, family_allowed = ?,
-                              description = ?, location = ?
-            where id = ?
-         |]
-      (title, date, familyAllowed, description, location, eventid)
+      [sql| update events set title = :title, date = :date, family_allowed = :family_allowed,
+                              description = :description, location = :location 
+            where id = :id|]
+      [ ":title" := title,
+        ":date" := date,
+        ":family_allowed" := familyAllowed,
+        ":description" := description,
+        ":location" := location,
+        ":id" := eventid
+      ]
 
 dbSaveAttachments ::
   (MonadThrow m, MonadIO m) =>

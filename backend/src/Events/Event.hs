@@ -8,36 +8,36 @@ import Form (FormFieldState (..), notEmpty, validDate)
 import GHC.Generics
 
 newtype EventTitle = EventTitle Text
-  deriving (Show, Eq, Ord, Generic)
-  deriving (FromField, ToField) via Text
+  deriving (Eq, Ord, Generic)
+  deriving (Show, FromField, ToField) via Text
 
 unEventTitle :: EventTitle -> Text
 unEventTitle (EventTitle s) = s
 
 newtype EventDate = EventDate Time.UTCTime
-  deriving (Show, Eq, Ord, Generic)
-  deriving (FromField, ToField) via Time.UTCTime
+  deriving (Eq, Ord, Generic)
+  deriving (Show, FromField, ToField) via Time.UTCTime
 
 unEventDate :: EventDate -> Time.UTCTime
 unEventDate (EventDate s) = s
 
 newtype EventDescription = EventDescription Text
-  deriving (Show, Eq, Ord, Generic)
-  deriving (FromField, ToField) via Text
+  deriving (Eq, Ord, Generic)
+  deriving (Show, FromField, ToField) via Text
 
 unEventDescription :: EventDescription -> Text
 unEventDescription (EventDescription s) = s
 
 newtype EventLocation = EventLocation Text
-  deriving (Show, Eq, Ord, Generic)
-  deriving (FromField, ToField) via Text
+  deriving (Eq, Ord, Generic)
+  deriving (Show, FromField, ToField) via Text
 
 unEventLocation :: EventLocation -> Text
 unEventLocation (EventLocation s) = s
 
 newtype EventID = EventID Integer
-  deriving (Show, Eq, Ord, Generic)
-  deriving (FromField, ToField) via Integer
+  deriving (Eq, Ord, Generic)
+  deriving (Show, FromField, ToField) via Integer
 
 unEventID :: EventID -> Integer
 unEventID (EventID s) = s

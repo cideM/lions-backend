@@ -1,4 +1,4 @@
-module User.Id (Id (..)) where
+module User.Id where
 
 import Data.Aeson
   ( FromJSON (..),
@@ -12,8 +12,11 @@ import Database.SQLite.Simple.ToField (ToField)
 import GHC.Generics
 
 newtype Id = Id Int
-  deriving (Show, Generic, Eq, Ord)
-  deriving (FromField, ToField) via Int
+  deriving (Generic, Eq, Ord)
+  deriving (FromField, ToField, Show) via Int
+
+unId :: Id -> Int
+unId (Id i) = i
 
 instance ToJSON Id where
   toEncoding = genericToEncoding defaultOptions

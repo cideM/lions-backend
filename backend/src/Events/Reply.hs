@@ -22,8 +22,8 @@ data Reply = Reply
   deriving (FromRow)
 
 newtype ReplyComing = ReplyComing Bool
-  deriving (Show, Eq, Ord, Generic)
-  deriving (ToField, FromField) via Bool
+  deriving (Eq, Ord, Generic)
+  deriving (ToField, FromField, Show) via Bool
 
 unReplyComing :: ReplyComing -> Bool
 unReplyComing (ReplyComing s) = s
@@ -34,8 +34,8 @@ parseReplyComingFromNumber 0 = Right $ ReplyComing False
 parseReplyComingFromNumber n = Left $ "Invalid value for RSVP: " <> Text.pack (show n)
 
 newtype ReplyGuests = ReplyGuests Integer
-  deriving (Show, Eq, Ord, Generic)
-  deriving (FromField, ToField) via Integer
+  deriving (Eq, Ord, Generic)
+  deriving (FromField, ToField, Show) via Integer
 
 unReplyGuests :: ReplyGuests -> Integer
 unReplyGuests (ReplyGuests s) = s

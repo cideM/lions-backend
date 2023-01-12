@@ -5,7 +5,6 @@ import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Lucid
-import qualified User.Email as UserEmail
 import qualified User.Id as User
 import User.Role.Role (Role (..))
 import qualified User.User as User
@@ -25,11 +24,10 @@ render (User.Id uid, User.Profile {..}) (CanDelete canDelete) (CanEdit canEdit) 
       div_ [class_ "row"] $ do
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Email"
-          let (UserEmail.Email email) = userEmail
           p_ [class_ "fs-5"] $
-            a_ [href_ $ "mailto:" <> UserEmail.show email] $
+            a_ [href_ $ "mailto:" <> (Text.pack $ show userEmail)] $
               toHtml $
-                UserEmail.show email
+                show userEmail
         div_ [class_ "mb-2 col-md-6"] $ do
           small_ [class_ "text-muted"] "Addresse"
           p_ [class_ "fs-5", style_ "whitespace: pre"] $ toHtml' userAddress

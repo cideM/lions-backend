@@ -21,7 +21,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Layout (ariaLabel_)
 import Lucid
-import qualified User.Email as UserEmail
 import qualified User.Id as User
 import User.Role.Role (Role (..))
 import qualified User.User as User
@@ -49,19 +48,17 @@ render users selected others = do
       mapM_
         ( \(User.Id uid, User.Profile {..}) -> do
             let name = fromMaybe "" userFirstName <> " " <> fromMaybe "" userLastName
-                (UserEmail.Email email) = userEmail
-                emailLink = [i|mailto:#{UserEmail.show email}|]
+                emailLink = [i|mailto:#{show userEmail}|]
                 profileLink = [i|/nutzer/#{uid}|]
-                email' = UserEmail.show email
             tr_ [] $ do
               td_ [class_ "text-center align-middle"] $
                 a_ [href_ profileLink] personCircleSvg
-              td_ [] $ a_ [href_ emailLink, class_ "text-break"] $ toHtml email'
+              td_ [] $ a_ [href_ emailLink, class_ "text-break"] . toHtml $ show userEmail
               td_ [class_ "d-none d-lg-table-cell"] $
                 unless (Text.null $ Text.strip name) $ p_ [class_ "fw-bold m-0"] $ toHtml name
               td_ [class_ "text-muted d-none d-lg-table-cell"] . toHtml $ Text.intercalate "," $ rolesToBadge userRoles
               td_ [class_ "text-center align-middle"] $
-                input_ [type_ "checkbox", value_ "", data_ "email" email']
+                input_ [type_ "checkbox", value_ "", data_ "email" . Text.pack $ show userEmail]
         )
         users
   where

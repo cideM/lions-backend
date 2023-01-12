@@ -19,13 +19,13 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (i)
+import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
 import Layout (LayoutStub (..))
 import Lucid
 import qualified Network.Wai as Wai
 import qualified UnliftIO
-import qualified User.Email as UserEmail
 import User.Form (CanEditRoles (..), FormInput (..), emptyForm, makeProfile, render)
 import qualified User.Id as User
 import qualified User.List
@@ -103,13 +103,12 @@ createPost req _ = do
               (userid :: Int) <- liftIO $ fromIntegral <$> SQLite.lastInsertRowId conn
               User.Role.save (User.Id userid) (NE.toList userRoles)
           )
-      let (UserEmail.Email email) = userEmail
       return $
         LayoutStub "Nutzer Hinzufügen" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> UserEmail.show email <> " erfolgreich erstellt"
+                "Nutzer " <> show userEmail <> " erfolgreich erstellt"
 
 deletePost ::
   ( MonadIO m,
@@ -177,31 +176,30 @@ editGet userIdToEdit@(User.Id uid) auth = do
         div_ [class_ "row col-6"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Kein Nutzer mit dieser ID gefunden"
     Just (_, User.Profile {..}) ->
-      let (UserEmail.Email email) = userEmail
-       in LayoutStub "Nutzer Editieren" $
-            div_ [class_ "container p-3 d-flex justify-content-center"] $
-              User.Form.render
-                (CanEditRoles $ User.Session.isAdmin' auth)
-                "Nutzer editieren"
-                [i|/nutzer/#{uid}/editieren|]
-                ( FormInput
-                    { inputEmail = UserEmail.show email,
-                      inputBirthday = fromMaybe "" userBirthday,
-                      inputBirthdayPartner = fromMaybe "" userBirthdayPartner,
-                      inputIsAdmin = any ((==) Admin) userRoles,
-                      inputIsBoard = any ((==) Board) userRoles,
-                      inputIsPresident = any ((==) President) userRoles,
-                      inputIsPassive = any ((==) Passive) userRoles,
-                      inputAddress = fromMaybe "" userAddress,
-                      inputFirstName = fromMaybe "" userFirstName,
-                      inputFirstNamePartner = fromMaybe "" userFirstNamePartner,
-                      inputLastName = fromMaybe "" userLastName,
-                      inputMobile = fromMaybe "" userMobilePhoneNr,
-                      inputLandline = fromMaybe "" userLandlineNr,
-                      inputLastNamePartner = fromMaybe "" userLastNamePartner
-                    }
-                )
-                emptyForm
+      LayoutStub "Nutzer Editieren" $
+        div_ [class_ "container p-3 d-flex justify-content-center"] $
+          User.Form.render
+            (CanEditRoles $ User.Session.isAdmin' auth)
+            "Nutzer editieren"
+            [i|/nutzer/#{uid}/editieren|]
+            ( FormInput
+                { inputEmail = Text.pack $ show userEmail,
+                  inputBirthday = fromMaybe "" userBirthday,
+                  inputBirthdayPartner = fromMaybe "" userBirthdayPartner,
+                  inputIsAdmin = any ((==) Admin) userRoles,
+                  inputIsBoard = any ((==) Board) userRoles,
+                  inputIsPresident = any ((==) President) userRoles,
+                  inputIsPassive = any ((==) Passive) userRoles,
+                  inputAddress = fromMaybe "" userAddress,
+                  inputFirstName = fromMaybe "" userFirstName,
+                  inputFirstNamePartner = fromMaybe "" userFirstNamePartner,
+                  inputLastName = fromMaybe "" userLastName,
+                  inputMobile = fromMaybe "" userMobilePhoneNr,
+                  inputLandline = fromMaybe "" userLandlineNr,
+                  inputLastNamePartner = fromMaybe "" userLastNamePartner
+                }
+            )
+            emptyForm
 
 editPost ::
   ( MonadIO m,
@@ -249,13 +247,12 @@ editPost req userId auth = do
               state
     Right profile -> do
       User.update userId profile
-      let (UserEmail.Email email) = User.userEmail profile
       return $
         LayoutStub "Nutzer Editieren" $
           div_ [class_ "container p-3 d-flex justify-content-center"] $
             div_ [class_ "row col-6"] $ do
               p_ [class_ "alert alert-success", role_ "alert"] . toHtml $
-                "Nutzer " <> UserEmail.show email <> " erfolgreich editiert"
+                "Nutzer " <> (show $ User.userEmail profile) <> " erfolgreich editiert"
   where
     userIsAdmin = User.Session.isAdmin' auth
 
@@ -316,4 +313,5 @@ viewListGet req auth = do
         when (User.Session.isAdmin' auth) $ a_ [class_ "btn btn-sm btn-primary mb-3", href_ "/nutzer/neu"] "Neues Mitglied hinzufügen"
         h1_ [class_ "h4 mb-5"] "Mitgliederliste"
         div_ [class_ "row row-cols-1 g-2"] $
-          User.List.render usersToShow selectedOption $ filter (/= selectedOption) User.List.allOptions
+          User.List.render usersToShow selectedOption $
+            filter (/= selectedOption) User.List.allOptions
