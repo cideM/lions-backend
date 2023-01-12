@@ -43,7 +43,6 @@ server ::
     App.HasRequestIdVaultKey env,
     App.HasEnvironment env,
     UnliftIO.MonadUnliftIO m,
-    App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
     E.MonadCatch m,
     App.HasInternalState env,

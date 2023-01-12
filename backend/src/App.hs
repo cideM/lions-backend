@@ -4,7 +4,6 @@ module App
     App (..),
     Env (..),
     HasDb (..),
-    HasEventStorage (..),
     HasEnvironment (..),
     HasMail (..),
     HasPort (..),
@@ -63,7 +62,6 @@ data Env = Env
     envPort :: Int,
     envScryptSignerKey :: ByteString,
     envScryptSaltSeparator :: ByteString,
-    envEventAttachmentStorageDir :: FilePath,
     envSessionDataVaultKey :: User.Session.VaultKey,
     envRequestIdVaultKey :: Request.Types.IdVaultKey,
     envInternalState :: InternalState,
@@ -108,15 +106,6 @@ instance HasDb SQLite.Connection where
 
 instance HasDb Env where
   getDb = envDatabaseConnection
-
-class HasEventStorage a where
-  getStorageDir :: a -> FilePath
-
-instance HasEventStorage FilePath where
-  getStorageDir = id
-
-instance HasEventStorage Env where
-  getStorageDir = envEventAttachmentStorageDir
 
 class HasScryptSignerKey a where
   getScryptSignerKey :: a -> ByteString

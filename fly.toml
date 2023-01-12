@@ -17,7 +17,6 @@ processes = []
   LITESTREAM_RESTORE_PATH = "prod"
   LITESTREAM_REPLICATE_PATH = "fly-members-1"
   LIONS_SQLITE_PATH = "/usr/local/lib/sqlite/sqlite.db"
-  LIONS_STORAGE_DIR = "/usr/local/lib/"
   LIONS_ENV = "production"
   LIONS_SERVER_LISTEN_ADDR = "127.0.0.1"
   LIONS_SESSION_KEY_FILE = "/usr/local/lib/sqlite/session.aes"

@@ -180,7 +180,6 @@ getConfirmDelete eventIdRouteParam@(EventID eventid) _ = do
 postDelete ::
   ( MonadIO m,
     App.HasDb env,
-    App.HasEventStorage env,
     MonadThrow m,
     MonadReader env m
   ) =>

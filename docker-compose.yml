@@ -22,7 +22,6 @@ services:
       - LIONS_SESSION_KEY_FILE=/var/www/session
       - LIONS_SCRYPT_SIGNER_KEY
       - LIONS_SCRYPT_SALT_SEP
-      - LIONS_STORAGE_DIR=/var/www/images/
       - LIONS_AWS_SES_ACCESS_KEY
       - LIONS_AWS_SES_SECRET_ACCESS_KEY
 
