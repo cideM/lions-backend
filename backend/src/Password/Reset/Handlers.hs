@@ -59,7 +59,7 @@ post req = do
 
               let resetHost =
                     if env == App.Production
-                      then "https://members.lions-achern.de"
+                      then "https://mitglieder.lions-achern.de"
                       else T.pack $ "http://localhost:" <> show port
 
                   resetLink = resetHost <> "/passwort/aendern?token=" <> token
