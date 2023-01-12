@@ -55,10 +55,13 @@ Then you can just do `docker compose up --build` and everything should just work
 * `$ env -C backend ghcid --no-height-limit --clear --reverse`
 * `$ env -C backend ghcid --no-height-limit --clear --reverse --target=test:tests`
 
+## Deploy
+
+`flyctl deploy`
+
 ## TODO
 
 - [ ] Continue refactoring all modules so the code is overall simpler and safer (use `newtype` wrappers)
 - [ ] Fix the tests that are broken after the latest refactors
 - [ ] Remove `ReaderT` and just pass dependencies around manually
 - [ ] Remove `amazonka` and just use the HTTP API for the 2 calls the app makes
-
