@@ -82,20 +82,17 @@ getAll auth = do
         let Session {sessionUserId} = User.Session.get' auth
 
             f (event, replies) =
-              let rsvp = case [unReplyComing coming | (coming, _, userid) <- replies, userid == sessionUserId] of
-                    [True] -> Just True -- Yes, I'm coming
-                    [False] -> Just False -- No, I'm coming
-                    _ -> Nothing -- I don't know
+              let rsvp = listToMaybe [unReplyComing coming | (coming, _, userid) <- replies, userid == sessionUserId]
 
-                  -- Calculate how many people accepted, declined and the total
-                  -- number of people (coming + their guests)
-                  countYes = fromIntegral $ length [() | (ReplyComing bool, _, _) <- replies, bool]
-                  countNo = fromIntegral (length replies) - countYes
-                  countTotal = sum [n | (ReplyComing bool, ReplyGuests n, _) <- replies, bool]
+                  -- Calculate how many people accepted, declined and the number of guests
+                  yes = [r | r@(coming, _, _) <- replies, unReplyComing coming]
+                  countGuests = sum [unReplyGuests guests | (_, guests, _) <- yes]
+                  countNo = fromIntegral (length replies - length yes)
+                  countYes = fromIntegral (length yes)
 
                   -- We mark events that lie in the past with a badge
                   isExpired = now >= (unEventDate $ getEventDate event)
-               in (event, countYes, countNo, countTotal, rsvp, isExpired)
+               in (event, countYes, countNo, countGuests, rsvp, isExpired)
          in map f $ upcomingSorted ++ expired
 
   let currentUserIsAdmin = User.Session.isAdmin' auth
