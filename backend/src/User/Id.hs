@@ -7,13 +7,13 @@ import Data.Aeson
     genericToEncoding,
     toEncoding,
   )
+import Database.SQLite.Simple.FromField (FromField)
+import Database.SQLite.Simple.ToField (ToField)
 import GHC.Generics
 
 newtype Id = Id Int
-  deriving (Show)
-  deriving (Generic)
-  deriving (Eq)
-  deriving (Ord)
+  deriving (Show, Generic, Eq, Ord)
+  deriving (FromField, ToField) via Int
 
 instance ToJSON Id where
   toEncoding = genericToEncoding defaultOptions

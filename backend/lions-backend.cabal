@@ -35,6 +35,8 @@ common shared-props
     LambdaCase
     FlexibleInstances
     FlexibleContexts
+    DuplicateRecordFields
+    NamedFieldPuns
     OverloadedStrings
     ScopedTypeVariables
 
@@ -130,15 +132,11 @@ library
   exposed-modules:
     Lib
     Env
-    Events.Reply.Reply
-    Events.Reply.Handlers
-    Events.Attachments.Middleware
-    Events.Event.Event
-    Events.Event.Handlers
-    Events.Event.Full
-    Events.Event.Preview
-    Events.Event.Id
-    Events.Event.Form
+    Events.API
+    Events.HTML
+    Events.DB
+    Events.Event
+    Events.Reply
     Error
     Feed.Form
     Feed.Message
