@@ -10,12 +10,13 @@ module Password.Reset.Token
   )
 where
 
+import Data.ByteString (ByteString)
 import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import qualified Crypto.BCrypt as BCrypt
-import Crypto.Random (SystemRandom, genBytes, newGenIO)
+import Crypto.KDF.BCrypt (hashPassword)
+import qualified Crypto.Random
 import Data.Text (Text)
 import qualified User.User as User
 import qualified Data.Text as T
@@ -102,14 +103,9 @@ create ::
   m (Text, Time.UTCTime)
 create = do
   expires <- liftIO $ timeDaysFromNow 10
-  (g :: SystemRandom) <- liftIO $ newGenIO
-  token <- case genBytes 20 g of
-    Left e -> throwString $ show e
-    Right (token', _) ->
-      (liftIO $ BCrypt.hashPasswordUsingPolicy BCrypt.fastBcryptHashingPolicy token') >>= \case
-        Nothing -> throwString "hashing reset token failed"
-        Just token'' -> return $ decodeUtf8 token''
-  return (token, expires)
+  (token :: ByteString) <- liftIO $ do Crypto.Random.getRandomBytes 20
+  (hashed :: ByteString) <- liftIO $ hashPassword 12 token
+  return (decodeUtf8 hashed, expires)
 
 -- Generates a new password reset token for the given user email and stores it
 -- in the DB, removing whatever old tokens existed

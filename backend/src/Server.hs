@@ -9,15 +9,13 @@ import qualified Data.Default as Def
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified Env
-import qualified Logging
 import qualified Error as E
-import qualified Events.Attachments.Middleware as AttachmentsMiddleware
-import qualified Events.Event.Handlers as Event.Handlers
-import qualified Events.Event.Id as Event
-import qualified Events.Reply.Handlers as Reply.Handlers
+import Events.API (EventID (..))
+import qualified Events.API as EventsAPI
 import qualified Feed.Message
 import qualified Katip as K
 import Layout (ActiveNavLink (..), LayoutStub (..), layout, warning)
+import qualified Logging
 import qualified Login.Login as Login
 import Lucid
 import Network.HTTP.Types (status200, status403, status404, status500)
@@ -45,7 +43,6 @@ server ::
     App.HasRequestIdVaultKey env,
     App.HasEnvironment env,
     UnliftIO.MonadUnliftIO m,
-    App.HasEventStorage env,
     App.HasSessionEncryptionKey env,
     E.MonadCatch m,
     App.HasInternalState env,
@@ -110,51 +107,51 @@ server req send = do
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ Event.Handlers.getAll >=> send200 . layout' (Just Events)
+          "GET" -> authenticatedOnly' $ EventsAPI.getAll >=> send200 . layout' (Just Events)
           _ -> send404
       ["veranstaltungen", "neu"] ->
         case Wai.requestMethod req of
-          "GET" -> adminOnly' $ Event.Handlers.getCreate >=> send200 . layout' (Just Events)
+          "GET" -> adminOnly' $ EventsAPI.getCreate >=> send200 . layout' (Just Events)
           "POST" ->
-            adminOnly' $ Event.Handlers.postCreate req >=> send200 . layout' (Just Events)
+            adminOnly' $ EventsAPI.postCreate req >=> send200 . layout' (Just Events)
           _ -> send404
       ["veranstaltungen", i] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
+          Right (parsed :: Integer) ->
             case Wai.requestMethod req of
               "GET" ->
                 authenticatedOnly' $
-                  Event.Handlers.get req (Event.Id parsed) >=> \case
+                  EventsAPI.get req (EventID parsed) >=> \case
                     Nothing -> send404
                     Just stub -> send200 $ layout' (Just Events) stub
               _ -> send404
       ["veranstaltungen", i, "antwort"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
+          Right (parsed :: Integer) ->
             case Wai.requestMethod req of
               "POST" ->
                 authenticatedOnly' $
-                  Reply.Handlers.post req send (Event.Id parsed)
+                  EventsAPI.postUpdateEventReplies req send (EventID parsed)
               _ -> send404
       ["veranstaltungen", i, "loeschen"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
+          Right (parsed :: Integer) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Event.Handlers.getConfirmDelete (Event.Id parsed) >=> send200 . layout' (Just Events)
-              "POST" -> adminOnly' $ Event.Handlers.postDelete (Event.Id parsed) >=> send200 . layout' (Just Events)
+              "GET" -> adminOnly' $ EventsAPI.getConfirmDelete (EventID parsed) >=> send200 . layout' (Just Events)
+              "POST" -> adminOnly' $ EventsAPI.postDelete (EventID parsed) >=> send200 . layout' (Just Events)
               _ -> send404
       ["veranstaltungen", i, "editieren"] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for event ID as int: " <> i
-          Right (parsed :: Int) ->
+          Right (parsed :: Integer) ->
             case Wai.requestMethod req of
-              "GET" -> adminOnly' $ Event.Handlers.getEdit (Event.Id parsed) >=> send200 . layout' (Just Events)
+              "GET" -> adminOnly' $ EventsAPI.getEdit (EventID parsed) >=> send200 . layout' (Just Events)
               "POST" ->
                 adminOnly' $
-                  Event.Handlers.postUpdate req (Event.Id parsed)
+                  EventsAPI.postUpdate req (EventID parsed)
                     >=> send200 . layout' (Just Events)
               _ -> send404
       ["loeschen", i] ->
@@ -259,12 +256,6 @@ run = do
                   Gzip.gzipCheckMime = Gzip.defaultCheckMime
                 }
 
-      let attchmentMiddleware =
-            -- This middleware rewrites file paths for the following middleware,
-            -- which serves them
-            AttachmentsMiddleware.middleware envEventAttachmentStorageDir
-              . (Wai.liftMiddleware $ staticPolicy (addBase envEventAttachmentStorageDir))
-
       let middlewares =
             (Wai.liftMiddleware gzipMiddleware)
               . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
@@ -274,9 +265,9 @@ run = do
               -- public.
               . Session.middleware
               . Logging.middleware
-              . attchmentMiddleware
+              . EventsAPI.attachmentsMiddleware
 
-      let settings = setPort envPort $ setHost "localhost" defaultSettings
+      let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
 
       liftIO . runSettings settings $
         ( \r s ->
@@ -296,6 +287,7 @@ run = do
         . renderBS
         . layout User.Session.notAuthenticated Nothing
         . LayoutStub "Fehler"
-        $ div_ [class_ "container p-3 d-flex justify-content-center"] $
-          div_ [class_ "row col-6"] $ do
-            p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"
+        $ div_ [class_ "container p-3 d-flex justify-content-center"]
+        $ div_ [class_ "row col-6"]
+        $ do
+          p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"

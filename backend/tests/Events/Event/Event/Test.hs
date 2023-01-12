@@ -6,18 +6,17 @@ import Control.Monad.Reader.Class (asks)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.QQ (sql)
-import qualified Events.Attachments.Saved as Saved
 import qualified Events.Event.Event as Event
 import qualified Events.Event.Id as Event
 import qualified Events.Reply.Reply as Event
-import qualified User.Id as User
-import qualified User.Email as User
 import Helpers
   ( withTestEnvProd,
   )
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Text.Email.Validate as Email
+import qualified User.Email as User
+import qualified User.Id as User
 
 tests :: TestTree
 tests =
@@ -50,7 +49,7 @@ tests =
             insert into event_attachments (eventid, filename)
             values (1, 'some file')|]
 
-          actual <- Event.getAll
+          actual <- Event.getAll conn
 
           (date :: Time.UTCTime) <- liftIO $ case Time.parseTimeM True Time.defaultTimeLocale "%Y-%m-%d %T" "2021-07-10 14:00:00" of
             Nothing -> fail "couldn't parse time"
@@ -68,7 +67,7 @@ tests =
                         "some desc"
                         "some loc"
                         [Event.Reply True (User.Email email) (User.Id 1) 2]
-                        [Saved.FileName "some file"]
+                        ["some file"]
                     )
                   ],
       testCase "get" $ do
@@ -95,7 +94,7 @@ tests =
               [sql| insert into event_attachments (eventid, filename)
                     values (1, 'some file')|]
 
-          actual <- Event.get (Event.Id 1)
+          actual <- Event.get conn (Event.Id 1)
 
           (date :: Time.UTCTime) <- liftIO $ case Time.parseTimeM True Time.defaultTimeLocale "%Y-%m-%d %T" "2021-07-10 14:00:00" of
             Nothing -> fail "couldn't parse time"
@@ -113,6 +112,6 @@ tests =
                         "some desc"
                         "some loc"
                         [Event.Reply True (User.Email email) (User.Id 1) 2]
-                        [Saved.FileName "some file"]
+                        ["some file"]
                   )
     ]

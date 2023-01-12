@@ -14,7 +14,6 @@ import qualified Katip as K
 import qualified Logging
 import qualified Network.AWS as AWS
 import qualified Password.Reset.Mail as Mail
-import qualified System.Directory
 import System.Environment (getEnv)
 import qualified Web.ClientSession as ClientSession
 
@@ -27,7 +26,6 @@ withAppEnv f = do
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
-  storageDir <- getEnv "LIONS_STORAGE_DIR"
 
   -- Determine if we should send actual email using AWS or if we just fake it.
   sendMail <-
@@ -50,8 +48,6 @@ withAppEnv f = do
       verbosity = case appEnv of
         App.Production -> K.V2
         _ -> K.V2
-
-  System.Directory.createDirectoryIfMissing True storageDir
 
   sessionKey <- ClientSession.getKey sessionKeyFile
   sessionDataVaultKey <- Vault.newKey
@@ -84,7 +80,6 @@ withAppEnv f = do
                             envMail = sendMail,
                             envScryptSaltSeparator = saltSep,
                             envPort = port,
-                            envEventAttachmentStorageDir = storageDir,
                             envSessionDataVaultKey = sessionDataVaultKey,
                             envRequestIdVaultKey = requestIdVaultKey,
                             envSessionEncryptionKey = sessionKey,

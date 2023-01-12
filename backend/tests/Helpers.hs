@@ -109,7 +109,6 @@ withFormRequest body handler =
 withTestEnv :: App.Environment -> (IORef (Maybe Text, Maybe Mail.Mail) -> App.App App.Env a) -> IO a
 withTestEnv appEnv f = do
   tempDir <- System.Directory.getTemporaryDirectory
-  let storageDir = tempDir </> "lions_tests_event_storage"
 
   mailRef <- IORef.newIORef (Nothing, Nothing)
   (_, sessionKey) <- ClientSession.randomKey
@@ -136,7 +135,6 @@ withTestEnv appEnv f = do
                           envInternalState = internalState,
                           -- TODO: Remove from env since not used in tests
                           envPort = 5000,
-                          envEventAttachmentStorageDir = storageDir,
                           envSessionDataVaultKey = sessionDataVaultKey,
                           envRequestIdVaultKey = requestIdVaultKey,
                           envSessionEncryptionKey = sessionKey,

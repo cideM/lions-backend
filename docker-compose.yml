@@ -1,0 +1,29 @@
+version: "3.5"
+services:
+  app:
+    container_name: "lions"
+    build:
+      dockerfile: Dockerfile
+      context: .
+    volumes:
+      - sqlite:/var/www/db/:rw
+      - ./client/assets/index.js:/opt/app/public/index.js
+    ports:
+      - "3555:3000"
+    environment:
+      - LITESTREAM_ACCESS_KEY_ID
+      - LITESTREAM_SECRET_ACCESS_KEY
+      - LITESTREAM_BUCKET
+      - LITESTREAM_REPLICATE_PATH
+      - LITESTREAM_RESTORE_PATH
+      - LIONS_SQLITE_PATH=/var/www/db/sqlite.db
+      - LIONS_SERVER_LISTEN_ADDR=0.0.0.0
+      - LIONS_ENV
+      - LIONS_SESSION_KEY_FILE=/var/www/session
+      - LIONS_SCRYPT_SIGNER_KEY
+      - LIONS_SCRYPT_SALT_SEP
+      - LIONS_AWS_SES_ACCESS_KEY
+      - LIONS_AWS_SES_SECRET_ACCESS_KEY
+
+volumes:
+  sqlite:
