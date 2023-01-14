@@ -1,2 +1,0 @@
-#! /bin/sh
-docker run --rm  -v nixcache2:/nix -v $(pwd):/foo -w /foo  -v ~/.ssh:/root/.ssh:ro nixpkgs/nix-flakes nix run github:serokell/deploy-rs .
