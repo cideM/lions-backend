@@ -51,7 +51,6 @@ test-suite tests
     Session.Test
     Feed.Message.Test
     Login.Test
-    Events.Event.Event.Test
     Password.Reset.Test
     Password.Change.Test
   build-depends:
