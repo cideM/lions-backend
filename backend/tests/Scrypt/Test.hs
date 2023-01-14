@@ -10,8 +10,8 @@ tests =
   testGroup
     "Scrypt"
     [ testCase "Creates same hash as Firebase Scrypt" $
-        Right "lSrfV15cpx95/sZS2W9c9Kp6i/LVgQNDNC/qzrCnh1SAyZvqmZqAjTdn3aoItz+VHjoZilo78198JAdRuid5lQ=="
-          @=? firebaseHashPw userSalt signerKey saltSep memcost rounds "user1password"
+        Right True
+          @=? verifyPassword signerKey saltSep userSalt "lSrfV15cpx95/sZS2W9c9Kp6i/LVgQNDNC/qzrCnh1SAyZvqmZqAjTdn3aoItz+VHjoZilo78198JAdRuid5lQ==" "user1password"
     ]
 
 signerKey :: B.ByteString
