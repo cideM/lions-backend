@@ -27,6 +27,9 @@ import Data.Text
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 
+mapLeft :: (a -> c) -> Either a b -> Either c b
+mapLeft f = either (Left . f) Right
+
 firebaseHashPw ::
   BS.ByteString -> -- User's salt
   BS.ByteString -> -- Project's base64_signer_key
@@ -37,9 +40,9 @@ firebaseHashPw ::
   Either Text Text
 firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
   case ( do
-           userSaltDec <- decodeBase64 userSalt
-           signerKeyDec <- decodeBase64 signerKey
-           saltSepDec <- decodeBase64 saltSep
+           userSaltDec <- mapLeft (\err -> "error decoding user salt: " <> err) $ decodeBase64 userSalt
+           signerKeyDec <- mapLeft (\err -> "error decoding signer key: " <> err) $ decodeBase64 signerKey
+           saltSepDec <- mapLeft (\err -> "error decoding salt separator: " <> err) $ decodeBase64 saltSep
            return (userSaltDec, signerKeyDec, saltSepDec)
        ) of
     Left e -> Left e
@@ -53,7 +56,7 @@ firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
               }
           (derivedKey :: ByteString) = generate params pw (userSaltDec <> saltSepDec)
        in case cipherInit derivedKey of
-            CryptoFailed e -> Left (Text.pack $ show e)
+            CryptoFailed e -> Left $ "error in cipherInit: " <> (Text.pack $ show e)
             CryptoPassed context ->
               Right . encodeBase64 $ ctrCombine context (nullIV :: IV AES256) signerKeyDec
 
