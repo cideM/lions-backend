@@ -1,6 +1,7 @@
 module Events.HTML where
 
 import Control.Monad (forM_, when)
+import Data.List (partition)
 import Data.Maybe (isNothing)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -130,7 +131,7 @@ eventForm btnLabel action checkboxes FormInput {..} FormState {..} = do
       button_ [class_ "btn btn-primary", type_ "submit"] $
         toHtml btnLabel
 
-eventList :: [(Event, Integer, Integer, Integer, Maybe Bool, Bool)] -> Bool -> Html ()
+eventList :: [(Event, [Reply], Maybe Bool, Bool)] -> Bool -> Html ()
 eventList events showAdmin = do
   div_ [class_ "container"] $ do
     div_ [class_ "row row-cols-1 g-3"] $ do
@@ -143,8 +144,13 @@ eventList events showAdmin = do
           div_ [class_ "col"] $ infoBox "Zum Öffnen einer Veranstaltung einfach auf den Titel klicken"
           forM_
             events
-            ( \(event, comingSum, notComingSum, totalGuests, ownReply, isExpired) -> do
+            ( \(event, replies, ownReply, isExpired) -> do
                 let (id, title, date, familyAllowed, location, _) = event
+                    (yesReplies, noReplies) = partition (unReplyComing . replyComing) replies
+                    yes = fromIntegral (length yesReplies)
+                    (no :: Integer) = fromIntegral (length noReplies)
+                    guests = sum $ map (unReplyGuests . replyGuests) yesReplies
+                    participantsTotal = yes + guests
 
                 let dateFormatted = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p" $ (unEventDate date)
 
@@ -170,16 +176,16 @@ eventList events showAdmin = do
                             unEventTitle title
                       h2_ [class_ "card-subtitle text-muted h6"] $ toHtml $ "Ort: " <> unEventLocation location
                       p_ [class_ "card-text"] ""
-                      when (comingSum > 0 || notComingSum > 0) $
+                      when (yes > 0 || no > 0) $
                         div_ [class_ "d-flex"] $ do
-                          when (comingSum > 0) $
+                          when (yes > 0) $
                             span_ [class_ "badge rounded-pill bg-success me-2"] $
                               toHtml $
-                                ([i|Teilnehmer: #{comingSum + totalGuests}|] :: Text)
-                          when (notComingSum > 0) $
+                                ([i|Teilnehmer: #{participantsTotal}|] :: Text)
+                          when (no > 0) $
                             span_ [class_ "badge rounded-pill bg-danger"] $
                               toHtml $
-                                ([i|Absagen: #{notComingSum}|] :: Text)
+                                ([i|Absagen: #{no}|] :: Text)
             )
 
 renderEvent ::
@@ -199,208 +205,192 @@ renderEvent
   isExpired
   showAdmin
   whichReplyBoxToShow =
-    do
-      let htmlAdminTools :: Integer -> Html ()
-          htmlAdminTools eventId = do
-            a_
-              [ class_ "btn btn-sm btn-danger me-4",
-                role_ "button",
-                href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/loeschen"
-              ]
-              "Löschen"
-            a_
-              [ class_ "btn btn-sm btn-secondary",
-                role_ "button",
-                href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/editieren"
-              ]
-              "Editieren"
+    let (eventid, title, date, familyAllowed, location, description) = event
+        eventId = unEventID eventid
 
-      let htmlEvent :: Bool -> Bool -> Event -> [Text] -> Html ()
-          htmlEvent
-            showAdminTools
-            eventIsExpired
-            (eventId, title, date, familyAllowed, location, description)
-            eventAttachments =
-              do
-                let dateFormatted = Text.pack $ Time.formatTime german "%A, %d. %B %Y %R %p" $ unEventDate date
-                -- The actual event content, such as description and title
-                div_ [class_ $ "card" <> (if eventIsExpired then " border-danger" else "")] $ do
-                  div_ [class_ "card-header"] $ do
-                    span_ [class_ "me-2"] $ toHtml dateFormatted
-                    when eventIsExpired $ span_ [class_ "badge bg-warning text-dark me-2"] "Bereits stattgefunden"
-                    when familyAllowed $ span_ [class_ "badge bg-secondary"] "Mit Familie"
-                  div_ [class_ "card-body"] $ do
-                    h1_ [class_ "card-title h5"] $ toHtml $ unEventTitle title
-                    h2_ [class_ "card-subtitle text-muted h6 mb-2"] $ toHtml $ "Ort: " <> unEventLocation location
-                    p_ [class_ "card-text", style_ "white-space: pre-wrap"] $ toHtml $ unEventDescription description
-                    when (length eventAttachments > 0) $ do
-                      p_ [class_ "m-0"] "Angehängte Dateien: "
-                      ul_ [class_ "m-0"] $ do
-                        forM_
-                          eventAttachments
-                          ( \filename ->
-                              li_ [] $
-                                a_ [href_ [i|/events/#{unEventID eventId}/#{filename}|]] $
-                                  toHtml filename
+        (yesReplies, noReplies) = partition (unReplyComing . replyComing) replies
+        yes = fromIntegral (length yesReplies)
+        (no :: Integer) = fromIntegral (length noReplies)
+        guests = sum $ map (unReplyGuests . replyGuests) yesReplies
+        participantsTotal = yes + guests
+
+        guestsYouAreBringing = case ownReply of
+          Just Reply {..} ->
+            if unReplyComing replyComing
+              then unReplyGuests replyGuests
+              else 0
+          Nothing -> 0
+
+        yourRsvp = case ownReply of
+          Just Reply {..} -> Just $ unReplyComing replyComing
+          Nothing -> Nothing
+     in do
+          let htmlEvent :: Html ()
+              htmlEvent =
+                do
+                  let dateFormatted = Text.pack $ Time.formatTime german "%A, %d. %B %Y %R %p" $ unEventDate date
+                  -- The actual event content, such as description and title
+                  div_ [class_ $ "card" <> (if isExpired then " border-danger" else "")] $ do
+                    div_ [class_ "card-header"] $ do
+                      span_ [class_ "me-2"] $ toHtml dateFormatted
+                      when isExpired $ span_ [class_ "badge bg-warning text-dark me-2"] "Bereits stattgefunden"
+                      when familyAllowed $ span_ [class_ "badge bg-secondary"] "Mit Familie"
+                    div_ [class_ "card-body"] $ do
+                      h1_ [class_ "card-title h5"] $ toHtml $ unEventTitle title
+                      h2_ [class_ "card-subtitle text-muted h6 mb-2"] $ toHtml $ "Ort: " <> unEventLocation location
+                      p_ [class_ "card-text", style_ "white-space: pre-wrap"] $ toHtml $ unEventDescription description
+                      when (length attachments > 0) $ do
+                        p_ [class_ "m-0"] "Angehängte Dateien: "
+                        ul_ [class_ "m-0"] $ do
+                          forM_
+                            attachments
+                            ( \filename ->
+                                li_ [] $
+                                  a_ [href_ [i|/events/#{eventId}/#{filename}|]] $
+                                    toHtml filename
+                            )
+                    when showAdmin $ div_ [class_ "card-footer"] $ do
+                      a_
+                        [ class_ "btn btn-sm btn-danger me-4",
+                          role_ "button",
+                          href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/loeschen"
+                        ]
+                        "Löschen"
+                      a_
+                        [ class_ "btn btn-sm btn-secondary",
+                          role_ "button",
+                          href_ . Text.pack $ "/veranstaltungen/" <> show eventId <> "/editieren"
+                        ]
+                        "Editieren"
+
+          let htmlRsvp :: Html ()
+              htmlRsvp = do
+                form_
+                  [ class_ "my-2 g-3",
+                    method_ "post",
+                    action_ ("/veranstaltungen/" <> Text.pack (show eventId) <> "/antwort")
+                  ]
+                  $ do
+                    div_ [class_ "row row-cols-1 gy-3"] $ do
+                      div_ [class_ "col"] $ do
+                        label_ [class_ "form-label", for_ "replySelect"] "Antwort"
+                        select_
+                          ( [ name_ "reply",
+                              id_ "replySelect",
+                              class_ "form-select form-select-sm me-1",
+                              ariaLabel_ "Veranstaltung beantworten"
+                            ]
+                              ++ [disabled_ "disabled" | isExpired]
                           )
-                  when showAdminTools $ div_ [class_ "card-footer"] $ htmlAdminTools $ unEventID eventId
+                          $ do
+                            option_ (value_ "coming" : [selected_ "selected" | yourRsvp == Just True]) "Zusage"
+                            option_ (value_ "notcoming" : [selected_ "selected" | yourRsvp == Just False]) "Absage"
+                            option_ (value_ "noreply" : [selected_ "selected" | isNothing yourRsvp]) "Keine Antwort"
+                      div_ [class_ "col"] $ do
+                        label_ [class_ "form-label", for_ "numberOfGuests"] "Anzahl Gäste die du mitbringst"
+                        input_
+                          ( [ class_ "form-control form-control-sm",
+                              type_ "number",
+                              name_ "numberOfGuests",
+                              id_ "numberOfGuests",
+                              value_ [i|#{guestsYouAreBringing}|],
+                              placeholder_ "0"
+                            ]
+                              ++ [disabled_ "disabled" | isExpired]
+                          )
+                      div_ [class_ "col"] $
+                        button_
+                          ( [type_ "submit", class_ "btn btn-primary btn-sm"]
+                              ++ [disabled_ "disabled" | isExpired]
+                          )
+                          "Speichern"
 
-      let htmlRsvp :: Bool -> Maybe Reply -> Integer -> Html ()
-          htmlRsvp eventIsExpired yourRsvp eventId = do
-            let numberOfGuests = case yourRsvp of
-                  Just Reply {..} ->
-                    if unReplyComing replyComing
-                      then unReplyGuests replyGuests
-                      else 0
-                  Nothing -> 0
-
-            let rsvp = case yourRsvp of
-                  Just Reply {..} -> Just $ unReplyComing replyComing
-                  Nothing -> Nothing
-
-            form_
-              [ class_ "my-2 g-3",
-                method_ "post",
-                action_ ("/veranstaltungen/" <> Text.pack (show eventId) <> "/antwort")
-              ]
-              $ do
-                div_ [class_ "row row-cols-1 gy-3"] $ do
-                  div_ [class_ "col"] $ do
-                    label_ [class_ "form-label", for_ "replySelect"] "Antwort"
-                    select_
-                      ( [ name_ "reply",
-                          id_ "replySelect",
-                          class_ "form-select form-select-sm me-1",
-                          ariaLabel_ "Veranstaltung beantworten"
-                        ]
-                          ++ [disabled_ "disabled" | eventIsExpired]
+          let htmlRsvpNoList :: Html ()
+              htmlRsvpNoList =
+                table_ [class_ "table"] $ do
+                  thead_ $ do
+                    tr_ $ do
+                      th_ [scope_ "col"] "Email"
+                      th_ [scope_ "col"] ""
+                  tbody_ $ do
+                    mapM_
+                      ( \Reply {..} -> do
+                          tr_ $ do
+                            td_ [] $ toHtml $ show replyUserEmail
+                            td_ [class_ "d-flex justify-content-end"] $
+                              a_ [href_ . Text.pack $ "/nutzer/" <> show replyUserId] "Zum Profil"
                       )
-                      $ do
-                        option_ (value_ "coming" : [selected_ "selected" | rsvp == Just True]) "Zusage"
-                        option_ (value_ "notcoming" : [selected_ "selected" | rsvp == Just False]) "Absage"
-                        option_ (value_ "noreply" : [selected_ "selected" | isNothing rsvp]) "Keine Antwort"
-                  div_ [class_ "col"] $ do
-                    label_ [class_ "form-label", for_ "numberOfGuests"] "Anzahl Gäste die du mitbringst"
-                    input_
-                      ( [ class_ "form-control form-control-sm",
-                          type_ "number",
-                          name_ "numberOfGuests",
-                          id_ "numberOfGuests",
-                          value_ [i|#{numberOfGuests}|],
-                          placeholder_ "0"
-                        ]
-                          ++ [disabled_ "disabled" | eventIsExpired]
+                      noReplies
+
+          let htmlRsvpYesList :: Html ()
+              htmlRsvpYesList =
+                table_ [class_ "table"] $ do
+                  thead_ $ do
+                    tr_ $ do
+                      th_ [scope_ "col"] "Email"
+                      th_ [scope_ "col"] "Gäste"
+                      th_ [scope_ "col"] ""
+                  tbody_ $ do
+                    mapM_
+                      ( \Reply {..} -> do
+                          tr_ $ do
+                            td_ [] $ toHtml $ show replyUserEmail
+                            td_ [] $ toHtml $ show replyGuests
+                            td_ [class_ "d-flex justify-content-end"] $
+                              a_ [href_ . Text.pack $ "/nutzer/" <> show replyUserId] "Zum Profil"
                       )
-                  div_ [class_ "col"] $
-                    button_
-                      ( [type_ "submit", class_ "btn btn-primary btn-sm"]
-                          ++ [disabled_ "disabled" | eventIsExpired]
-                      )
-                      "Speichern"
+                      yesReplies
 
-      let htmlRsvpNoList :: [Reply] -> Html ()
-          htmlRsvpNoList no =
-            table_ [class_ "table"] $ do
-              thead_ $ do
-                tr_ $ do
-                  th_ [scope_ "col"] "Email"
-                  th_ [scope_ "col"] ""
-              tbody_ $ do
-                mapM_
-                  ( \Reply {..} -> do
-                      tr_ $ do
-                        td_ [] $ toHtml $ show replyUserEmail
-                        td_ [class_ "d-flex justify-content-end"] $
-                          a_ [href_ . Text.pack $ "/nutzer/" <> show replyUserId] "Zum Profil"
-                  )
-                  no
-
-      let htmlRsvpYesList :: [Reply] -> Html ()
-          htmlRsvpYesList yes =
-            table_ [class_ "table"] $ do
-              thead_ $ do
-                tr_ $ do
-                  th_ [scope_ "col"] "Email"
-                  th_ [scope_ "col"] "Gäste"
-                  th_ [scope_ "col"] ""
-              tbody_ $ do
-                mapM_
-                  ( \Reply {..} -> do
-                      tr_ $ do
-                        td_ [] $ toHtml $ show replyUserEmail
-                        td_ [] $ toHtml $ show replyGuests
-                        td_ [class_ "d-flex justify-content-end"] $
-                          a_ [href_ . Text.pack $ "/nutzer/" <> show replyUserId] "Zum Profil"
-                  )
-                  yes
-
-      let checkSvg =
-            toHtmlRaw
-              ( [i|
+          let checkSvg =
+                toHtmlRaw
+                  ( [i|
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
           |] ::
-                  Text
-              )
+                      Text
+                  )
 
-      let xCrossSvg =
-            toHtmlRaw
-              ( [i|
+          let xCrossSvg =
+                toHtmlRaw
+                  ( [i|
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x-circle"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
           |] ::
-                  Text
-              )
+                      Text
+                  )
 
-      let htmlReplies ::
-            ReplyBox ->
-            Bool ->
-            Maybe Reply ->
-            EventID ->
-            [Reply] ->
-            Html ()
-          htmlReplies activeBox expired yourReply eventid allReplies = do
-            let yes = [reply | reply@Reply {..} <- allReplies, unReplyComing replyComing]
-                no = [reply | reply@Reply {..} <- allReplies, not $ unReplyComing replyComing]
-                guests = sum [unReplyGuests replyGuests | Reply {..} <- yes, unReplyComing replyComing]
-                participantsTotal = (fromIntegral $ length yes) + guests
+          div_ [class_ "container"] $ do
+            div_ [class_ "row gy-3 gx-lg-4"] $ do
+              section_ [class_ "col-lg-7"] $ htmlEvent
+              section_ [class_ "col-lg-5"] $ do
+                div_ [class_ "card border-primary"] $ do
+                  div_ [class_ "card-header"] $ do
+                    ul_ [class_ "nav nav-tabs card-header-tabs"] $ do
+                      let makeHref box =
+                            href_ $ decodeUtf8 $ URI.renderQuery True [("reply_box", Just box)]
+                          makeClass boxType =
+                            class_ $ Text.pack $ unwords $ ["nav-link"] ++ ["active" | whichReplyBoxToShow == boxType]
+                          makeAttrs boxType box =
+                            [makeClass boxType, makeHref box] ++ [ariaCurrent_ "true" | whichReplyBoxToShow == boxType]
 
-            div_ [class_ "card border-primary"] $ do
-              div_ [class_ "card-header"] $ do
-                ul_ [class_ "nav nav-tabs card-header-tabs"] $ do
-                  let makeHref box =
-                        href_ $ decodeUtf8 $ URI.renderQuery True [("reply_box", Just box)]
-                      makeClass boxType =
-                        class_ $ Text.pack $ unwords $ ["nav-link"] ++ ["active" | activeBox == boxType]
-                      makeAttrs boxType box =
-                        [makeClass boxType, makeHref box] ++ [ariaCurrent_ "true" | activeBox == boxType]
+                      a_ (makeAttrs Own "own") "Antwort"
 
-                  a_ (makeAttrs Own "own") "Antwort"
+                      a_ (makeAttrs Yes "yes") $ do
+                        span_
+                          [class_ "d-none d-md-block"]
+                          [i|Teilnehmer (#{toHtml $ show participantsTotal})|]
+                        span_ [class_ "d-md-none text-success"] $ do
+                          checkSvg
+                          [i|(#{toHtml $ show participantsTotal})|]
 
-                  a_ (makeAttrs Yes "yes") $ do
-                    span_
-                      [class_ "d-none d-md-block"]
-                      [i|Teilnehmer (#{toHtml $ show participantsTotal})|]
-                    span_ [class_ "d-md-none text-success"] $ do
-                      checkSvg
-                      [i|(#{toHtml $ show participantsTotal})|]
+                      a_ (makeAttrs No "no") $ do
+                        span_
+                          [class_ "d-none d-md-block"]
+                          [i|Absagen (#{toHtml $ show no})|]
+                        span_ [class_ "d-md-none text-danger"] $ do
+                          xCrossSvg
+                          [i|(#{toHtml $ show no})|]
 
-                  a_ (makeAttrs No "no") $ do
-                    span_
-                      [class_ "d-none d-md-block"]
-                      [i|Absagen (#{toHtml $ show (length no)})|]
-                    span_ [class_ "d-md-none text-danger"] $ do
-                      xCrossSvg
-                      [i|(#{toHtml $ show (length no)})|]
-
-              div_ [class_ "card-body"] $
-                case activeBox of
-                  Own -> htmlRsvp expired yourReply $ unEventID eventid
-                  Yes -> htmlRsvpYesList yes
-                  No -> htmlRsvpNoList no
-
-      let (eventid, _, _, _, _, _) = event
-
-      div_ [class_ "container"] $ do
-        div_ [class_ "row gy-3 gx-lg-4"] $ do
-          section_ [class_ "col-lg-7"] $ htmlEvent showAdmin isExpired event attachments
-          section_ [class_ "col-lg-5"] $
-            htmlReplies whichReplyBoxToShow isExpired ownReply eventid replies
+                  div_ [class_ "card-body"] $
+                    case whichReplyBoxToShow of
+                      Own -> htmlRsvp
+                      Yes -> htmlRsvpYesList
+                      No -> htmlRsvpNoList

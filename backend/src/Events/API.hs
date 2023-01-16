@@ -18,7 +18,7 @@ import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.ByteString.Lazy as BL
-import Data.List (partition)
+import Data.List (find, partition)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust, listToMaybe)
 import Data.String.Interpolate (i)
@@ -75,25 +75,19 @@ getAll auth = do
 
   let upcomingSorted = sortWith (getEventDate . fst) upcoming
 
+  let Session {sessionUserId} = User.Session.get' auth
+
   -- dataForHtml is a view of the events that we got from the database that is
   -- tailored to what we display.
-  let dataForHtml :: [(Event, Integer, Integer, Integer, Maybe Bool, Bool)]
+  let dataForHtml :: [(Event, [Reply], Maybe Bool, Bool)]
       dataForHtml =
-        let Session {sessionUserId} = User.Session.get' auth
-
-            f (event, replies) =
-              let rsvp = listToMaybe [unReplyComing coming | (coming, _, userid) <- replies, userid == sessionUserId]
-
-                  -- Calculate how many people accepted, declined and the number of guests
-                  yes = [r | r@(coming, _, _) <- replies, unReplyComing coming]
-                  countGuests = sum [unReplyGuests guests | (_, guests, _) <- yes]
-                  countNo = fromIntegral (length replies - length yes)
-                  countYes = fromIntegral (length yes)
-
-                  -- We mark events that lie in the past with a badge
+        map
+          ( \(event, replies) ->
+              let rsvp = unReplyComing . replyComing <$> find ((==) sessionUserId . replyUserId) replies
                   isExpired = now >= (unEventDate $ getEventDate event)
-               in (event, countYes, countNo, countGuests, rsvp, isExpired)
-         in map f $ upcomingSorted ++ expired
+               in (event, replies, rsvp, isExpired)
+          )
+          (upcomingSorted ++ expired)
 
   let currentUserIsAdmin = User.Session.isAdmin' auth
 

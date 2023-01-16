@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module Events.DB where
 
 import Control.Exception.Safe
@@ -5,6 +7,7 @@ import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.List (zipWith4)
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
@@ -12,76 +15,79 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import Database.SQLite.Simple (NamedParam (..))
 import qualified Database.SQLite.Simple as SQLite
+import Database.SQLite.Simple.FromRow
 import Database.SQLite.Simple.QQ (sql)
 import Events.Event
 import Events.Reply
+import GHC.Generics
 import Network.Wai.Parse (File, FileInfo (..))
+import qualified User.Email
 import qualified User.Id
 import Prelude hiding (id)
 
-dbFetchAllEvents :: (MonadThrow m, MonadIO m) => SQLite.Connection -> m [(Event, [(ReplyComing, ReplyGuests, User.Id.Id)])]
+data DbFetchAllEventsRow = DbFetchAllEventsRow
+  { id :: EventID,
+    title :: EventTitle,
+    date :: EventDate,
+    familyAllowed :: Integer,
+    location :: EventLocation,
+    description :: EventDescription,
+    comingStr :: Maybe Text,
+    guestsStr :: Maybe Text,
+    userIdsStr :: Maybe Text,
+    emailsStr :: Maybe Text
+  }
+  deriving (FromRow, Generic)
+
+dbFetchAllEvents :: (MonadThrow m, MonadIO m) => SQLite.Connection -> m [(Event, [Reply])]
 dbFetchAllEvents conn = do
   rows <-
     liftIO $
       SQLite.query_
         conn
         [sql|
-              select id, title, date, family_allowed, location, description,
+              select events.id, title, date, family_allowed, location, description,
                      group_concat(event_replies.coming) as coming,
                      group_concat(event_replies.guests) as guests,
-                     group_concat(event_replies.userid) as userids
+                     group_concat(event_replies.userid) as userids,
+                     group_concat(users.email) as useremails
               from events
               left join event_replies on events.id = eventid
-              group by id
+              left join users on users.id = event_replies.userid
+              group by events.id
             |]
 
   let parseCommaInts :: Text -> [Integer]
       parseCommaInts "" = []
       parseCommaInts s = map (read . Text.unpack) $ Text.splitOn "," s
 
-  let parseRow ::
-        ( EventID,
-          EventTitle,
-          EventDate,
-          Integer,
-          EventLocation,
-          EventDescription,
-          Maybe Text,
-          Maybe Text,
-          Maybe Text
-        ) ->
-        Either Text (Event, [(ReplyComing, ReplyGuests, User.Id.Id)])
-      parseRow
-        ( id,
-          title,
-          date,
-          familyAllowed,
-          location,
-          description,
-          comingStr,
-          guestsStr,
-          userIdsStr
-          ) = do
-          -- Each event reply or RSVP consists of 3 values:
-          -- - whether you're coming or not, which is 1 or 0 in the DB, but a bool in Haskell
-          -- - the number of guests you're bringing
-          -- - the user ID of the current reply/RSVP
-          --
-          -- We're constructing them by joining the event_replies table
-          -- to event, and then we aggregate the value of **each column**
-          -- by concatenating them with a comma. It gives us a
-          -- column-centric view. On the Haskell side, we parse each list
-          -- of comma-separated integers and then we equip them with
-          -- their respective newtype wrappers.
-          coming <- traverse parseReplyComingFromNumber . parseCommaInts $ fromMaybe "" comingStr
+  let parseRow :: DbFetchAllEventsRow -> Either Text (Event, [Reply])
+      parseRow DbFetchAllEventsRow {..} = do
+        -- Each event reply or RSVP consists of 3 values:
+        -- - whether you're coming or not, which is 1 or 0 in the DB, but a bool in Haskell
+        -- - the number of guests you're bringing
+        -- - the user ID of the current reply/RSVP
+        --
+        -- We're constructing them by joining the event_replies table
+        -- to event, and then we aggregate the value of **each column**
+        -- by concatenating them with a comma. It gives us a
+        -- column-centric view. On the Haskell side, we parse each list
+        -- of comma-separated integers and then we equip them with
+        -- their respective newtype wrappers.
+        coming <- traverse parseReplyComingFromNumber . parseCommaInts $ fromMaybe "" comingStr
 
-          let userIds = map (User.Id.Id . fromIntegral) . parseCommaInts $ fromMaybe "" userIdsStr
-              guests = map ReplyGuests . parseCommaInts $ fromMaybe "" guestsStr
+        emails <- case emailsStr of
+          Nothing -> return []
+          Just "" -> return []
+          Just s -> traverse User.Email.parseFromText $ Text.splitOn "," s
 
-          let event = (id, title, date, familyAllowed == 1, location, description)
-              replies = zip3 coming guests userIds
+        let userIds = map (User.Id.Id . fromIntegral) . parseCommaInts $ fromMaybe "" userIdsStr
+            guests = map ReplyGuests . parseCommaInts $ fromMaybe "" guestsStr
 
-          return (event, replies)
+        let event = (id, title, date, familyAllowed == 1, location, description)
+            replies = zipWith4 Reply coming emails userIds guests
+
+        return (event, replies)
 
   case traverse parseRow rows of
     Left err -> throwString $ Text.unpack err

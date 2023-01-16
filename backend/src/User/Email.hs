@@ -28,9 +28,15 @@ unEmail (Email v) = v
 instance FromField Email where
   fromField f = do
     s :: Text <- fromField f
-    case emailAddress (encodeUtf8 s) of
-      Just addr -> return $ Email addr
-      Nothing -> returnError ConversionFailed f "expecting an SQLText column type"
+    case parseFromText s of
+      Right email -> return email
+      Left err -> returnError ConversionFailed f (Text.unpack err)
+
+parseFromText :: Text -> Either Text Email
+parseFromText s =
+  case emailAddress (encodeUtf8 s) of
+    Just addr -> return $ Email addr
+    Nothing -> Left $ "Can't parse: " <> s
 
 instance ToJSON Email where
   toJSON (Email email) = String . Text.pack $ show email
