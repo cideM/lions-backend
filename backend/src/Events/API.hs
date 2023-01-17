@@ -66,30 +66,24 @@ getAll ::
   m LayoutStub
 getAll auth = do
   conn <- asks App.getDb
-
   events <- dbFetchAllEvents conn
-
   now <- liftIO $ Time.getCurrentTime
 
   let (expired, upcoming) = partition ((>=) now . unEventDate . getEventDate . fst) events
-
-  let upcomingSorted = sortWith (getEventDate . fst) upcoming
+      upcomingSorted = sortWith (getEventDate . fst) upcoming
 
   let Session {sessionUserId} = User.Session.get' auth
-
-  -- dataForHtml is a view of the events that we got from the database that is
-  -- tailored to what we display.
-  let dataForHtml :: [(Event, [Reply], Maybe Bool, Bool)]
+      currentUserIsAdmin = User.Session.isAdmin' auth
       dataForHtml =
         map
           ( \(event, replies) ->
-              let rsvp = unReplyComing . replyComing <$> find ((==) sessionUserId . replyUserId) replies
+              let rsvp =
+                    unReplyComing . replyComing
+                      <$> find ((==) sessionUserId . replyUserId) replies
                   isExpired = now >= (unEventDate $ getEventDate event)
                in (event, replies, rsvp, isExpired)
           )
           (upcomingSorted ++ expired)
-
-  let currentUserIsAdmin = User.Session.isAdmin' auth
 
   return . LayoutStub "Veranstaltung" $ eventList dataForHtml currentUserIsAdmin
 
