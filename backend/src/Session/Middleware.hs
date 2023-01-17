@@ -5,6 +5,7 @@ import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vault.Lazy as Vault
 import qualified Error as E
@@ -67,10 +68,13 @@ login req = do
   sessionDataVaultKey <- asks App.getSessionDataVaultKey
   sessionId <- getSessionId
   session@(Session _ _ userId) <- Session.get sessionId >>= E.note' (Just "no session found")
-  _ <- E.withExceptT' Just $ Session.Valid.parse session
-  roles <- Role.get userId >>= E.note' (Just "no roles found")
-  let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
-  return $ req {Wai.vault = vault'}
+  tryParse <- Session.Valid.parse session
+  case tryParse of
+    Left err -> throwString $ T.unpack err
+    Right _ -> do
+      roles <- Role.get userId >>= E.note' (Just "no roles found")
+      let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
+      return $ req {Wai.vault = vault'}
   where
     getSessionId = do
       sessionKey <- asks App.getSessionEncryptionKey

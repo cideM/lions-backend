@@ -15,7 +15,6 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import qualified Error as E
 import Network.Wai.Session (genSessionId)
 import Session.Session (Id (..), Session (..))
 import Time (timeDaysFromNow)
@@ -27,12 +26,12 @@ create uid = do
   sessionid <- liftIO $ decodeUtf8 <$> genSessionId
   return . Valid $ Session (Id sessionid) expires uid
 
-parse :: (E.MonadError Text m, MonadIO m) => Session -> m Valid
+parse :: (MonadIO m) => Session -> m (Either Text Valid)
 parse s@(Session _ expires _) = do
   now <- liftIO $ Time.getCurrentTime
   if now >= expires
-    then E.throwError $ ([i|session expired at: #{expires}|] :: Text)
-    else return $ Valid s
+    then return . Left $ ([i|session expired at: #{expires}|] :: Text)
+    else return . Right $ Valid s
 
 -- A wrapper around a potentially invalid session so that I can differentiate
 -- the two possible session types through types. I should not export the
