@@ -267,22 +267,26 @@ run = do
               . EventsAPI.attachmentsMiddleware
 
       let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
-          app = middlewares server
-          onError s e = do
-            K.logLocM K.ErrorS (K.ls $ show e)
-            s send500
-          appWithErrorsHandled req send =
-            let send' = liftIO . send
-             in flip App.unApp env . handleAny (onError send') $ app req send'
 
-      liftIO $ runSettings settings appWithErrorsHandled
-  where
-    send500 = do
-      Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
-      . renderBS
-      . layout User.Session.notAuthenticated Nothing
-      . LayoutStub "Fehler"
-      $ div_ [class_ "container p-3 d-flex justify-content-center"]
-      $ div_ [class_ "row col-6"]
-      $ do
-        p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"
+      liftIO $
+        runSettings
+          settings
+          ( \request send ->
+              let send' = liftIO . send
+               in flip App.unApp env
+                    . handleAny (\e -> onError e request send')
+                    $ middlewares server request send'
+          )
+
+onError :: (K.KatipContext m, MonadIO m) => SomeException -> Wai.ApplicationT m
+onError err _ send = do
+  K.logLocM K.ErrorS (K.ls $ show err)
+  send
+    . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
+    . renderBS
+    . layout User.Session.notAuthenticated Nothing
+    . LayoutStub "Fehler"
+    $ div_ [class_ "container p-3 d-flex justify-content-center"]
+    $ div_ [class_ "row col-6"]
+    $ do
+      p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"
