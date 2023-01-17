@@ -1,8 +1,9 @@
 module Login.Login (postLogout, postLogin, getLogin) where
 
 import qualified App
+import Control.Error hiding (tryIO, tryJust)
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Crypto.KDF.BCrypt (validatePassword)
 import Data.ByteString (ByteString)
@@ -14,7 +15,6 @@ import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
-import qualified Error as E
 import Form (FormFieldState (..))
 import qualified Katip as K
 import Layout (ActiveNavLink (..), layout)
@@ -81,7 +81,7 @@ postLogout vaultLookup req send = do
 login ::
   ( MonadIO m,
     MonadThrow m,
-    E.MonadError Text m,
+    MonadError Text m,
     K.KatipContext m,
     App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
@@ -103,7 +103,7 @@ login email formPw = do
   let verifyPassword' = verifyPassword signerKey saltSep
       clientEncrypt = ClientSession.encryptIO sessionKey
 
-  (userId, userSalt, dbPw) <- User.getCredentials email >>= E.note' "no user found"
+  (userId, userSalt, dbPw) <- User.getCredentials email >>= liftEither . note "no user found"
 
   let formPw' = encodeUtf8 formPw
   let dbPw' = encodeUtf8 dbPw
@@ -114,13 +114,13 @@ login email formPw = do
       K.logLocM K.DebugS "found firebase credentials"
       case verifyPassword' salt dbPw' formPw' of
         Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
-        Right ok -> E.unless ok $ E.throwError "incorrect password"
+        Right ok -> unless ok $ throwError "incorrect password"
     -- BCrypt, new credentials
     Nothing -> do
       K.logLocM K.DebugS "found bcrypt credentials"
-      E.unless (validatePassword formPw' dbPw') $ do
+      unless (validatePassword formPw' dbPw') $ do
         K.logLocM K.DebugS "incorrect password"
-        E.throwError "incorrect password"
+        throwError "incorrect password"
       K.logLocM K.DebugS "successful bcrypt login"
 
   newSession <- Session.Valid.create userId
@@ -154,7 +154,7 @@ postLogin req send = do
   let email = Map.findWithDefault "" "email" params
       formPw = Map.findWithDefault "" "password" params
 
-  (E.runExceptT $ login email formPw) >>= \case
+  (runExceptT $ login email formPw) >>= \case
     Left e -> do
       K.logLocM K.ErrorS (K.ls e)
       renderFormInvalid email formPw

@@ -9,7 +9,6 @@ import qualified Data.Default as Def
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import qualified Env
-import qualified Error as E
 import Events.API (EventID (..))
 import qualified Events.API as EventsAPI
 import qualified Feed.Message
@@ -44,7 +43,7 @@ server ::
     App.HasEnvironment env,
     UnliftIO.MonadUnliftIO m,
     App.HasSessionEncryptionKey env,
-    E.MonadCatch m,
+    MonadCatch m,
     App.HasInternalState env,
     App.HasSessionDataVaultKey env,
     App.HasScryptSignerKey env,

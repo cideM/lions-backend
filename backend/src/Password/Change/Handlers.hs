@@ -7,7 +7,7 @@ import Control.Monad.Reader.Class (MonadReader)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
-import qualified Error as E
+import Control.Error hiding (tryIO, tryJust)
 import Form (FormFieldState (..))
 import qualified Katip as K
 import Layout (LayoutStub (..), success, warning)
@@ -74,7 +74,7 @@ post req = do
             else do
               hashed <- Password.hash pw
 
-              E.runExceptT (Token.parse tok) >>= \case
+              runExceptT (Token.parse tok) >>= \case
                 Left (Token.NotFound token) -> do
                   K.logLocM K.InfoS "token not found"
                   return . layout $

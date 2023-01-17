@@ -11,8 +11,8 @@ module User.User
 where
 
 import qualified App
+import Control.Error hiding (tryIO, tryJust)
 import Control.Exception.Safe
-import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Crypto.KDF.BCrypt (hashPassword)
@@ -23,6 +23,7 @@ import Data.Aeson
     genericToEncoding,
     toEncoding,
   )
+import Data.ByteString (ByteString)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.String.Interpolate (i)
@@ -34,7 +35,6 @@ import Database.SQLite.Simple.FromRow (FromRow)
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (..))
 import Database.SQLite.Simple.ToRow (ToRow (..))
-import qualified Error as E
 import GHC.Generics
 import Text.Email.Validate (emailAddress)
 import qualified Text.Email.Validate as Email
@@ -161,8 +161,8 @@ get (User.Id userid) = do
 parseUserRow :: GetUserRow -> Either Text (User.Id, Profile)
 parseUserRow GetUserRow {..} = do
   parsed <- NE.nonEmpty <$> traverse Role.parse (Text.splitOn "," _getUserRowRoles)
-  roles <- E.note [i|user without roles; id: #{_getUserRowUserid} email: ${_getUserRowEmail}|] parsed
-  parsedEmail <- E.note [i|couldn't parse email #{_getUserRowEmail}|] $ emailAddress (encodeUtf8 _getUserRowEmail)
+  roles <- note [i|user without roles; id: #{_getUserRowUserid} email: ${_getUserRowEmail}|] parsed
+  parsedEmail <- note [i|couldn't parse email #{_getUserRowEmail}|] $ emailAddress (encodeUtf8 _getUserRowEmail)
   Right $
     ( User.Id _getUserRowUserid,
       Profile
@@ -199,17 +199,17 @@ instance FromRow GetUserRow where
   fromRow =
     GetUserRow
       <$> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
-        <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
+      <*> SQLite.field
 
 newtype UserProfileWithId = UserProfileWithId (User.Id, Profile)
 
@@ -321,8 +321,8 @@ save profile = do
   (password :: ByteString) <- liftIO $ do Crypto.Random.getRandomBytes 20
   (hashed :: ByteString) <- liftIO $ hashPassword 12 password
 
-  liftIO $
-    SQLite.execute
+  liftIO
+    $ SQLite.execute
       conn
       [sql|
     INSERT INTO users (
@@ -339,7 +339,7 @@ save profile = do
       birthday_partner 
     ) VALUES (?, ?, ?, ?, ?, ?, ? , ? , ? , ? , ?)
     |]
-      $ ProfileCreateWithPw ((decodeUtf8 hashed), profile)
+    $ ProfileCreateWithPw ((decodeUtf8 hashed), profile)
 
 -- Returns ID, hashed password and salt used for hashing. This will be a
 -- non-empty text for firebase data that was imported. It will be empty for all

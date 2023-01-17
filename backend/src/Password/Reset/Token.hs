@@ -10,23 +10,23 @@ module Password.Reset.Token
   )
 where
 
-import Data.ByteString (ByteString)
 import qualified App
+import Control.Error hiding (tryIO, tryJust)
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Crypto.KDF.BCrypt (hashPassword)
 import qualified Crypto.Random
+import Data.ByteString (ByteString)
 import Data.Text (Text)
-import qualified User.User as User
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
-import qualified Error as E
 import Time (timeDaysFromNow)
 import qualified UnliftIO
 import qualified User.Id as User
+import qualified User.User as User
 import Prelude hiding (id)
 
 newtype TokenId = TokenId Int
@@ -143,16 +143,16 @@ data ParseError
 parse ::
   ( MonadIO m,
     MonadReader env m,
-    E.MonadError ParseError m,
+    MonadError ParseError m,
     App.HasDb env,
     MonadThrow m
   ) =>
   Text ->
   m Valid
 parse value = do
-  tok@Token {..} <- get value >>= E.note' (NotFound value)
+  tok@Token {..} <- get value >>= liftEither . note (NotFound value)
   ok <- User.exists tokenUserId
-  E.unless ok $ E.throwError (NoUser tokenUserId)
+  unless ok $ throwError (NoUser tokenUserId)
   now <- liftIO $ Time.getCurrentTime
-  E.when (now >= tokenExpires) (E.throwError $ Expired tok)
+  when (now >= tokenExpires) (throwError $ Expired tok)
   return $ Valid tok
