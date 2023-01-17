@@ -268,26 +268,22 @@ run = do
               . EventsAPI.attachmentsMiddleware
 
       let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
+          app = middlewares server
+          onError s e = do
+            K.logLocM K.ErrorS (K.ls $ show e)
+            s send500
+          appWithErrorsHandled req send =
+            let send' = liftIO . send
+             in flip App.unApp env . handleAny (onError send') $ app req send'
 
-      liftIO . runSettings settings $
-        ( \r s ->
-            let send = liftIO . s
-             in flip App.unApp env
-                  . handleAny
-                    ( \e -> do
-                        K.logLocM K.ErrorS (K.ls $ show e)
-                        send500 send
-                    )
-                  $ middlewares server r send
-        )
+      liftIO $ runSettings settings appWithErrorsHandled
   where
-    send500 send = do
-      send
-        . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
-        . renderBS
-        . layout User.Session.notAuthenticated Nothing
-        . LayoutStub "Fehler"
-        $ div_ [class_ "container p-3 d-flex justify-content-center"]
-        $ div_ [class_ "row col-6"]
-        $ do
-          p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"
+    send500 = do
+      Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
+      . renderBS
+      . layout User.Session.notAuthenticated Nothing
+      . LayoutStub "Fehler"
+      $ div_ [class_ "container p-3 d-flex justify-content-center"]
+      $ div_ [class_ "row col-6"]
+      $ do
+        p_ [class_ "alert alert-secondary", role_ "alert"] "Es ist leider ein Fehler aufgetreten"
