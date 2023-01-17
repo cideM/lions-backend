@@ -1,5 +1,6 @@
 module Events.HTML where
 
+import qualified CMarkGFM
 import Control.Monad (forM_, when)
 import Data.List (partition)
 import Data.Maybe (isNothing)
@@ -15,6 +16,7 @@ import Layout (ariaCurrent_, ariaLabel_, describedBy_, infoBox)
 import Locale (german)
 import Lucid
 import qualified Network.HTTP.Types.URI as URI
+import qualified Text.HTML.SanitizeXSS as SanitizeXSS
 import Prelude hiding (id)
 
 -- eventForm renders the form for creating and updating events. The "checkboxes"
@@ -188,6 +190,10 @@ eventList events showAdmin = do
                                 ([i|Absagen: #{no}|] :: Text)
             )
 
+-- renderEvent displays a single event with all its information, including
+-- attachments and who is coming, how many guests they are bringing, what the
+-- loggined in user picked as RSVP. The event description is interpreted as
+-- Markdown and the parser tries to recognize URLsl
 renderEvent ::
   Event ->
   [Text] -> -- attachments
@@ -238,7 +244,11 @@ renderEvent
                     div_ [class_ "card-body"] $ do
                       h1_ [class_ "card-title h5"] $ toHtml $ unEventTitle title
                       h2_ [class_ "card-subtitle text-muted h6 mb-2"] $ toHtml $ "Ort: " <> unEventLocation location
-                      p_ [class_ "card-text", style_ "white-space: pre-wrap"] $ toHtml $ unEventDescription description
+                      p_ [class_ "card-text", style_ "white-space: pre-wrap"]
+                        $ toHtmlRaw
+                          . SanitizeXSS.sanitize
+                          . CMarkGFM.commonmarkToHtml [] [CMarkGFM.extAutolink]
+                        $ unEventDescription description
                       when (length attachments > 0) $ do
                         p_ [class_ "m-0"] "Angehängte Dateien: "
                         ul_ [class_ "m-0"] $ do
