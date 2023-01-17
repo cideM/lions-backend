@@ -18,6 +18,7 @@ import qualified User.Id as User
 newtype Id = Id Text
   deriving (Show, Eq)
 
+-- TODO: It shouldn't be possible to use this type without checking if it's expired
 data Session = Session Id Time.UTCTime User.Id deriving (Show)
 
 -- Delete all sessions for the given User ID
