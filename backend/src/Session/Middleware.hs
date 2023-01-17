@@ -4,11 +4,8 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Data.Text (Text)
-import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vault.Lazy as Vault
-import qualified Error as E
 import qualified Katip as K
 import Network.HTTP.Types (status302)
 import qualified Network.Wai as Wai
@@ -36,12 +33,11 @@ middleware ::
   ) =>
   Wai.MiddlewareT m
 middleware nextApp req send = do
-  (E.runExceptT $ login req) >>= \case
-    Left e -> do
-      case e of
-        Nothing -> return ()
-        Just err -> K.logLocM K.InfoS $ K.ls err
-
+  maybeRequestWithSession <- login req
+  case maybeRequestWithSession of
+    Nothing ->
+      -- The user doesn't have a valid session. To prevent infinite redirects,
+      -- we need to match on the route.
       case Wai.pathInfo req of
         ["login"] -> do
           nextApp req send
@@ -49,13 +45,14 @@ middleware nextApp req send = do
           nextApp req send
         ["passwort", "aendern"] -> do
           nextApp req send
-        _ -> do
-          send $ Wai.responseBuilder status302 [("Location", "/login")] ""
-    Right req' -> nextApp req' send
+        _ -> send $ Wai.responseBuilder status302 [("Location", "/login")] ""
+    Just req' -> nextApp req' send
 
+-- login adds the user session to the vault, and adds the vault to the request,
+-- in case the user has a valid session. If not, the original request is
+-- returned unchanged.
 login ::
   ( MonadIO m,
-    E.MonadError (Maybe Text) m,
     MonadReader env m,
     MonadThrow m,
     App.HasDb env,
@@ -63,23 +60,28 @@ login ::
     App.HasSessionDataVaultKey env
   ) =>
   Wai.Request ->
-  m Wai.Request
+  m (Maybe Wai.Request)
 login req = do
   sessionDataVaultKey <- asks App.getSessionDataVaultKey
-  sessionId <- getSessionId
-  session@(Session _ _ userId) <- Session.get sessionId >>= E.note' (Just "no session found")
-  tryParse <- Session.Valid.parse session
-  case tryParse of
-    Left err -> throwString $ T.unpack err
-    Right _ -> do
-      roles <- Role.get userId >>= E.note' (Just "no roles found")
-      let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
-      return $ req {Wai.vault = vault'}
-  where
-    getSessionId = do
-      sessionKey <- asks App.getSessionEncryptionKey
-      cookie <- E.note' Nothing . lookup "cookie" $ Wai.requestHeaders req
-      session <- E.note' Nothing . lookup "lions_session" $ Cookie.parseCookies cookie
-      E.when (session == "") (E.liftEither $ Left Nothing)
-      decrypted <- E.note' (Just "empty session cookie") $ ClientSession.decrypt sessionKey session
-      return . Session.Id $ decodeUtf8 decrypted
+  sessionKey <- asks App.getSessionEncryptionKey
+
+  case (lookup "cookie" $ Wai.requestHeaders req)
+    >>= lookup "lions_session" . Cookie.parseCookies
+    >>= ClientSession.decrypt sessionKey of
+    Nothing -> return Nothing
+    Just sessionIdDecrypted -> do
+      maybeSession <- Session.get (Session.Id $ decodeUtf8 sessionIdDecrypted)
+      case maybeSession of
+        Nothing -> return Nothing
+        Just session@(Session _ _ userId) -> do
+          tryParse <- Session.Valid.parse session
+          case tryParse of
+            -- The error here just says that the session expired
+            Left _ -> return Nothing
+            Right _ -> do
+              maybeRoles <- Role.get userId
+              case maybeRoles of
+                Nothing -> return Nothing
+                Just roles -> do
+                  let vault' = Vault.insert sessionDataVaultKey (roles, userId) $ Wai.vault req
+                  return . Just $ req {Wai.vault = vault'}
