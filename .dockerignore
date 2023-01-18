@@ -5,3 +5,5 @@ flake.*
 tags
 client/node_modules
 dist-newstyle/
+.git
+terraform
