@@ -1,6 +1,4 @@
 module App
-  ( Environment (..),
-    parseEnv,
     App (..),
     Env (..),
     HasDb (..),
@@ -41,19 +39,6 @@ newtype App env result = App {unApp :: env -> IO result}
       MonadCatch
     )
     via ReaderT env IO
-
--- TODO: Get rid of this
-data Environment
-  = Production -- Uses real infrastructure and sends emails
-  | Development -- Logs at Debug
-  | Test -- Logs at Debug and doesn't send emails because it doesn't use real infrastructure
-  deriving (Show, Eq)
-
-parseEnv :: String -> IO Environment
-parseEnv "production" = return Production
-parseEnv "development" = return Development
-parseEnv "test" = return Test
-parseEnv s = throwString $ "unknown environment: " <> show s
 
 data Env = Env
   { envDatabaseConnection :: SQLite.Connection,
