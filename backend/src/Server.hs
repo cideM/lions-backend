@@ -35,6 +35,43 @@ import qualified Wai as Wai
 import qualified WelcomeMessage
 import Prelude hiding (id)
 
+run :: IO ()
+run = do
+  Env.withAppEnv $ \env@App.Env {..} -> do
+    K.katipAddContext (K.sl "port" envPort) $ do
+      K.logLocM K.InfoS "starting server"
+
+      let defaultGzipSettings = (Def.def :: Gzip.GzipSettings)
+          gzipMiddleware =
+            Gzip.gzip $
+              defaultGzipSettings
+                { Gzip.gzipFiles = Gzip.GzipCompress,
+                  Gzip.gzipCheckMime = Gzip.defaultCheckMime
+                }
+
+      let middlewares =
+            (Wai.liftMiddleware gzipMiddleware)
+              . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
+              . Request.middleware
+              -- It's important that the attachments middleware comes after the session
+              -- middleware, so that the event attachments are not accessible by the
+              -- public.
+              . Session.middleware
+              . Logging.middleware
+              . EventsAPI.attachmentsMiddleware
+
+      let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
+
+      liftIO $
+        runSettings
+          settings
+          ( \request send ->
+              let send' = liftIO . send
+               in flip App.unApp env
+                    . handleAny (\e -> onError e request send')
+                    $ middlewares server request send'
+          )
+
 server ::
   ( K.KatipContext m,
     MonadIO m,
@@ -240,43 +277,6 @@ server req send = do
           "POST" -> Password.Reset.Handlers.post req >>= send200 . layout' (Just Login)
           _ -> send404
       _ -> send404
-
-run :: IO ()
-run = do
-  Env.withAppEnv $ \env@App.Env {..} -> do
-    K.katipAddContext (K.sl "port" envPort) $ do
-      K.logLocM K.InfoS "starting server"
-
-      let defaultGzipSettings = (Def.def :: Gzip.GzipSettings)
-          gzipMiddleware =
-            Gzip.gzip $
-              defaultGzipSettings
-                { Gzip.gzipFiles = Gzip.GzipCompress,
-                  Gzip.gzipCheckMime = Gzip.defaultCheckMime
-                }
-
-      let middlewares =
-            (Wai.liftMiddleware gzipMiddleware)
-              . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
-              . Request.middleware
-              -- It's important that the attachments middleware comes after the session
-              -- middleware, so that the event attachments are not accessible by the
-              -- public.
-              . Session.middleware
-              . Logging.middleware
-              . EventsAPI.attachmentsMiddleware
-
-      let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
-
-      liftIO $
-        runSettings
-          settings
-          ( \request send ->
-              let send' = liftIO . send
-               in flip App.unApp env
-                    . handleAny (\e -> onError e request send')
-                    $ middlewares server request send'
-          )
 
 onError :: (K.KatipContext m, MonadIO m) => SomeException -> Wai.ApplicationT m
 onError err _ send = do
