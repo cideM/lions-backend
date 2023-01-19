@@ -7,9 +7,10 @@ module Session.Session
 where
 
 import qualified App
+import Control.Monad
 import Control.Exception.Safe
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader.Class (MonadReader, asks)
+import Control.Monad.IO.Class
+import Control.Monad.Reader.Class
 import Data.Text (Text)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
@@ -37,15 +38,16 @@ get ::
   ( MonadIO m,
     App.HasDb env,
     MonadThrow m,
+    MonadPlus m,
     MonadReader env m
   ) =>
   Id ->
-  m (Maybe Session)
+  m Session
 get (Id sid) = do
   conn <- asks App.getDb
   rows <- liftIO $ SQLite.query conn "SELECT key,expires,userid FROM sessions WHERE key = ?" [sid]
   case rows of
     [(key, expires, userid) :: (Text, Time.UTCTime, Int)] ->
-      return . Just $ Session (Id key) expires (User.Id userid)
-    [] -> return Nothing
+      return $ Session (Id key) expires (User.Id userid)
+    [] -> mzero
     other -> throwString $ "unexpected DB result for session: " <> show other

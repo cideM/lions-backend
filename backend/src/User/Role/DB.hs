@@ -8,7 +8,7 @@ where
 
 import qualified App
 import Control.Exception.Safe
-import Control.Monad (forM_)
+import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Text (Text)
@@ -22,10 +22,11 @@ get ::
   ( MonadIO m,
     MonadReader env m,
     MonadThrow m,
+    MonadPlus m,
     App.HasDb env
   ) =>
   User.Id ->
-  m (Maybe [Role.Role])
+  m [Role.Role]
 get (User.Id userId) = do
   conn <- asks App.getDb
   let q =
@@ -35,11 +36,11 @@ get (User.Id userId) = do
         |]
   rows <- liftIO $ SQLite.query conn q [userId]
   case rows of
-    [] -> return Nothing
+    [] -> mzero
     (roles :: [[Text]]) -> do
       case traverse Role.parse $ concat roles of
         Left e -> throwString $ "couldn't parse roles: " <> show e
-        Right parsedRoles -> return $ Just parsedRoles
+        Right parsedRoles -> return parsedRoles
 
 save ::
   ( MonadIO m,

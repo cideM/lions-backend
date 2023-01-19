@@ -8,10 +8,10 @@ module Session.Valid
 where
 
 import qualified App
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except
 import Control.Monad.Reader.Class (MonadReader, asks)
-import Data.String.Interpolate (i)
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
@@ -26,12 +26,12 @@ create uid = do
   sessionid <- liftIO $ decodeUtf8 <$> genSessionId
   return . Valid $ Session (Id sessionid) expires uid
 
-parse :: (MonadIO m) => Session -> m (Either Text Valid)
+parse :: (MonadIO m, MonadError Text m) => Session -> m Valid
 parse s@(Session _ expires _) = do
   now <- liftIO $ Time.getCurrentTime
   if now >= expires
-    then return . Left $ ([i|session expired at: #{expires}|] :: Text)
-    else return . Right $ Valid s
+    then throwError . Text.pack $ "session expired at: " <> show expires
+    else return $ Valid s
 
 -- A wrapper around a potentially invalid session so that I can differentiate
 -- the two possible session types through types. I should not export the

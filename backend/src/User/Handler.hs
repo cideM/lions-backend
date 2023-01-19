@@ -11,13 +11,12 @@ module User.Handler
 where
 
 import qualified App
+import Control.Error
 import Control.Exception.Safe
-import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (i)
 import qualified Data.Text as Text
 import qualified Database.SQLite.Simple as SQLite
@@ -201,11 +200,13 @@ editGet userIdToEdit@(User.Id uid) auth = do
             )
             emptyForm
 
+(?*) :: (MonadError e m) => MaybeT m b -> e -> m b
+(?*) x e = runMaybeT x >>= liftEither . note e
+
 editPost ::
   ( MonadIO m,
     MonadThrow m,
     MonadReader env m,
-    MonadThrow m,
     App.HasDb env
   ) =>
   Wai.Request ->
@@ -213,11 +214,16 @@ editPost ::
   User.Session.Authenticated ->
   m LayoutStub
 editPost req userId auth = do
-  rolesForUserToUpdate <- User.Role.get userId
+  rolesForUserToUpdate <-
+    runExceptT (User.Role.get userId ?* ("no rules found for userId" <> show userId)) >>= \case
+      Left e -> throwString e
+      Right v -> return v
+
   params <- liftIO $ parseParams req
+
   let paramt name = Map.findWithDefault "" name params
       paramb name = isJust $ Map.lookup name params
-      isRole role = maybe False (any ((==) role)) rolesForUserToUpdate
+      isRole role = any ((==) role) rolesForUserToUpdate
       input =
         FormInput
           (paramt "inputEmail")
@@ -234,6 +240,7 @@ editPost req userId auth = do
           (paramt "inputLastNamePartner")
           (paramt "inputMobile")
           (paramt "inputLandline")
+
   (liftIO $ makeProfile input) >>= \case
     Left state ->
       return $
