@@ -43,6 +43,7 @@ newtype App env result = App {unApp :: env -> IO result}
     )
     via ReaderT env IO
 
+-- TODO: Get rid of this
 data Environment
   = Production -- Uses real infrastructure and sends emails
   | Development -- Logs at Debug

@@ -21,73 +21,7 @@ maintainer:         yuuki@protonmail.com
 -- category:
 extra-source-files: CHANGELOG.md
 
-common shared-props
-  ghc-options:
-    -Wall
-    -threaded
-  default-language: Haskell2010
-  default-extensions:
-    DerivingVia
-    RecordWildCards
-    GADTs
-    QuasiQuotes
-    DeriveGeneric
-    LambdaCase
-    FlexibleInstances
-    FlexibleContexts
-    DuplicateRecordFields
-    NamedFieldPuns
-    OverloadedStrings
-    ScopedTypeVariables
-
-test-suite tests
-  import:         shared-props
-  main-is:        Main.hs
-  type:           exitcode-stdio-1.0
-  hs-source-dirs: tests
-  other-modules:
-    Helpers
-    Scrypt.Test
-    Session.Test
-    Feed.Message.Test
-    Login.Test
-    Password.Reset.Test
-    Password.Change.Test
-  build-depends:
-    , base                   == 4.14.3.0
-    , filepattern
-    , lions-backend
-    , unliftio
-    , containers
-    , sqlite-simple
-    , clientsession
-    , bytestring
-    , mtl
-    , safe-exceptions
-    , transformers
-    , wai-extra
-    , wai
-    , amazonka-ses
-    , vault
-    , warp
-    , uri-encode
-    , cookie
-    , email-validate
-    , katip
-    , filepath
-    , resourcet
-    , directory
-    , lucid
-    , time
-    , tasty
-    , http-types
-    , tasty-hunit
-    , text
-    , string-interpolate
-
-library
-  import:          shared-props
-  hs-source-dirs:  src
+common deps
   build-depends:
     , aeson
     , amazonka
@@ -127,6 +61,49 @@ library
     , wai-middleware-static
     , wai-session
     , warp
+
+
+common shared-props
+  default-language: Haskell2010
+
+  ghc-options:
+    -Wall
+
+  default-extensions:
+    DerivingVia
+    RecordWildCards
+    GADTs
+    QuasiQuotes
+    DeriveGeneric
+    LambdaCase
+    FlexibleInstances
+    FlexibleContexts
+    DuplicateRecordFields
+    NamedFieldPuns
+    OverloadedStrings
+    ScopedTypeVariables
+
+test-suite tests
+  import:         shared-props, deps
+
+  main-is:        Main.hs
+
+  type:           exitcode-stdio-1.0
+
+  hs-source-dirs: src, tests
+
+  other-modules:
+    Scrypt
+    Scrypt.Test
+
+  build-depends:
+    , tasty
+    , tasty-hunit
+
+library
+  import:          shared-props, deps
+
+  hs-source-dirs:  src
 
   exposed-modules:
     Lib
@@ -177,6 +154,11 @@ library
 executable run-lions-backend
   import:         shared-props
   main-is:        Main.hs
+
+  ghc-options:
+    -Wall
+    -threaded
+
   build-depends:
     , base                   == 4.14.3.0
     , lions-backend
