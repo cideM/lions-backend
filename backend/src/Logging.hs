@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Logging (withKatip, middleware) where
 
 -- import qualified Network.Wai.Header as Wai
@@ -6,43 +8,43 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
-import qualified User.Session as Session
-import qualified Data.Text as T
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
-import qualified Katip as K
+import Katip
 import Network.HTTP.Types.Status (statusCode)
 import qualified Network.Wai as Wai
 import qualified System.IO
-import Text.Printf (printf)
+import qualified User.Session as Session
 import qualified Wai
 
-withKatip :: K.Verbosity -> K.Severity -> K.Namespace -> K.Environment -> K.KatipContextT IO b -> IO b
+withKatip :: Verbosity -> Severity -> Namespace -> Environment -> KatipContextT IO b -> IO b
 withKatip verbosity minLevel namespace env f = do
   handleScribe <-
-    K.mkHandleScribe
-      K.ColorIfTerminal
+    mkHandleScribe
+      ColorIfTerminal
       System.IO.stdout
-      (K.permitItem minLevel)
+      (permitItem minLevel)
       verbosity
 
   let makeLogEnv =
-        K.registerScribe
+        registerScribe
           "stdout"
           handleScribe
-          K.defaultScribeSettings
-          =<< K.initLogEnv namespace env
+          defaultScribeSettings
+          =<< initLogEnv namespace env
 
-  bracket makeLogEnv K.closeScribes $ \le -> do
+  bracket makeLogEnv closeScribes $ \le -> do
     let initialContext = ()
     let initialNamespace = "server"
 
-    K.runKatipContextT le initialContext initialNamespace f
+    runKatipContextT le initialContext initialNamespace f
 
 middleware ::
   ( MonadIO m,
-    K.KatipContext m,
+    KatipContext m,
+    MonadThrow m,
     MonadReader env m,
     App.HasRequestIdVaultKey env,
     App.HasSessionDataVaultKey env
@@ -53,7 +55,9 @@ middleware nextApp req send = do
 
   let vault = Wai.vault req
   vaultKey <- asks App.getRequestIdVaultKey
-  let requestId = maybe "" (T.pack . show) $ Vault.lookup vaultKey vault
+  requestId <- case Vault.lookup vaultKey vault of
+    Nothing -> throwString "no request ID key in vault"
+    Just key -> return . Text.pack $ show key
 
   sessionVaultKey <- asks App.getSessionDataVaultKey
   let sessionUserId = Session.sessionUserId <$> Session.get (Session.fromVault sessionVaultKey vault)
@@ -64,19 +68,23 @@ middleware nextApp req send = do
     let status = statusCode $ Wai.responseStatus response
         -- This doesn't work. I guess it's because I'm not setting this header.
         -- responseSize = Wai.contentLength (Wai.responseHeaders response)
-        duration = Time.nominalDiffTimeToSeconds $ afterResponse `Time.diffUTCTime` now
+        -- TODO: Fix response size logging
+        (durationInMilliseconds :: Integer) =
+          floor
+            . (1e6 *)
+            . Time.nominalDiffTimeToSeconds
+            $ afterResponse `Time.diffUTCTime` now
 
-    K.katipAddNamespace "request_logger" $ do
-      K.katipAddContext
-        ( (K.sl "time" now)
-            -- <> (K.sl "response_size" responseSize)
-            <> (K.sl "status" status)
-            <> (K.sl "session_user_id" sessionUserId)
-            <> (K.sl "request_path" (decodeUtf8 $ Wai.rawPathInfo req))
+    let fields =
+          (sl "time" now)
+            -- <> (sl "response_size" responseSize)
+            <> (sl "status" status)
+            <> (sl "session_user_id" sessionUserId)
+            <> (sl "request_path" (decodeUtf8 $ Wai.rawPathInfo req))
             -- Just give me this as seconds please. Why is this so hard.
-            <> (K.sl "duration" (printf "%.3f" (realToFrac duration :: Double) :: String))
-            <> (K.sl "request_id" requestId)
-        )
-        $ K.logLocM K.InfoS "request"
+            <> (sl "duration_in_ms" durationInMilliseconds)
+            <> (sl "request_id" requestId)
+
+    katipAddNamespace "request_logger" . katipAddContext fields $ $(logTM) InfoS "request"
 
     send response
