@@ -5,7 +5,7 @@ module App
     Env (..),
     HasDb (..),
     HasEnvironment (..),
-    HasMail (..),
+    HasAWS (..),
     HasPort (..),
     HasScryptSignerKey (..),
     HasScryptSaltSeparator (..),
@@ -24,9 +24,9 @@ import Control.Monad.Trans.Resource (InternalState)
 import Data.ByteString (ByteString)
 import qualified Database.SQLite.Simple as SQLite
 import qualified Katip as K
-import qualified Password.Reset.Mail as Mail
 import qualified Request.Types
 import qualified UnliftIO
+import qualified Network.AWS as AWS
 import qualified User.Session
 import qualified Web.ClientSession as ClientSession
 
@@ -59,7 +59,7 @@ parseEnv s = throwString $ "unknown environment: " <> show s
 data Env = Env
   { envDatabaseConnection :: SQLite.Connection,
     envEnvironment :: Environment,
-    envMail :: Mail.SendMail IO,
+    envAWSEnv :: AWS.Env,
     envPort :: Int,
     envScryptSignerKey :: ByteString,
     envScryptSaltSeparator :: ByteString,
@@ -81,14 +81,14 @@ instance HasPort Int where
 instance HasPort Env where
   getPort = envPort
 
-class HasMail a where
-  getMail :: a -> Mail.SendMail IO
+class HasAWS a where
+  getAWSEnv :: a -> AWS.Env
 
-instance HasMail (Mail.SendMail IO) where
-  getMail = id
+instance HasAWS AWS.Env where
+  getAWSEnv = id
 
-instance HasMail Env where
-  getMail = envMail
+instance HasAWS Env where
+  getAWSEnv = envAWSEnv
 
 class HasEnvironment a where
   getEnv :: a -> Environment

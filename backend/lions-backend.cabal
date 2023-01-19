@@ -134,7 +134,6 @@ library
     Request.Types
     Request.Middleware
     App
-    Password.Reset.Mail
     DB
     Scrypt
     Time

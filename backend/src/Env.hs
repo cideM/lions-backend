@@ -12,28 +12,24 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Katip as K
 import qualified Logging
 import qualified Network.AWS as AWS
-import qualified Password.Reset.Mail as Mail
 import System.Environment (getEnv)
 import qualified Web.ClientSession as ClientSession
 
 withAppEnv :: (App.Env -> K.KatipContextT IO b) -> IO b
 withAppEnv f = do
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
-
-  -- If this is test, do the fake mail thing
   appEnv <- getEnv "LIONS_ENV" >>= App.parseEnv
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
+  mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
+  mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
 
-  -- Determine if we should send actual email using AWS or if we just fake it.
-  sendMail <- do
-    mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
-    mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
+  awsEnv <- do
     let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
         sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
     awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
-    return (Mail.sendAws awsEnv)
+    return awsEnv
 
   let logLevel = case appEnv of
         App.Production -> K.InfoS
@@ -71,7 +67,7 @@ withAppEnv f = do
                             envEnvironment = appEnv,
                             envScryptSignerKey = signerKey,
                             envInternalState = internalState,
-                            envMail = sendMail,
+                            envAWSEnv = awsEnv,
                             envScryptSaltSeparator = saltSep,
                             envPort = port,
                             envSessionDataVaultKey = sessionDataVaultKey,

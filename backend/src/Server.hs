@@ -87,7 +87,7 @@ server ::
     App.HasScryptSaltSeparator env,
     App.HasDb env,
     App.HasPort env,
-    App.HasMail env,
+    App.HasAWS env,
     MonadReader env m
   ) =>
   Wai.ApplicationT m
