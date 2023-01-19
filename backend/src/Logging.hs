@@ -1,8 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Logging (withKatip, middleware) where
-
--- import qualified Network.Wai.Header as Wai
+module Logging where
 
 import qualified App
 import Control.Exception.Safe
@@ -15,31 +13,8 @@ import qualified Data.Vault.Lazy as Vault
 import Katip
 import Network.HTTP.Types.Status (statusCode)
 import qualified Network.Wai as Wai
-import qualified System.IO
 import qualified User.Session as Session
 import qualified Wai
-
-withKatip :: Verbosity -> Severity -> Namespace -> Environment -> KatipContextT IO b -> IO b
-withKatip verbosity minLevel namespace env f = do
-  handleScribe <-
-    mkHandleScribe
-      ColorIfTerminal
-      System.IO.stdout
-      (permitItem minLevel)
-      verbosity
-
-  let makeLogEnv =
-        registerScribe
-          "stdout"
-          handleScribe
-          defaultScribeSettings
-          =<< initLogEnv namespace env
-
-  bracket makeLogEnv closeScribes $ \le -> do
-    let initialContext = ()
-    let initialNamespace = "server"
-
-    runKatipContextT le initialContext initialNamespace f
 
 middleware ::
   ( MonadIO m,

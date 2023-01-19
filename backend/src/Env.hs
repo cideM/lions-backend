@@ -4,21 +4,25 @@ module Env
 where
 
 import qualified App
+import Control.Exception.Safe
 import Control.Monad.Trans.Resource (runResourceT, withInternalState)
 import qualified DB
+import Data.Maybe
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
-import qualified Katip as K
-import qualified Logging
+import Katip
 import qualified Network.AWS as AWS
 import System.Environment (getEnv)
+import System.IO (stdout)
 import qualified Web.ClientSession as ClientSession
 
-withAppEnv :: (App.Env -> K.KatipContextT IO b) -> IO b
+withAppEnv :: (App.Env -> KatipContextT IO b) -> IO b
 withAppEnv f = do
+  lionsLogLevel <- Text.pack <$> getEnv "LIONS_LOG_LEVEL"
+  let logLevel = fromMaybe InfoS $ textToSeverity lionsLogLevel
+
   sqlitePath <- getEnv "LIONS_SQLITE_PATH"
-  appEnv <- getEnv "LIONS_ENV" >>= App.parseEnv
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
@@ -31,40 +35,41 @@ withAppEnv f = do
     awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
     return awsEnv
 
-  let logLevel = case appEnv of
-        App.Production -> K.InfoS
-        _ -> K.DebugS
-
-      verbosity = case appEnv of
-        App.Production -> K.V2
-        _ -> K.V2
-
   sessionKey <- ClientSession.getKey sessionKeyFile
   sessionDataVaultKey <- Vault.newKey
   requestIdVaultKey <- Vault.newKey
 
-  DB.withConnection
-    sqlitePath
-    ( \conn -> do
-        runResourceT $
-          withInternalState
-            ( \internalState -> do
-                Logging.withKatip
-                  verbosity
-                  logLevel
-                  "main"
-                  (K.Environment . Text.pack $ show appEnv)
-                  $ do
-                    ctx <- K.getKatipContext
-                    ns <- K.getKatipNamespace
-                    logEnv <- K.getLogEnv
+  handleScribe <- mkHandleScribe ColorIfTerminal stdout (permitItem logLevel) V2
+
+  rootLogEnv <- initLogEnv "main" (Environment "production")
+
+  let rootLogEnvWithScribes =
+        registerScribe
+          "stdout"
+          handleScribe
+          defaultScribeSettings
+          rootLogEnv
+
+  bracket rootLogEnvWithScribes closeScribes $ \le -> do
+    let initialContext = ()
+    let initialNamespace = "server"
+
+    DB.withConnection
+      sqlitePath
+      ( \conn -> do
+          runResourceT $
+            withInternalState
+              ( \internalState -> do
+                  runKatipContextT le initialContext initialNamespace $ do
+                    ctx <- getKatipContext
+                    ns <- getKatipNamespace
+                    logEnv <- getLogEnv
 
                     let port = (3000 :: Int)
 
                     f
                       ( App.Env
                           { envDatabaseConnection = conn,
-                            envEnvironment = appEnv,
                             envScryptSignerKey = signerKey,
                             envInternalState = internalState,
                             envAWSEnv = awsEnv,
@@ -78,5 +83,5 @@ withAppEnv f = do
                             envLogEnv = logEnv
                           }
                       )
-            )
-    )
+              )
+      )

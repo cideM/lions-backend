@@ -7,7 +7,6 @@ import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
-import qualified Data.Text as T
 import qualified Katip as K
 import Layout (LayoutStub (..), success)
 import Lens.Micro (set)
@@ -29,8 +28,6 @@ post ::
     MonadReader env m,
     UnliftIO.MonadUnliftIO m,
     K.KatipContext m,
-    App.HasEnvironment env,
-    App.HasPort env,
     App.HasAWS env,
     App.HasDb env,
     MonadThrow m
@@ -38,8 +35,6 @@ post ::
   Wai.Request ->
   m LayoutStub
 post req = do
-  env <- asks App.getEnv
-  port <- asks App.getPort
   awsEnv <- asks App.getAWSEnv
 
   K.katipAddNamespace "password_reset_post" $ do
@@ -59,11 +54,8 @@ post req = do
             Just token -> do
               K.logLocM K.InfoS "email found"
 
-              let resetHost =
-                    if env == App.Production
-                      then "https://mitglieder.lions-achern.de"
-                      else T.pack $ "http://localhost:" <> show port
-
+              -- TODO: Extract o a more prominent place
+              let resetHost = "https://mitglieder.lions-achern.de"
                   resetLink = resetHost <> "/passwort/aendern?token=" <> token
 
               _ <-

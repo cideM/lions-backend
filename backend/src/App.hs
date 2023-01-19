@@ -4,7 +4,6 @@ module App
     App (..),
     Env (..),
     HasDb (..),
-    HasEnvironment (..),
     HasAWS (..),
     HasPort (..),
     HasScryptSignerKey (..),
@@ -58,7 +57,6 @@ parseEnv s = throwString $ "unknown environment: " <> show s
 
 data Env = Env
   { envDatabaseConnection :: SQLite.Connection,
-    envEnvironment :: Environment,
     envAWSEnv :: AWS.Env,
     envPort :: Int,
     envScryptSignerKey :: ByteString,
@@ -89,15 +87,6 @@ instance HasAWS AWS.Env where
 
 instance HasAWS Env where
   getAWSEnv = envAWSEnv
-
-class HasEnvironment a where
-  getEnv :: a -> Environment
-
-instance HasEnvironment Environment where
-  getEnv = id
-
-instance HasEnvironment Env where
-  getEnv = envEnvironment
 
 class HasDb a where
   getDb :: a -> SQLite.Connection

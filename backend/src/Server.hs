@@ -77,7 +77,6 @@ server ::
     MonadIO m,
     MonadThrow m,
     App.HasRequestIdVaultKey env,
-    App.HasEnvironment env,
     UnliftIO.MonadUnliftIO m,
     App.HasSessionEncryptionKey env,
     MonadCatch m,

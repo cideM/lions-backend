@@ -39,7 +39,6 @@ postLogout ::
   ( MonadIO m,
     MonadThrow m,
     App.HasDb env,
-    App.HasEnvironment env,
     MonadReader env m
   ) =>
   (Vault.Vault -> Maybe ([Role], User.Id)) ->
@@ -62,14 +61,13 @@ postLogout vaultLookup req send = do
         $ renderBS ""
   where
     logoutCookie = do
-      env <- asks App.getEnv
       return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
         Cookie.defaultSetCookie
           { Cookie.setCookieName = "lions_session",
             Cookie.setCookieValue = "",
             Cookie.setCookieExpires = Nothing,
             Cookie.setCookiePath = Just "/",
-            Cookie.setCookieSecure = env == App.Production,
+            Cookie.setCookieSecure = True,
             Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
             Cookie.setCookieHttpOnly = True
           }
@@ -83,7 +81,6 @@ login ::
     MonadThrow m,
     MonadError Text m,
     K.KatipContext m,
-    App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
@@ -139,7 +136,6 @@ postLogin ::
     MonadThrow m,
     MonadReader env m,
     K.KatipContext m,
-    App.HasEnvironment env,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
@@ -165,14 +161,14 @@ postLogin req send = do
       send $ Wai.responseLBS status302 [("Set-Cookie", cookie), ("Location", "/")] mempty
   where
     makeCookie sessionId expires = do
-      env <- asks App.getEnv
       return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
         Cookie.defaultSetCookie
           { Cookie.setCookieName = "lions_session",
             Cookie.setCookieValue = sessionId,
             Cookie.setCookieExpires = Just expires,
             Cookie.setCookiePath = Just "/",
-            Cookie.setCookieSecure = env == App.Production,
+            -- TODO: Duplication
+            Cookie.setCookieSecure = True,
             Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
             Cookie.setCookieHttpOnly = True
           }
