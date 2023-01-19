@@ -6,7 +6,6 @@ where
 import qualified App
 import Control.Monad.Trans.Resource (runResourceT, withInternalState)
 import qualified DB
-import qualified Data.IORef as IORef
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Vault.Lazy as Vault
@@ -28,18 +27,13 @@ withAppEnv f = do
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
 
   -- Determine if we should send actual email using AWS or if we just fake it.
-  sendMail <-
-    if appEnv == App.Test
-      then do
-        mailRef <- IORef.newIORef (Nothing, Nothing)
-        return (Mail.sendIoRef mailRef)
-      else do
-        mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
-        mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
-        let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
-            sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
-        awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
-        return (Mail.sendAws awsEnv)
+  sendMail <- do
+    mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
+    mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
+    let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
+        sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
+    awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
+    return (Mail.sendAws awsEnv)
 
   let logLevel = case appEnv of
         App.Production -> K.InfoS

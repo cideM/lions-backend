@@ -2,7 +2,6 @@ module Password.Reset.Mail
   ( sendAws,
     Mail (..),
     SendMail,
-    sendIoRef,
     PlainText (..),
     Html (..),
   )
@@ -10,8 +9,6 @@ where
 
 import Control.Exception.Safe
 import Lens.Micro (set)
-import Data.IORef (IORef)
-import qualified Data.IORef as IORef
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text)
 import qualified Network.AWS as AWS
@@ -58,10 +55,3 @@ sendAws awsEnv recipient Mail {..} =
           "hello@lions-achern.de"
           (set SES.dToAddresses [recipient] SES.destination)
           message
-
--- This is a version of SendMail that records sent mails in an IO ref. Use it
--- in unit or integration tests, to avoid using the actual AWS infrastructure.
-sendIoRef :: IORef (Maybe Text, Maybe Mail) -> SendMail IO
-sendIoRef ref recipient mail = do
-  IORef.writeIORef ref (Just recipient, Just mail)
-  return $ SES.sendEmailResponse 0 "id"
