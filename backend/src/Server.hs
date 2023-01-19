@@ -8,7 +8,6 @@ import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.Default as Def
 import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
-import qualified Env
 import Events.API (EventID (..))
 import qualified Events.API as EventsAPI
 import qualified Feed.Message
@@ -37,7 +36,7 @@ import Prelude hiding (id)
 
 run :: IO ()
 run = do
-  Env.withAppEnv $ \env@App.Env {..} -> do
+  App.withAppEnv $ \env@App.Env {..} -> do
     K.katipAddContext (K.sl "port" envPort) $ do
       K.logLocM K.InfoS "starting server"
 
