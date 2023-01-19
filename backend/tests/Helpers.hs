@@ -35,8 +35,6 @@ import Network.HTTP.Types (hContentType, status200)
 import qualified Network.Wai as Wai
 import Network.Wai.Test
 import qualified Password.Reset.Mail as Mail
-import qualified System.Directory
-import System.FilePath ((</>))
 import System.FilePattern.Directory
 import qualified UnliftIO
 import qualified Web.ClientSession as ClientSession
@@ -108,8 +106,6 @@ withFormRequest body handler =
 -- track emails.
 withTestEnv :: App.Environment -> (IORef (Maybe Text, Maybe Mail.Mail) -> App.App App.Env a) -> IO a
 withTestEnv appEnv f = do
-  tempDir <- System.Directory.getTemporaryDirectory
-
   mailRef <- IORef.newIORef (Nothing, Nothing)
   (_, sessionKey) <- ClientSession.randomKey
   sessionDataVaultKey <- Vault.newKey
