@@ -4,7 +4,6 @@ module App
     Env (..),
     HasDb (..),
     HasAWS (..),
-    HasPort (..),
     HasScryptSignerKey (..),
     HasScryptSaltSeparator (..),
     HasSessionDataVaultKey (..),
@@ -52,7 +51,6 @@ newtype App env result = App {unApp :: env -> IO result}
 data Env = Env
   { envDatabaseConnection :: SQLite.Connection,
     envAWSEnv :: AWS.Env,
-    envPort :: Int,
     envScryptSignerKey :: ByteString,
     envScryptSaltSeparator :: ByteString,
     envSessionDataVaultKey :: User.Session.VaultKey,
@@ -63,15 +61,6 @@ data Env = Env
     envLogContext :: K.LogContexts,
     envLogEnv :: K.LogEnv
   }
-
-class HasPort a where
-  getPort :: a -> Int
-
-instance HasPort Int where
-  getPort = id
-
-instance HasPort Env where
-  getPort = envPort
 
 class HasAWS a where
   getAWSEnv :: a -> AWS.Env
@@ -203,8 +192,6 @@ withAppEnv f = do
                     ns <- getKatipNamespace
                     logEnv <- getLogEnv
 
-                    let port = (3000 :: Int)
-
                     f
                       ( App.Env
                           { envDatabaseConnection = conn,
@@ -212,7 +199,6 @@ withAppEnv f = do
                             envInternalState = internalState,
                             envAWSEnv = awsEnv,
                             envScryptSaltSeparator = saltSep,
-                            envPort = port,
                             envSessionDataVaultKey = sessionDataVaultKey,
                             envRequestIdVaultKey = requestIdVaultKey,
                             envSessionEncryptionKey = sessionKey,

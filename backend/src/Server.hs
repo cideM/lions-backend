@@ -1,9 +1,11 @@
-module Server (run) where
+{-# LANGUAGE TemplateHaskell #-}
+
+module Server (app) where
 
 import qualified App
 import Control.Exception.Safe
 import Control.Monad ((>=>))
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.Default as Def
 import qualified Data.Text as Text
@@ -11,14 +13,13 @@ import qualified Data.Vault.Lazy as Vault
 import Events.API (EventID (..))
 import qualified Events.API as EventsAPI
 import qualified Feed.Message
-import qualified Katip as K
+import Katip
 import Layout (ActiveNavLink (..), LayoutStub (..), layout, warning)
 import qualified Logging
 import qualified Login.Login as Login
 import Lucid
 import Network.HTTP.Types (status200, status403, status404, status500)
 import qualified Network.Wai as Wai
-import Network.Wai.Handler.Warp (defaultSettings, runSettings, setHost, setPort)
 import qualified Network.Wai.Middleware.Gzip as Gzip
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Password.Change.Handlers
@@ -34,45 +35,8 @@ import qualified Wai as Wai
 import qualified WelcomeMessage
 import Prelude hiding (id)
 
-run :: IO ()
-run = do
-  App.withAppEnv $ \env@App.Env {..} -> do
-    K.katipAddContext (K.sl "port" envPort) $ do
-      K.logLocM K.InfoS "starting server"
-
-      let defaultGzipSettings = (Def.def :: Gzip.GzipSettings)
-          gzipMiddleware =
-            Gzip.gzip $
-              defaultGzipSettings
-                { Gzip.gzipFiles = Gzip.GzipCompress,
-                  Gzip.gzipCheckMime = Gzip.defaultCheckMime
-                }
-
-      let middlewares =
-            (Wai.liftMiddleware gzipMiddleware)
-              . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
-              . Request.middleware
-              -- It's important that the attachments middleware comes after the session
-              -- middleware, so that the event attachments are not accessible by the
-              -- public.
-              . Session.middleware
-              . Logging.middleware
-              . EventsAPI.attachmentsMiddleware
-
-      let settings = setPort envPort $ setHost "0.0.0.0" defaultSettings
-
-      liftIO $
-        runSettings
-          settings
-          ( \request send ->
-              let send' = liftIO . send
-               in flip App.unApp env
-                    . handleAny (\e -> onError e request send')
-                    $ middlewares server request send'
-          )
-
-server ::
-  ( K.KatipContext m,
+app ::
+  ( KatipContext m,
     MonadIO m,
     MonadThrow m,
     App.HasRequestIdVaultKey env,
@@ -84,12 +48,49 @@ server ::
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
     App.HasDb env,
-    App.HasPort env,
     App.HasAWS env,
     MonadReader env m
   ) =>
   Wai.ApplicationT m
-server req send = do
+app request send =
+  let defaultGzipSettings = (Def.def :: Gzip.GzipSettings)
+      gzipMiddleware =
+        Gzip.gzip $
+          defaultGzipSettings
+            { Gzip.gzipFiles = Gzip.GzipCompress,
+              Gzip.gzipCheckMime = Gzip.defaultCheckMime
+            }
+
+      middlewares =
+        (Wai.liftMiddleware gzipMiddleware)
+          . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
+          . Request.middleware
+          -- It's important that the attachments middleware comes after the session
+          -- middleware, so that the event attachments are not accessible by the
+          -- public.
+          . Session.middleware
+          . Logging.middleware
+          . EventsAPI.attachmentsMiddleware
+   in handleAny (\e -> onError e request send) $ middlewares routes request send
+
+routes ::
+  ( KatipContext m,
+    MonadIO m,
+    MonadThrow m,
+    App.HasRequestIdVaultKey env,
+    UnliftIO.MonadUnliftIO m,
+    App.HasSessionEncryptionKey env,
+    MonadCatch m,
+    App.HasInternalState env,
+    App.HasSessionDataVaultKey env,
+    App.HasScryptSignerKey env,
+    App.HasScryptSaltSeparator env,
+    App.HasDb env,
+    App.HasAWS env,
+    MonadReader env m
+  ) =>
+  Wai.ApplicationT m
+routes req send = do
   reqIdVaultKey <- asks App.getRequestIdVaultKey
   sessionDataVaultKey <- asks App.getSessionDataVaultKey
 
@@ -133,7 +134,7 @@ server req send = do
       send403 = render status403 . layout' Nothing . LayoutStub "Fehler" $ warning "Du hast keinen Zugriff auf diese Seite"
       send404 = render status404 . layout' Nothing . LayoutStub "Nicht gefunden" $ warning "Nicht Gefunden"
 
-  K.katipAddContext (K.sl "request_id" requestId) $ do
+  katipAddContext (sl "request_id" requestId) $ do
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
@@ -276,9 +277,10 @@ server req send = do
           _ -> send404
       _ -> send404
 
-onError :: (K.KatipContext m, MonadIO m) => SomeException -> Wai.ApplicationT m
+onError :: (KatipContext m, MonadIO m) => SomeException -> Wai.ApplicationT m
 onError err _ send = do
-  K.logLocM K.ErrorS (K.ls $ show err)
+  $(logTM) ErrorS (ls $ show err)
+
   send
     . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
     . renderBS
