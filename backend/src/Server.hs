@@ -30,7 +30,7 @@ import Text.Read (readEither)
 import qualified UnliftIO
 import qualified User.Handler as User
 import qualified User.Id as User
-import qualified User.Session
+import qualified User.Session as Session
 import qualified Wai as Wai
 import qualified WelcomeMessage
 import Prelude hiding (id)
@@ -95,26 +95,22 @@ routes req send = do
   let vault = Wai.vault req
 
       -- Create some helpers for doing things based on the user's auth status.
-      authInfo = User.Session.fromVault sessionDataVaultKey vault
+      authInfo = Session.fromVault sessionDataVaultKey vault
 
       -- This function let's visitors access a resource if:
       -- - They're an admin
       -- - They're accessing a resource associated with their own user ID
       adminOnlyOrOwn id next = do
-        case User.Session.getAuth authInfo of
-          Nothing -> send403
-          Just auth -> do
-            let User.Session.Session {..} = User.Session.get' auth
-                isAdmin = User.Session.isAdmin authInfo
-                isOwn = sessionUserId == id
+        case Session.getAuth authInfo of
+          Just auth
+            | (Session.sessionUserId $ Session.get' auth) == id -> next (id, auth)
+            | Session.isAdmin authInfo -> next (id, auth)
+            | otherwise -> send403
+          _ -> send403
 
-            if isAdmin || isOwn
-              then next (id, auth)
-              else send403
+      adminOnly' next = maybe send403 next (Session.getAdmin authInfo)
 
-      adminOnly' next = maybe send403 next (User.Session.getAdmin authInfo)
-
-      authenticatedOnly' next = maybe send403 next (User.Session.getAuth authInfo)
+      authenticatedOnly' next = maybe send403 next (Session.getAuth authInfo)
 
       -- The layout changes depending on whether you're logged in or not, so
       -- we dependency inversion through partial application. Witness the
@@ -282,7 +278,7 @@ onError err _ send = do
   send
     . Wai.responseLBS status500 [("Content-Type", "text/html; charset=UTF-8")]
     . renderBS
-    . layout User.Session.notAuthenticated Nothing
+    . layout Session.notAuthenticated Nothing
     . LayoutStub "Fehler"
     $ div_ [class_ "container p-3 d-flex justify-content-center"]
     $ div_ [class_ "row col-6"]
