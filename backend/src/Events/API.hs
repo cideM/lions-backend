@@ -17,6 +17,7 @@ import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Control.Monad.Trans.Resource as Resource
 import qualified Data.ByteString.Lazy as BL
 import Data.List (find, partition)
 import qualified Data.Map.Strict as Map
@@ -250,53 +251,51 @@ postCreate ::
     MonadThrow m,
     K.KatipContext m,
     UnliftIO.MonadUnliftIO m,
-    App.HasInternalState env,
     App.HasDb env
   ) =>
   Wai.Request ->
   User.Session.Admin ->
   m LayoutStub
 postCreate request _ = do
-  -- TODO: Improve
-  -- This internalState should be short lived since we're creating it for each request, hopefully
-  internalState <- asks App.getInternalState
-  (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) request
+  Resource.runResourceT $
+    Resource.withInternalState $ \internalState -> do
+      (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) request
 
-  K.katipAddNamespace "postCreate" $ do
-    let paramsMap = Map.fromList [(decodeUtf8 k, decodeUtf8 v) | (k, v) <- params]
-        fromParams key = Map.findWithDefault "" key paramsMap
-        input =
-          FormInput
-            (fromParams "eventTitleInput")
-            (fromParams "eventDateInput")
-            (fromParams "eventLocationInput")
-            (fromParams "eventDescriptionInput")
-            (isJust $ Map.lookup "eventFamAllowedInput" paramsMap)
+      K.katipAddNamespace "postCreate" $ do
+        let paramsMap = Map.fromList [(decodeUtf8 k, decodeUtf8 v) | (k, v) <- params]
+            fromParams key = Map.findWithDefault "" key paramsMap
+            input =
+              FormInput
+                (fromParams "eventTitleInput")
+                (fromParams "eventDateInput")
+                (fromParams "eventLocationInput")
+                (fromParams "eventDescriptionInput")
+                (isJust $ Map.lookup "eventFamAllowedInput" paramsMap)
 
-    case makeEvent input of
-      Left state -> do
-        return . LayoutStub "Neue Veranstaltung" $
-          div_ [class_ "container p-2"] $ do
-            h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
-            eventForm "Speichern" "/veranstaltungen/neu" [] input state
-      Right fields@(title, _, _, _, _) -> do
-        conn <- asks App.getDb
-        UnliftIO.withRunInIO $ \runInIO ->
-          SQLite.withTransaction
-            conn
-            ( runInIO $ do
-                eventid <- dbSaveEvent conn fields
-                -- An empty string is the expected behavior when no file is selected, according to MDN
-                -- > A file input's value attribute contains a string that represents the
-                -- > path to the selected file(s). If no file is selected yet, the value is an
-                -- > empty string ("")
-                let newFiles = [file | file@(_, fileInfo) <- files, fileName fileInfo /= "\"\""]
-                dbSaveAttachments conn eventid newFiles
-            )
+        case makeEvent input of
+          Left state -> do
+            return . LayoutStub "Neue Veranstaltung" $
+              div_ [class_ "container p-2"] $ do
+                h1_ [class_ "h4 mb-3"] "Neue Veranstaltung erstellen"
+                eventForm "Speichern" "/veranstaltungen/neu" [] input state
+          Right fields@(title, _, _, _, _) -> do
+            conn <- asks App.getDb
+            UnliftIO.withRunInIO $ \runInIO ->
+              SQLite.withTransaction
+                conn
+                ( runInIO $ do
+                    eventid <- dbSaveEvent conn fields
+                    -- An empty string is the expected behavior when no file is selected, according to MDN
+                    -- > A file input's value attribute contains a string that represents the
+                    -- > path to the selected file(s). If no file is selected yet, the value is an
+                    -- > empty string ("")
+                    let newFiles = [file | file@(_, fileInfo) <- files, fileName fileInfo /= "\"\""]
+                    dbSaveAttachments conn eventid newFiles
+                )
 
-        return . LayoutStub "Neue Veranstaltung" $
-          success $
-            "Neue Veranstaltung " <> unEventTitle title <> " erfolgreich erstellt!"
+            return . LayoutStub "Neue Veranstaltung" $
+              success $
+                "Neue Veranstaltung " <> unEventTitle title <> " erfolgreich erstellt!"
 
 -- postUpdate is the handler for a POST request to update a single event,
 -- including deleting attachments or uploading new ones.
@@ -304,7 +303,6 @@ postUpdate ::
   ( MonadThrow m,
     MonadIO m,
     K.KatipContext m,
-    App.HasInternalState env,
     UnliftIO.MonadUnliftIO m,
     MonadReader env m,
     App.HasDb env
@@ -314,60 +312,59 @@ postUpdate ::
   User.Session.Admin ->
   m LayoutStub
 postUpdate request eventIdRouteParam@(EventID eventid) _ = do
-  conn <- asks App.getDb
+  Resource.runResourceT $
+    Resource.withInternalState $ \internalState -> do
+      conn <- asks App.getDb
 
-  let htmlFail = \userInput formState -> do
-        LayoutStub "Veranstaltung Editieren" $
-          div_ [class_ "container p-3 d-flex justify-content-center"] $
-            eventForm
-              "Speichern"
-              (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
-              []
-              userInput
-              formState
+      let htmlFail = \userInput formState -> do
+            LayoutStub "Veranstaltung Editieren" $
+              div_ [class_ "container p-3 d-flex justify-content-center"] $
+                eventForm
+                  "Speichern"
+                  (Text.pack $ "/veranstaltungen/" <> show eventid <> "/editieren")
+                  []
+                  userInput
+                  formState
 
-  let htmlSuccess = \title ->
-        LayoutStub "Veranstaltung Editieren" $
-          success $
-            "Veranstaltung " <> title <> " erfolgreich editiert"
+      let htmlSuccess = \title ->
+            LayoutStub "Veranstaltung Editieren" $
+              success $
+                "Veranstaltung " <> title <> " erfolgreich editiert"
 
-  -- This internalState should be short lived since we're creating it for each request, hopefully
-  internalState <- asks App.getInternalState
+      (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) request
 
-  (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts (tempFileBackEnd internalState) request
+      let paramsMap = Map.fromList [(decodeUtf8 k, decodeUtf8 v) | (k, v) <- params]
 
-  let paramsMap = Map.fromList [(decodeUtf8 k, decodeUtf8 v) | (k, v) <- params]
+      let userInput =
+            FormInput
+              (Map.findWithDefault "" "eventTitleInput" paramsMap)
+              (Map.findWithDefault "" "eventDateInput" paramsMap)
+              (Map.findWithDefault "" "eventLocationInput" paramsMap)
+              (Map.findWithDefault "" "eventDescriptionInput" paramsMap)
+              (isJust $ Map.lookup "eventFamAllowedInput" paramsMap)
 
-  let userInput =
-        FormInput
-          (Map.findWithDefault "" "eventTitleInput" paramsMap)
-          (Map.findWithDefault "" "eventDateInput" paramsMap)
-          (Map.findWithDefault "" "eventLocationInput" paramsMap)
-          (Map.findWithDefault "" "eventDescriptionInput" paramsMap)
-          (isJust $ Map.lookup "eventFamAllowedInput" paramsMap)
+      case makeEvent userInput of
+        Left state ->
+          return $ htmlFail userInput state
+        Right fields@(title, _, _, _, _) -> do
+          let updateEventAndAttachments = do
+                current <- dbFetchAttachments conn eventIdRouteParam
 
-  case makeEvent userInput of
-    Left state ->
-      return $ htmlFail userInput state
-    Right fields@(title, _, _, _, _) -> do
-      let updateEventAndAttachments = do
-            current <- dbFetchAttachments conn eventIdRouteParam
+                let keep = [decodeUtf8 value | (key, value) <- params, key == "newFileCheckbox"]
 
-            let keep = [decodeUtf8 value | (key, value) <- params, key == "newFileCheckbox"]
+                dbDeleteAttachments conn eventIdRouteParam [s | s <- current, not (elem s keep)]
 
-            dbDeleteAttachments conn eventIdRouteParam [s | s <- current, not (elem s keep)]
+                -- An empty string is the expected behavior when no file is selected, according to MDN
+                -- > A file input's value attribute contains a string that represents the
+                -- > path to the selected file(s). If no file is selected yet, the value is an
+                -- > empty string ("")
+                dbSaveAttachments conn eventIdRouteParam [file | file@(_, fileInfo) <- files, fileName fileInfo /= "\"\""]
 
-            -- An empty string is the expected behavior when no file is selected, according to MDN
-            -- > A file input's value attribute contains a string that represents the
-            -- > path to the selected file(s). If no file is selected yet, the value is an
-            -- > empty string ("")
-            dbSaveAttachments conn eventIdRouteParam [file | file@(_, fileInfo) <- files, fileName fileInfo /= "\"\""]
+                dbUpdateEvent conn eventIdRouteParam fields
 
-            dbUpdateEvent conn eventIdRouteParam fields
+          UnliftIO.withRunInIO $ \runInIO -> SQLite.withTransaction conn (runInIO $ updateEventAndAttachments)
 
-      UnliftIO.withRunInIO $ \runInIO -> SQLite.withTransaction conn (runInIO $ updateEventAndAttachments)
-
-      return $ htmlSuccess $ unEventTitle title
+          return $ htmlSuccess $ unEventTitle title
 
 -- postUpdateEventReplies is the handler for POST requests that update the
 -- event replies for the currently logged in user.

@@ -8,7 +8,6 @@ module App
     HasScryptSaltSeparator (..),
     HasSessionDataVaultKey (..),
     HasRequestIdVaultKey (..),
-    HasInternalState (..),
     HasSessionEncryptionKey (..),
   )
 where
@@ -17,7 +16,6 @@ import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Reader.Class (MonadReader, asks, local)
-import Control.Monad.Trans.Resource (InternalState, runResourceT, withInternalState)
 import qualified DB
 import Data.ByteString (ByteString)
 import Data.Maybe
@@ -55,7 +53,6 @@ data Env = Env
     envScryptSaltSeparator :: ByteString,
     envSessionDataVaultKey :: User.Session.VaultKey,
     envRequestIdVaultKey :: Request.Types.IdVaultKey,
-    envInternalState :: InternalState,
     envSessionEncryptionKey :: ClientSession.Key,
     envLogNamespace :: K.Namespace,
     envLogContext :: K.LogContexts,
@@ -129,15 +126,6 @@ instance K.Katip (App Env) where
   getLogEnv = asks envLogEnv
   localLogEnv f (App m) = App (local (\s -> s {envLogEnv = f (envLogEnv s)}) m)
 
-class HasInternalState a where
-  getInternalState :: a -> InternalState
-
-instance HasInternalState InternalState where
-  getInternalState = id
-
-instance HasInternalState Env where
-  getInternalState = envInternalState
-
 instance K.KatipContext (App Env) where
   getKatipContext = asks envLogContext
   localKatipContext f (App m) = App (local (\s -> s {envLogContext = f (envLogContext s)}) m)
@@ -184,28 +172,23 @@ withAppEnv f = do
     DB.withConnection
       sqlitePath
       ( \conn -> do
-          runResourceT $
-            withInternalState
-              ( \internalState -> do
-                  runKatipContextT le initialContext initialNamespace $ do
-                    ctx <- getKatipContext
-                    ns <- getKatipNamespace
-                    logEnv <- getLogEnv
+          runKatipContextT le initialContext initialNamespace $ do
+            ctx <- getKatipContext
+            ns <- getKatipNamespace
+            logEnv <- getLogEnv
 
-                    f
-                      ( App.Env
-                          { envDatabaseConnection = conn,
-                            envScryptSignerKey = signerKey,
-                            envInternalState = internalState,
-                            envAWSEnv = awsEnv,
-                            envScryptSaltSeparator = saltSep,
-                            envSessionDataVaultKey = sessionDataVaultKey,
-                            envRequestIdVaultKey = requestIdVaultKey,
-                            envSessionEncryptionKey = sessionKey,
-                            envLogNamespace = ns,
-                            envLogContext = ctx,
-                            envLogEnv = logEnv
-                          }
-                      )
+            f
+              ( App.Env
+                  { envDatabaseConnection = conn,
+                    envScryptSignerKey = signerKey,
+                    envAWSEnv = awsEnv,
+                    envScryptSaltSeparator = saltSep,
+                    envSessionDataVaultKey = sessionDataVaultKey,
+                    envRequestIdVaultKey = requestIdVaultKey,
+                    envSessionEncryptionKey = sessionKey,
+                    envLogNamespace = ns,
+                    envLogContext = ctx,
+                    envLogEnv = logEnv
+                  }
               )
       )
