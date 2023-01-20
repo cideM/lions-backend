@@ -214,8 +214,9 @@ editPost ::
   User.Session.Authenticated ->
   m LayoutStub
 editPost req userId auth = do
-  rolesForUserToUpdate <-
-    runExceptT (User.Role.get userId ?* ("no rules found for userId" <> show userId)) >>= \case
+  rolesForUserToUpdate <- do
+    tryRoles <- runExceptT $ User.Role.get userId ?* ("no rules found for userId: " <> show userId)
+    case tryRoles of
       Left e -> throwString e
       Right v -> return v
 
