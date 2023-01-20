@@ -13,6 +13,7 @@ where
 import qualified App
 import Control.Error hiding (tryIO, tryJust)
 import Control.Exception.Safe
+import Control.Monad
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Crypto.KDF.BCrypt (hashPassword)
@@ -347,21 +348,22 @@ save profile = do
 getCredentials ::
   ( MonadIO m,
     Monad m,
+    MonadPlus m,
     MonadReader env m,
     MonadThrow m,
     App.HasDb env
   ) =>
   Text ->
-  m (Maybe (User.Id, Maybe Text, Text))
+  m (User.Id, Maybe Text, Text)
 getCredentials email = do
   conn <- asks App.getDb
   let withoutSpace = Text.strip email
   r <- liftIO $ SQLite.query conn "select id, salt, password_digest from users where email = ? collate nocase" [withoutSpace]
-  return $ case r of
+  case r of
     [(userid, salt, pw)] ->
       case salt of
-        Nothing -> Just ((User.Id userid), Nothing, pw)
-        Just "" -> Just ((User.Id userid), Nothing, pw)
-        Just salt' -> Just ((User.Id userid), Just salt', pw)
-    [] -> Nothing
+        Nothing -> pure ((User.Id userid), Nothing, pw)
+        Just "" -> pure ((User.Id userid), Nothing, pw)
+        Just salt' -> pure ((User.Id userid), Just salt', pw)
+    [] -> mzero
     _ -> throwString "unexpected result from DB for user id and password. not logging result, so please debug getCredentials"

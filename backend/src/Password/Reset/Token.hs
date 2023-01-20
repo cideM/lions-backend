@@ -120,7 +120,10 @@ update ::
   m (Maybe Text)
 update email = do
   conn <- asks App.getDb
-  User.getCredentials email >>= \case
+
+  mbCredentials <- runMaybeT $ User.getCredentials email
+
+  case mbCredentials of
     Nothing -> return Nothing
     Just (userid, _, _) -> do
       (tokenValue, expires) <- create

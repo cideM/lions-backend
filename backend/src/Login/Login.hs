@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Login.Login (postLogout, postLogin, getLogin) where
 
 import qualified App
@@ -16,7 +18,7 @@ import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
 import Form (FormFieldState (..))
-import qualified Katip as K
+import Katip
 import Layout (ActiveNavLink (..), layout)
 import qualified Login.LoginForm as LoginForm
 import Lucid
@@ -63,6 +65,7 @@ postLogout vaultLookup req send = do
     logoutCookie = do
       return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
         Cookie.defaultSetCookie
+          -- TODO: Extract into environment
           { Cookie.setCookieName = "lions_session",
             Cookie.setCookieValue = "",
             Cookie.setCookieExpires = Nothing,
@@ -72,6 +75,9 @@ postLogout vaultLookup req send = do
             Cookie.setCookieHttpOnly = True
           }
 
+(?*) :: (MonadError e m) => MaybeT m b -> e -> m b
+(?*) x e = runMaybeT x >>= liftEither . note e
+
 -- Checks if credentials are valid and then generates a new session, stores it
 -- in the DB and returns it to the caller. This function tries two different
 -- hashing algorithms. One for old password hashes exported from Firebase and
@@ -80,7 +86,7 @@ login ::
   ( MonadIO m,
     MonadThrow m,
     MonadError Text m,
-    K.KatipContext m,
+    KatipContext m,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
@@ -91,42 +97,54 @@ login ::
   Text ->
   m (ByteString, Time.UTCTime)
 login email formPw = do
-  K.logLocM K.DebugS "running login function"
+  $(logTM) DebugS "running login function"
 
-  signerKey <- asks App.getScryptSignerKey
-  saltSep <- asks App.getScryptSaltSeparator
-  sessionKey <- asks App.getSessionEncryptionKey
+  -- plaintext password from HTML form
+  let pwBS = encodeUtf8 formPw
 
-  let verifyPassword' = verifyPassword signerKey saltSep
-      clientEncrypt = ClientSession.encryptIO sessionKey
+  (userId, mbSalt, pw) <- User.getCredentials email ?* "no user found"
 
-  (userId, userSalt, dbPw) <- User.getCredentials email >>= liftEither . note "no user found"
+  -- encrypted password from database
+  let pwEncBS = encodeUtf8 pw
 
-  let formPw' = encodeUtf8 formPw
-  let dbPw' = encodeUtf8 dbPw
-
-  _ <- case encodeUtf8 <$> userSalt of
-    -- Firebase credentials
+  case mbSalt of
     Just salt -> do
-      K.logLocM K.DebugS "found firebase credentials"
-      case verifyPassword' salt dbPw' formPw' of
+      $(logTM) DebugS "found firebase credentials"
+
+      signerKey <- asks App.getScryptSignerKey
+      saltSep <- asks App.getScryptSaltSeparator
+
+      let tryVerify =
+            verifyPassword
+              signerKey
+              saltSep
+              (encodeUtf8 salt)
+              pwEncBS
+              pwBS
+
+      case tryVerify of
         Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
         Right ok -> unless ok $ throwError "incorrect password"
-    -- BCrypt, new credentials
     Nothing -> do
-      K.logLocM K.DebugS "found bcrypt credentials"
-      unless (validatePassword formPw' dbPw') $ do
-        K.logLocM K.DebugS "incorrect password"
+      $(logTM) DebugS "found bcrypt credentials"
+
+      unless (validatePassword pwBS pwEncBS) $ do
+        $(logTM) DebugS "incorrect password"
         throwError "incorrect password"
-      K.logLocM K.DebugS "successful bcrypt login"
+
+      $(logTM) DebugS "successful bcrypt login"
 
   newSession <- Session.Valid.create userId
-  K.logLocM K.DebugS "created new session"
+  $(logTM) DebugS "created new session"
+
   let (Session (Session.Id sessionId) expires _) = Session.Valid.unvalid newSession
   Session.Valid.save newSession
-  K.logLocM K.DebugS "saved new session"
-  encryptedSessionId <- liftIO $ clientEncrypt (encodeUtf8 sessionId)
-  K.logLocM K.DebugS "encrypted session ID"
+  $(logTM) DebugS "saved new session"
+
+  sessionKey <- asks App.getSessionEncryptionKey
+  encryptedSessionId <- liftIO $ ClientSession.encryptIO sessionKey (encodeUtf8 sessionId)
+  $(logTM) DebugS "encrypted session ID"
+
   return (encryptedSessionId, expires)
 
 -- POST handler that creates a new session in the DB and sets a cookie with the
@@ -135,7 +153,7 @@ postLogin ::
   ( MonadIO m,
     MonadThrow m,
     MonadReader env m,
-    K.KatipContext m,
+    KatipContext m,
     App.HasSessionEncryptionKey env,
     App.HasScryptSignerKey env,
     App.HasScryptSaltSeparator env,
@@ -152,12 +170,12 @@ postLogin req send = do
 
   (runExceptT $ login email formPw) >>= \case
     Left e -> do
-      K.logLocM K.ErrorS (K.ls e)
+      $(logTM) ErrorS (ls e)
       renderFormInvalid email formPw
     Right (sessionId, expires) -> do
-      K.logLocM K.DebugS "make cookie"
+      $(logTM) DebugS "make cookie"
       cookie <- makeCookie sessionId expires
-      K.logLocM K.DebugS "send cookie response"
+      $(logTM) DebugS "send cookie response"
       send $ Wai.responseLBS status302 [("Set-Cookie", cookie), ("Location", "/")] mempty
   where
     makeCookie sessionId expires = do
@@ -167,7 +185,6 @@ postLogin req send = do
             Cookie.setCookieValue = sessionId,
             Cookie.setCookieExpires = Just expires,
             Cookie.setCookiePath = Just "/",
-            -- TODO: Duplication
             Cookie.setCookieSecure = True,
             Cookie.setCookieSameSite = Just Cookie.sameSiteLax,
             Cookie.setCookieHttpOnly = True
