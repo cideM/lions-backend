@@ -12,8 +12,8 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Builder as BSBuilder
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
-import Data.String.Interpolate (i)
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Time as Time
 import qualified Data.Vault.Lazy as Vault
@@ -65,8 +65,8 @@ postLogout vaultLookup req send = do
     logoutCookie = do
       return . LBS.toStrict . BSBuilder.toLazyByteString . Cookie.renderSetCookie $
         Cookie.defaultSetCookie
-          -- TODO: Extract into environment
-          { Cookie.setCookieName = "lions_session",
+          { -- TODO: Extract into environment
+            Cookie.setCookieName = "lions_session",
             Cookie.setCookieValue = "",
             Cookie.setCookieExpires = Nothing,
             Cookie.setCookiePath = Just "/",
@@ -123,7 +123,7 @@ login email formPw = do
               pwBS
 
       case tryVerify of
-        Left e -> throwString [i|error trying to verify firebase pw: #{e}|]
+        Left e -> throwString $ Text.unpack ("error trying to verify firebase pw: " <> e)
         Right ok -> unless ok $ throwError "incorrect password"
     Nothing -> do
       $(logTM) DebugS "found bcrypt credentials"
