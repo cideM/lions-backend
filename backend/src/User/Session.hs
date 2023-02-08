@@ -37,18 +37,18 @@ data Session = Session
   { sessionUserId :: User.Id.Id,
     sessionUserRoles :: [Role]
   }
-  deriving (Show, Eq)
+  deriving (Show)
 
 type VaultKey = Vault.Key ([User.Role], User.Id)
 
 -- These aren't exported on purpose so I don't have nested destructuring
 -- everywhere that would be tedious to refactor in case I ever figure out a
 -- better way of modeling this.
-data Authentication = IsNotAuthenticated | IsAuthenticated Authenticated deriving (Show, Eq)
+data Authentication = IsNotAuthenticated | IsAuthenticated Authenticated deriving (Show)
 
-data Authenticated = IsUser Session | IsAdmin Admin deriving (Show, Eq)
+data Authenticated = IsUser Session | IsAdmin Admin deriving (Show)
 
-newtype Admin = Admin Session deriving (Show, Eq)
+newtype Admin = Admin Session deriving (Show)
 
 get :: Authentication -> Maybe Session
 get = fmap get' . getAuth

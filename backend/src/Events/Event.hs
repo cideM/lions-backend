@@ -5,38 +5,32 @@ import qualified Data.Time as Time
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.ToField (ToField)
 import Form (FormFieldState (..), notEmpty, validDate)
-import GHC.Generics
 
 newtype EventTitle = EventTitle Text
-  deriving (Eq, Ord, Generic)
   deriving (Show, FromField, ToField) via Text
 
 unEventTitle :: EventTitle -> Text
 unEventTitle (EventTitle s) = s
 
 newtype EventDate = EventDate Time.UTCTime
-  deriving (Eq, Ord, Generic)
-  deriving (Show, FromField, ToField) via Time.UTCTime
+  deriving (Eq, Ord, Show, FromField, ToField) via Time.UTCTime
 
 unEventDate :: EventDate -> Time.UTCTime
 unEventDate (EventDate s) = s
 
 newtype EventDescription = EventDescription Text
-  deriving (Eq, Ord, Generic)
   deriving (Show, FromField, ToField) via Text
 
 unEventDescription :: EventDescription -> Text
 unEventDescription (EventDescription s) = s
 
 newtype EventLocation = EventLocation Text
-  deriving (Eq, Ord, Generic)
   deriving (Show, FromField, ToField) via Text
 
 unEventLocation :: EventLocation -> Text
 unEventLocation (EventLocation s) = s
 
 newtype EventID = EventID Integer
-  deriving (Eq, Ord, Generic)
   deriving (Show, FromField, ToField) via Integer
 
 unEventID :: EventID -> Integer
@@ -53,7 +47,6 @@ data FormState = FormState
     createEventStateLocation :: FormFieldState Text,
     createEventStateDescription :: FormFieldState Text
   }
-  deriving (Show, Eq, Ord, Generic)
 
 data FormInput = FormInput
   { createEventInputTitle :: Text,
@@ -62,7 +55,6 @@ data FormInput = FormInput
     createEventInputDescription :: Text,
     createEventInputFamilyAllowed :: Bool
   }
-  deriving (Show, Eq, Ord, Generic)
 
 emptyForm :: FormInput
 emptyForm =
@@ -96,4 +88,4 @@ makeEvent input =
         )
     state -> Left state
 
-data ReplyBox = Own | Yes | No deriving (Show, Eq)
+data ReplyBox = Own | Yes | No deriving (Eq)

@@ -27,7 +27,7 @@ data LoginError
   | NoSession
   | InvalidSession
   | NoRoles
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq)
 
 -- Try to log the user in based on the session ID found in a specific cookie.
 -- If not, redirect to /login

@@ -25,7 +25,7 @@ import qualified User.Id as User
 import User.Role.Role (Role (..))
 import qualified User.User as User
 
-data Option a = Option {optionLabel :: Text, optionValue :: a} deriving (Show, Eq)
+data Option a = Option {optionLabel :: Text, optionValue :: a} deriving (Eq)
 
 render :: Show a => [(User.Id, User.Profile)] -> Option a -> [Option a] -> Html ()
 render users selected others = do

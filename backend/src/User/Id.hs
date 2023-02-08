@@ -12,8 +12,8 @@ import Database.SQLite.Simple.ToField (ToField)
 import GHC.Generics
 
 newtype Id = Id Int
-  deriving (Generic, Eq, Ord)
-  deriving (FromField, ToField, Show) via Int
+  deriving (Generic)
+  deriving (Eq, Ord, FromField, ToField, Show) via Int
 
 unId :: Id -> Int
 unId (Id i) = i

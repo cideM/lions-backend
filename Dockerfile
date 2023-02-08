@@ -29,7 +29,7 @@ RUN apt-get update && apt-get -y install libscrypt-dev
 # Docker will cache this command as a layer, freeing us up to
 # modify source code without re-installing dependencies
 # (unless the .cabal file changes!)
-RUN cabal build --only-dependencies -j8 run-lions-backend lib
+RUN cabal build --only-dependencies -j4 run-lions-backend lib
 # Add and Install Application Code
 COPY ./cabal.project /opt/app
 COPY ./backend /opt/app/backend

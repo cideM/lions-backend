@@ -22,7 +22,7 @@ import qualified UnliftIO
 import qualified User.Id as User
 import Prelude hiding (id, log)
 
-newtype Hashed = Hashed Text deriving (Show)
+newtype Hashed = Hashed Text
 
 newtype Salt = Salt Text
 

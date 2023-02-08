@@ -37,7 +37,7 @@ data TokenCreate = TokenCreate
     tokenCreateExpires :: Time.UTCTime,
     tokenCreateUserId :: User.Id
   }
-  deriving (Show, Eq)
+  deriving (Show)
 
 data Token = Token
   { tokenValue :: Text,
@@ -45,7 +45,7 @@ data Token = Token
     tokenId :: TokenId,
     tokenUserId :: User.Id
   }
-  deriving (Show, Eq)
+  deriving (Show)
 
 newtype Valid = Valid Token
 

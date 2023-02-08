@@ -22,7 +22,6 @@ import qualified User.User as User
 
 newtype EditFormState = EditFormState
   {formStateEmail :: FormFieldState Email.EmailAddress}
-  deriving (Show)
 
 newtype CanEditRoles = CanEditRoles Bool
 
@@ -160,7 +159,6 @@ data FormInput = FormInput
     inputMobile :: Text,
     inputLandline :: Text
   }
-  deriving (Show)
 
 makeProfile :: FormInput -> IO (Either EditFormState User.Profile)
 makeProfile FormInput {..} =

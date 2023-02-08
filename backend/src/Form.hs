@@ -7,7 +7,7 @@ import Locale (german)
 import qualified Data.String
 import qualified Data.Text as Text
 
-data FormFieldState a = NotValidated | Valid a | Invalid Text deriving (Show, Eq, Ord)
+data FormFieldState a = NotValidated | Valid a | Invalid Text deriving (Show, Eq)
 
 classValidated :: [(Text, Bool)] -> Text
 classValidated pairs = Text.intercalate " " [className | (className, predicate) <- pairs, predicate]
