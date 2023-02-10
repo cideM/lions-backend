@@ -4,7 +4,13 @@ const selected = new Set();
 let $checkboxes;
 
 function updateEmailButton() {
-  $emailButton.href = "mailto:" + Array.from(selected).sort().join(",");
+  $emailButton.href =
+    "mailto:" +
+    Array.from(selected)
+      .sort()
+      .map((s) => encodeURIComponent(s))
+      .join(",");
+
   if (selected.size > 0) {
     $emailButton.classList.remove("disabled");
   } else {
