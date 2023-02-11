@@ -13,6 +13,7 @@ import qualified Data.Vault.Lazy as Vault
 import Events.API (EventID (..))
 import qualified Events.API as EventsAPI
 import qualified Feed.API as FeedAPI
+import qualified Feed.Middleware as FeedAttachmentsMiddleware
 import qualified Feed.Message
 import Katip
 import Layout (ActiveNavLink (..), LayoutStub (..), layout, warning)
@@ -68,8 +69,9 @@ app request send =
           -- middleware, so that the event attachments are not accessible by the
           -- public.
           . Session.middleware
-          . Logging.middleware
           . EventsAPI.attachmentsMiddleware
+          . FeedAttachmentsMiddleware.middleware
+          . Logging.middleware
    in handleAny (\e -> onError e request send) $ middlewares routes request send
 
 routes ::

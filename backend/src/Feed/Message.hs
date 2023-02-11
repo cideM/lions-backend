@@ -1,15 +1,13 @@
 module Feed.Message where
 
-import Data.Text (Text)
+import Data.Aeson (ToJSON)
 import qualified Data.Time as Time
+import Database.SQLite.Simple.FromField (FromField)
+import Database.SQLite.Simple.ToField (ToField)
 import Prelude hiding (id)
-import qualified Text.HTML.SanitizeXSS as SanitizeXSS
-import qualified CMarkGFM
-import Lucid
 
-newtype Id = Id Int deriving (Show)
+newtype Id = Id Int
+  deriving (ToJSON, Show, ToField, FromField) via Int
 
-data Message = Message Id Text Time.UTCTime deriving (Show)
-
-render :: Text -> Html ()
-render = toHtmlRaw . SanitizeXSS.sanitize . CMarkGFM.commonmarkToHtml [] [CMarkGFM.extAutolink]
+data Message content = Message Id content Time.UTCTime
+  deriving (Show)

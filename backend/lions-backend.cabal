@@ -55,6 +55,7 @@ common deps
     , directory
     , filepath
     , wai
+    , xml
     , wai-extra
     , unliftio
     , errors
@@ -112,6 +113,7 @@ library
     Events.Event
     Events.Reply
     Feed.Form
+    Feed.Middleware
     Feed.DB
     Feed.API
     Feed.Message

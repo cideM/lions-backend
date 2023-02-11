@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Feed.API
   ( saveNewMessage,
     showMessageEditForm,
@@ -12,24 +14,39 @@ module Feed.API
 where
 
 import qualified App
+import qualified CMarkGFM as MD
+import Control.Error hiding (err)
 import Control.Exception.Safe
-import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader.Class (MonadReader)
+import Control.Monad.Except
+import Control.Monad.Reader.Class (MonadReader, asks)
+import qualified Control.Monad.Trans.Resource as Resource
 import qualified Data.Map.Strict as Map
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
+import qualified Database.SQLite.Simple as SQLite
+import Feed.DB
 import qualified Feed.Form as Form
 import Feed.Message
-import Feed.DB
+import Katip
 import Layout (LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
 import qualified Network.Wai as Wai
+import Network.Wai.Parse
+  ( FileInfo (..),
+    ParseRequestBodyOptions,
+    defaultParseRequestBodyOptions,
+    parseRequestBodyEx,
+    setMaxRequestFileSize,
+    tempFileBackEnd,
+  )
+import qualified Text.HTML.SanitizeXSS as SanitizeXSS
+import qualified Text.XML.Light as XML
+import qualified UnliftIO
 import qualified User.Session
-import Wai (parseParams)
 import Prelude hiding (id)
 
 type ShowEditBtn = Bool
@@ -38,20 +55,43 @@ newtype EditHref = EditHref Text
 
 newtype DeleteHref = DeleteHref Text
 
-renderSingleMessage :: EditHref -> DeleteHref -> (Text, Time.ZonedTime) -> ShowEditBtn -> Html ()
-renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (content, date) canEdit =
-  div_ [class_ "card"] $ do
-    let formatted = Time.formatTime german "%A, %d. %B %Y" date
-     in do
-          div_ [class_ "card-header"] $ toHtml formatted
-          div_ [class_ "card-body"] $
-            p_ [class_ "card-text"] $ render content
-          div_ [class_ "card-footer"] $
-            when canEdit $ do
-              a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
-              a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
+renderSingleMessage ::
+  EditHref ->
+  DeleteHref ->
+  (Id, Html (), Time.ZonedTime) ->
+  [Text] -> -- attachment filenames
+  ShowEditBtn ->
+  Html ()
+renderSingleMessage
+  (EditHref editHref)
+  (DeleteHref deleteHref)
+  (id, content, date)
+  filenames
+  canEdit =
+    div_ [class_ "card"] $ do
+      let formatted = Time.formatTime german "%A, %d. %B %Y" date
+       in do
+            div_ [class_ "card-header"] $ toHtml formatted
+            div_ [class_ "card-body"] $ do
+              content
 
-renderFeed :: Time.TimeZone -> Bool -> [Message] -> LayoutStub
+              when (length filenames > 0) $ do
+                h2_ [class_ "mt-3 text-muted h6"] "Anhänge"
+                ul_ [class_ "m-0"] $ do
+                  forM_
+                    filenames
+                    ( \filename -> do
+                        let url = Text.pack $ "/news/" <> show id <> "/" <> Text.unpack filename
+                        li_ []
+                          . a_ [class_ "card-link", href_ url]
+                          $ toHtml filename
+                    )
+            div_ [class_ "card-footer"] $
+              when canEdit $ do
+                a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
+                a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
+
+renderFeed :: Time.TimeZone -> Bool -> [(Message (Html ()), [Text])] -> LayoutStub
 renderFeed zone userIsAdmin msgs =
   LayoutStub "Willkommen" $
     div_ [class_ "container"] $ do
@@ -78,11 +118,22 @@ renderFeed zone userIsAdmin msgs =
         div_ [class_ "col"] $ do
           div_ [class_ "row row-cols-1 g-5"] $ do
             mapM_
-              ( \(Message (Id id) content datetime) ->
-                  let editHref = EditHref $ Text.pack $ "/editieren/" <> show id
-                      deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show id
+              ( \(message, filenames) -> do
+                  let Message postId content datetime = message
+
+                  let editHref = EditHref $ Text.pack $ "/editieren/" <> show postId
+                      deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show postId
                       zoned = Time.utcToZonedTime zone datetime
-                   in div_ [class_ "col"] (renderSingleMessage editHref deleteHref (content, zoned) userIsAdmin)
+
+                  div_
+                    [class_ "col"]
+                    ( renderSingleMessage
+                        editHref
+                        deleteHref
+                        (postId, content, zoned)
+                        filenames
+                        userIsAdmin
+                    )
               )
               msgs
 
@@ -100,52 +151,134 @@ editPageLayout = pageLayout "Nachricht Editieren"
 createPageLayout = pageLayout "Nachricht Erstellen"
 deletePageLayout = pageLayout "Nachricht Löschen"
 
+fileUploadOpts :: ParseRequestBodyOptions
+fileUploadOpts = setMaxRequestFileSize 100000000 defaultParseRequestBodyOptions
+
 saveNewMessage ::
   ( MonadIO m,
     App.HasDb env,
     MonadThrow m,
+    KatipContext m,
+    UnliftIO.MonadUnliftIO m,
     MonadReader env m
   ) =>
   Wai.Request ->
   User.Session.Admin ->
   m LayoutStub
-saveNewMessage req _ = do
-  params <- liftIO $ parseParams req
-  let input =
-        Form.Input
-          (Map.findWithDefault "" "date" params)
-          (Map.findWithDefault "" "message" params)
+saveNewMessage r _ = do
+  Resource.runResourceT $
+    Resource.withInternalState $ \internalState -> do
+      let backend = tempFileBackEnd internalState
+      (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts backend r
 
-  case Form.parse input of
-    Left state ->
-      return . createPageLayout $ Form.render input state "/neu"
-    Right (message, date) -> do
-      save message date
-      return . createPageLayout $ success "Nachricht erfolgreich erstellt"
+      let paramsMap =
+            Map.fromList
+              [ (decodeUtf8 k, decodeUtf8 v)
+                | (k, v) <- params
+              ]
+
+      let checkboxes =
+            [ (decodeUtf8 (fileName fileInfo), True)
+              | (_, fileInfo) <- files
+            ]
+
+          input =
+            Form.Input
+              (Map.findWithDefault "" "date" paramsMap)
+              (Map.findWithDefault "" "message" paramsMap)
+              checkboxes
+
+      case Form.parse input of
+        Left state ->
+          return . createPageLayout $ Form.render input state "/neu"
+        Right (message, date) -> do
+          conn <- asks App.getDb
+
+          UnliftIO.withRunInIO $ \runInIO ->
+            SQLite.withTransaction conn . runInIO $ do
+              katipAddNamespace "saveNewMessage -> transaction" $ do
+                postId <- save message date
+
+                let newFiles =
+                      [ f
+                        | f@(_, fileInfo) <- files,
+                          fileName fileInfo /= "\"\""
+                      ]
+
+                katipAddContext (sl "post_id" postId) $ do
+                  $(logTM) DebugS $ showLS newFiles
+
+                  saveAttachments conn postId newFiles
+
+                  return
+                    . createPageLayout
+                    $ success "Nachricht erfolgreich erstellt"
 
 handleEditMessage ::
   ( MonadIO m,
     App.HasDb env,
     MonadThrow m,
+    UnliftIO.MonadUnliftIO m,
     MonadReader env m
   ) =>
   Wai.Request ->
   Id ->
   User.Session.Admin ->
   m LayoutStub
-handleEditMessage req mid@(Id msgid) _ = do
-  params <- liftIO $ parseParams req
-  let input =
-        Form.Input
-          (Map.findWithDefault "" "date" params)
-          (Map.findWithDefault "" "message" params)
+handleEditMessage r postId _ = do
+  Resource.runResourceT . Resource.withInternalState $ \internalState -> do
+    let backend = tempFileBackEnd internalState
+    (params, files) <- liftIO $ parseRequestBodyEx fileUploadOpts backend r
 
-  case Form.parse input of
-    Left state ->
-      return . editPageLayout $ Form.render input state [i|/editieren/#{msgid}|]
-    Right (message, date) -> do
-      update mid message date
-      return . editPageLayout $ success "Nachricht erfolgreich editiert"
+    -- Is it really a good idea to add these to input? I guess...
+    let checkboxes =
+          [ (decodeUtf8 value, True)
+            | (key, value) <- params,
+              key == "newFileCheckbox"
+          ]
+
+    let paramsMap =
+          Map.fromList
+            [ (decodeUtf8 k, decodeUtf8 v)
+              | (k, v) <- params
+            ]
+
+        input =
+          Form.Input
+            (Map.findWithDefault "" "date" paramsMap)
+            (Map.findWithDefault "" "message" paramsMap)
+            checkboxes
+
+    case Form.parse input of
+      Left state ->
+        return
+          . editPageLayout
+          . Form.render input state
+          $ Text.pack ("/editieren/" <> show postId)
+      Right (message, date) -> do
+        conn <- asks App.getDb
+
+        UnliftIO.withRunInIO $ \runInIO ->
+          SQLite.withTransaction conn . runInIO $ do
+            current <- fetchAttachmentFilenames conn postId
+
+            let (keep :: [Text]) = map fst checkboxes
+                (remove :: [Text]) = [s | s <- current, not (elem s keep)]
+
+            deleteAttachments conn postId remove
+
+            let newFiles =
+                  [ f
+                    | f@(_, fileInfo) <- files,
+                      fileName fileInfo /= "\"\""
+                  ]
+            saveAttachments conn postId newFiles
+
+            update postId message date
+
+            return
+              . editPageLayout
+              $ success "Nachricht erfolgreich editiert"
 
 showDeleteConfirmation ::
   ( MonadIO m,
@@ -156,14 +289,21 @@ showDeleteConfirmation ::
   Id ->
   User.Session.Admin ->
   m LayoutStub
-showDeleteConfirmation mid@(Id msgid) _ = do
-  get mid >>= \case
-    Nothing -> throwString [i|delete request, but no message with ID: #{msgid}|]
-    Just (Message _ content _) -> do
+showDeleteConfirmation postId _ = do
+  maybePost <- get postId
+
+  case maybePost of
+    Nothing -> do
+      let err = "delete request, but no message with ID: " <> show postId
+      throwString err
+    Just (message, _) -> do
+      let (Message _ content _) = message
+          formActionURL = Text.pack $ "/loeschen/" <> show postId
+
       return . deletePageLayout $ do
         p_ [] "Nachricht wirklich löschen?"
         p_ [class_ "border p-2 mb-4", role_ "alert"] $ toHtml content
-        form_ [action_ [i|/loeschen/#{msgid}|], method_ "post", class_ ""] $
+        form_ [action_ formActionURL, method_ "post", class_ ""] $
           button_ [class_ "btn btn-danger", type_ "submit"] "Ja, Nachricht löschen!"
 
 handleDeleteMessage ::
@@ -186,7 +326,7 @@ showAddMessageForm ::
 showAddMessageForm _ = do
   now <- liftIO $ Time.getCurrentTime
   let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ now
-  return . createPageLayout $ Form.render (Form.Input formatted "") Form.emptyState "/neu"
+  return . createPageLayout $ Form.render (Form.Input formatted "" []) Form.emptyState "/neu"
 
 showMessageEditForm ::
   ( MonadIO m,
@@ -197,22 +337,95 @@ showMessageEditForm ::
   Id ->
   User.Session.Admin ->
   m LayoutStub
-showMessageEditForm mid@(Id msgid) _ = do
-  get mid >>= \case
-    Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
-    Just (Message _ content date) -> do
+showMessageEditForm postId _ = do
+  maybePost <- get postId
+
+  case maybePost of
+    Nothing -> do
+      -- TODO: This should be a 404, this is probably the case for many of
+      -- these Nothing cases
+      let err = "edit message but no welcome message found for id: " <> show postId
+      throwString err
+    Just (message, filenames) -> do
       let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ date
-      return . editPageLayout $ Form.render (Form.Input formatted content) Form.emptyState [i|/editieren/#{msgid}|]
+          (Message _ content date) = message
+          checkboxes = [(f, True) | f <- filenames]
+          formInput = Form.Input formatted content checkboxes
+
+      return
+        . editPageLayout
+        . Form.render formInput Form.emptyState
+        $ Text.pack ("/editieren/" <> show postId)
+
+-- Attribute key; "class"
+cardTextClass :: XML.QName
+cardTextClass = XML.blank_name {XML.qName = "class"}
+
+-- Attribute with key and value; class="card-text"
+cardTextAttr :: XML.Attr
+cardTextAttr = XML.Attr cardTextClass "card-text"
+
+-- Add class="card-text" to every paragraph
+addCardTextClass :: Text -> Either Text Text
+addCardTextClass text =
+  case XML.parseXML text of
+    [] -> Left $ "can't parse source: " <> text
+    contents ->
+      Right . Text.pack $
+        concatMap (XML.showContent . go) contents
+  where
+    go :: XML.Content -> XML.Content
+    go content@(XML.Elem element) =
+      let tagName = XML.qName (XML.elName element)
+       in case tagName of
+            "p" ->
+              let attrs' = XML.elAttribs element ++ [cardTextAttr]
+                  el' =
+                    element
+                      { XML.elAttribs = attrs',
+                        XML.elContent = map go (XML.elContent element)
+                      }
+               in XML.Elem el'
+            _ -> content
+    go other = other
 
 showFeed ::
   ( MonadIO m,
     App.HasDb env,
     MonadThrow m,
+    KatipContext m,
     MonadReader env m
   ) =>
   User.Session.Authenticated ->
   m LayoutStub
 showFeed auth = do
-  msgs :: [Message] <- getAll
+  posts :: [(Message Text, [Text])] <- getAll
+
+  posts' :: [(Message (Html ()), [Text])] <-
+    traverse transformHTML posts
+
   zone <- liftIO $ Time.getCurrentTimeZone
-  return $ renderFeed zone (User.Session.isAdmin' auth) msgs
+
+  $(logTM) DebugS $ "first post: " <> (showLS $ head posts')
+
+  return $ renderFeed zone (User.Session.isAdmin' auth) posts'
+  where
+    parseMarkdown =
+      SanitizeXSS.sanitize
+        . MD.commonmarkToHtml [] [MD.extAutolink]
+
+    -- Parse as Markdown, then add a CSS class to each paragraph
+    -- of the resulting HTML
+    transformHTML (message, filenames) = do
+      let Message id content date = message
+
+      content' <-
+        either
+          (throwString . Text.unpack)
+          (pure . toHtmlRaw)
+          . addCardTextClass
+          $ parseMarkdown content
+
+      let message' = Message id content' date
+
+      pure (message', filenames)
