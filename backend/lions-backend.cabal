@@ -112,6 +112,8 @@ library
     Events.Event
     Events.Reply
     Feed.Form
+    Feed.DB
+    Feed.API
     Feed.Message
     Server
     Form
@@ -146,7 +148,6 @@ library
     User.Email
     User.Role.DB
     Wai
-    WelcomeMessage
 
 executable run-lions-backend
   import:         shared-props

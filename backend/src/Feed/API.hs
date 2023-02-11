@@ -1,10 +1,10 @@
-module WelcomeMessage
+module Feed.API
   ( saveNewMessage,
     showMessageEditForm,
     showFeed,
     showAddMessageForm,
-    Message.Id (..),
-    Message.Message (..),
+    Id (..),
+    Message (..),
     handleEditMessage,
     showDeleteConfirmation,
     handleDeleteMessage,
@@ -22,7 +22,8 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Feed.Form as Form
-import qualified Feed.Message as Message
+import Feed.Message
+import Feed.DB
 import Layout (LayoutStub (..), infoBox, success)
 import Locale (german)
 import Lucid
@@ -38,19 +39,19 @@ newtype EditHref = EditHref Text
 newtype DeleteHref = DeleteHref Text
 
 renderSingleMessage :: EditHref -> DeleteHref -> (Text, Time.ZonedTime) -> ShowEditBtn -> Html ()
-renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (msg, date) canEdit =
+renderSingleMessage (EditHref editHref) (DeleteHref deleteHref) (content, date) canEdit =
   div_ [class_ "card"] $ do
     let formatted = Time.formatTime german "%A, %d. %B %Y" date
      in do
           div_ [class_ "card-header"] $ toHtml formatted
           div_ [class_ "card-body"] $
-            p_ [class_ "card-text"] $ Message.render msg
+            p_ [class_ "card-text"] $ render content
           div_ [class_ "card-footer"] $
             when canEdit $ do
               a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
               a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
 
-renderFeed :: Time.TimeZone -> Bool -> [Message.Message] -> LayoutStub
+renderFeed :: Time.TimeZone -> Bool -> [Message] -> LayoutStub
 renderFeed zone userIsAdmin msgs =
   LayoutStub "Willkommen" $
     div_ [class_ "container"] $ do
@@ -77,7 +78,7 @@ renderFeed zone userIsAdmin msgs =
         div_ [class_ "col"] $ do
           div_ [class_ "row row-cols-1 g-5"] $ do
             mapM_
-              ( \(Message.Message (Message.Id id) content datetime) ->
+              ( \(Message (Id id) content datetime) ->
                   let editHref = EditHref $ Text.pack $ "/editieren/" <> show id
                       deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show id
                       zoned = Time.utcToZonedTime zone datetime
@@ -89,7 +90,7 @@ renderFeed zone userIsAdmin msgs =
 -- the title smaller, so it's almost more like breadcrums?
 pageLayout :: Text -> Html () -> LayoutStub
 pageLayout title content =
-  LayoutStub title  $
+  LayoutStub title $
     div_ [class_ "container p-2"] $ do
       h1_ [class_ "h4 mb-3"] $ toHtml title
       content
@@ -119,7 +120,7 @@ saveNewMessage req _ = do
     Left state ->
       return . createPageLayout $ Form.render input state "/neu"
     Right (message, date) -> do
-      Message.save message date
+      save message date
       return . createPageLayout $ success "Nachricht erfolgreich erstellt"
 
 handleEditMessage ::
@@ -129,10 +130,10 @@ handleEditMessage ::
     MonadReader env m
   ) =>
   Wai.Request ->
-  Message.Id ->
+  Id ->
   User.Session.Admin ->
   m LayoutStub
-handleEditMessage req mid@(Message.Id msgid) _ = do
+handleEditMessage req mid@(Id msgid) _ = do
   params <- liftIO $ parseParams req
   let input =
         Form.Input
@@ -143,7 +144,7 @@ handleEditMessage req mid@(Message.Id msgid) _ = do
     Left state ->
       return . editPageLayout $ Form.render input state [i|/editieren/#{msgid}|]
     Right (message, date) -> do
-      Message.update mid message date
+      update mid message date
       return . editPageLayout $ success "Nachricht erfolgreich editiert"
 
 showDeleteConfirmation ::
@@ -152,13 +153,13 @@ showDeleteConfirmation ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  Message.Id ->
+  Id ->
   User.Session.Admin ->
   m LayoutStub
-showDeleteConfirmation mid@(Message.Id msgid) _ = do
-  Message.get mid >>= \case
+showDeleteConfirmation mid@(Id msgid) _ = do
+  get mid >>= \case
     Nothing -> throwString [i|delete request, but no message with ID: #{msgid}|]
-    Just (Message.Message _ content _) -> do
+    Just (Message _ content _) -> do
       return . deletePageLayout $ do
         p_ [] "Nachricht wirklich löschen?"
         p_ [class_ "border p-2 mb-4", role_ "alert"] $ toHtml content
@@ -171,11 +172,11 @@ handleDeleteMessage ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  Message.Id ->
+  Id ->
   User.Session.Admin ->
   m LayoutStub
 handleDeleteMessage msgid _ = do
-  Message.delete msgid
+  delete msgid
   return . deletePageLayout $ success "Nachricht erfolgreich gelöscht"
 
 showAddMessageForm ::
@@ -193,13 +194,13 @@ showMessageEditForm ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  Message.Id ->
+  Id ->
   User.Session.Admin ->
   m LayoutStub
-showMessageEditForm mid@(Message.Id msgid) _ = do
-  Message.get mid >>= \case
+showMessageEditForm mid@(Id msgid) _ = do
+  get mid >>= \case
     Nothing -> throwString $ "edit message but no welcome message found for id: " <> show msgid
-    Just (Message.Message _ content date) -> do
+    Just (Message _ content date) -> do
       let formatted = Text.pack . Time.formatTime german "%d.%m.%Y %R" $ date
       return . editPageLayout $ Form.render (Form.Input formatted content) Form.emptyState [i|/editieren/#{msgid}|]
 
@@ -212,6 +213,6 @@ showFeed ::
   User.Session.Authenticated ->
   m LayoutStub
 showFeed auth = do
-  msgs :: [Message.Message] <- Message.getAll
+  msgs :: [Message] <- getAll
   zone <- liftIO $ Time.getCurrentTimeZone
   return $ renderFeed zone (User.Session.isAdmin' auth) msgs

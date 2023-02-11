@@ -12,6 +12,7 @@ import qualified Data.Text as Text
 import qualified Data.Vault.Lazy as Vault
 import Events.API (EventID (..))
 import qualified Events.API as EventsAPI
+import qualified Feed.API as FeedAPI
 import qualified Feed.Message
 import Katip
 import Layout (ActiveNavLink (..), LayoutStub (..), layout, warning)
@@ -32,7 +33,6 @@ import qualified User.Handler as User
 import qualified User.Id as User
 import qualified User.Session as Session
 import qualified Wai as Wai
-import qualified WelcomeMessage
 import Prelude hiding (id)
 
 app ::
@@ -132,7 +132,7 @@ routes req send = do
     case Wai.pathInfo req of
       [] ->
         case Wai.requestMethod req of
-          "GET" -> authenticatedOnly' $ WelcomeMessage.showFeed >=> send200 . layout' (Just Welcome)
+          "GET" -> authenticatedOnly' $ FeedAPI.showFeed >=> send200 . layout' (Just Welcome)
           _ -> send404
       ["veranstaltungen"] ->
         case Wai.requestMethod req of
@@ -189,13 +189,13 @@ routes req send = do
           Right (parsed :: Int) ->
             let msgId = Feed.Message.Id parsed
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ WelcomeMessage.handleDeleteMessage msgId >=> send200 . layout' (Just Welcome)
-                  "GET" -> adminOnly' $ WelcomeMessage.showDeleteConfirmation msgId >=> send200 . layout' (Just Welcome)
+                  "POST" -> adminOnly' $ FeedAPI.handleDeleteMessage msgId >=> send200 . layout' (Just Welcome)
+                  "GET" -> adminOnly' $ FeedAPI.showDeleteConfirmation msgId >=> send200 . layout' (Just Welcome)
                   _ -> send404
       ["neu"] ->
         case Wai.requestMethod req of
-          "POST" -> adminOnly' $ WelcomeMessage.saveNewMessage req >=> send200 . layout' (Just Welcome)
-          "GET" -> adminOnly' $ WelcomeMessage.showAddMessageForm >=> send200 . layout' (Just Welcome)
+          "POST" -> adminOnly' $ FeedAPI.saveNewMessage req >=> send200 . layout' (Just Welcome)
+          "GET" -> adminOnly' $ FeedAPI.showAddMessageForm >=> send200 . layout' (Just Welcome)
           _ -> send404
       ["editieren", i] ->
         case readEither (Text.unpack i) of
@@ -203,8 +203,8 @@ routes req send = do
           Right (parsed :: Int) ->
             let msgId = Feed.Message.Id parsed
              in case Wai.requestMethod req of
-                  "POST" -> adminOnly' $ WelcomeMessage.handleEditMessage req msgId >=> send200 . layout' (Just Welcome)
-                  "GET" -> adminOnly' $ WelcomeMessage.showMessageEditForm msgId >=> send200 . layout' (Just Welcome)
+                  "POST" -> adminOnly' $ FeedAPI.handleEditMessage req msgId >=> send200 . layout' (Just Welcome)
+                  "GET" -> adminOnly' $ FeedAPI.showMessageEditForm msgId >=> send200 . layout' (Just Welcome)
                   _ -> send404
       ["nutzer"] ->
         case Wai.requestMethod req of
