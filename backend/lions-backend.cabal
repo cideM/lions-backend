@@ -72,7 +72,6 @@ common shared-props
   default-extensions:
     DerivingVia
     RecordWildCards
-    GADTs
     QuasiQuotes
     DeriveGeneric
     LambdaCase
