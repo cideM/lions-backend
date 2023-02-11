@@ -40,6 +40,7 @@
                 cabal-install
                 cabal-fmt
                 hlint
+                fast-tags
               ]))
             terraform # Remove this and properly document the AWS stuff then also remove all DO stuff when I'm using fly
           ];
