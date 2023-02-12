@@ -4,6 +4,8 @@ ARG ALPINE_VERSION=3.16
 ARG GO_VERSION=1.19
 ARG DEBIAN_VERSION=bullseye
 
+ARG CABAL_OPTIM="-O1"
+
 FROM public.ecr.aws/docker/library/golang:${GO_VERSION}-${DEBIAN_VERSION} as go-migrate
 ENV CGO_ENABLED=1
 RUN go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
@@ -20,7 +22,7 @@ RUN ./node_modules/.bin/sass --load-path=./node_modules/bootstrap/scss --style=c
 RUN mkdir build && ./node_modules/.bin/postcss ./style.css --use autoprefixer -d ./build/
 
 FROM public.ecr.aws/docker/library/haskell:${HASKELL_VERSION} as base
-
+ARG CABAL_OPTIM
 WORKDIR /opt/app
 RUN cabal update
 # Add just the .cabal file to capture dependencies
@@ -29,7 +31,7 @@ RUN apt-get update && apt-get -y install libscrypt-dev
 # Docker will cache this command as a layer, freeing us up to
 # modify source code without re-installing dependencies
 # (unless the .cabal file changes!)
-RUN cabal build --only-dependencies -j3 run-lions-backend lib
+RUN cabal v2-build ${CABAL_OPTIM} --only-dependencies -j3 run-lions-backend lib
 # Add and Install Application Code
 COPY ./cabal.project /opt/app
 COPY ./backend /opt/app/backend
@@ -37,7 +39,7 @@ COPY ./backend /opt/app/backend
 # > Various combinations of configure/build/install and
 # > --enable-executable-static / --enable-executable-stripping do not produce a
 # > static + stripped executable.
-RUN cabal install run-lions-backend --enable-executable-stripping --install-method=copy --installdir /opt/app
+RUN cabal install ${CABAL_OPTIM} run-lions-backend --enable-executable-stripping --install-method=copy --installdir /opt/app
 
 FROM public.ecr.aws/docker/library/haskell:${HASKELL_VERSION}
 WORKDIR /opt/app

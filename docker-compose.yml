@@ -5,6 +5,8 @@ services:
     build:
       dockerfile: Dockerfile
       context: .
+      args:
+        CABAL_OPTIM: "--disable-optimization"
     volumes:
       - sqlite:/var/www/db/:rw
       - ./client/assets/index.js:/opt/app/public/index.js
