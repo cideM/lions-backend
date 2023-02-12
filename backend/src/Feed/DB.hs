@@ -26,7 +26,7 @@ get ::
     MonadReader env m
   ) =>
   Id ->
-  m (Maybe (Message Text, [Text]))
+  m (Maybe (Message Text Time.UTCTime, [Text]))
 get (Id id) = do
   conn <- asks App.getDb
 
@@ -67,7 +67,7 @@ getAll ::
     MonadThrow m,
     MonadReader env m
   ) =>
-  m [(Message Text, [Text])]
+  m [(Message Text Time.UTCTime, [Text])]
 getAll = do
   conn <- asks App.getDb
 

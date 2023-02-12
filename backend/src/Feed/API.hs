@@ -58,22 +58,22 @@ newtype DeleteHref = DeleteHref Text
 renderSingleMessage ::
   EditHref ->
   DeleteHref ->
-  (Id, Html (), Time.ZonedTime) ->
+  Message (Html ()) Time.ZonedTime ->
   [Text] -> -- attachment filenames
   ShowEditBtn ->
   Html ()
 renderSingleMessage
   (EditHref editHref)
   (DeleteHref deleteHref)
-  (id, content, date)
+  message
   filenames
   canEdit =
     div_ [class_ "card"] $ do
-      let formatted = Time.formatTime german "%A, %d. %B %Y" date
+      let formatted = Time.formatTime german "%A, %d. %B %Y" $ date message
        in do
             div_ [class_ "card-header"] $ toHtml formatted
             div_ [class_ "card-body"] $ do
-              content
+              content message
 
               when (length filenames > 0) $ do
                 h2_ [class_ "mt-3 text-muted h6"] "Anhänge"
@@ -81,7 +81,13 @@ renderSingleMessage
                   forM_
                     filenames
                     ( \filename -> do
-                        let url = Text.pack $ "/news/" <> show id <> "/" <> Text.unpack filename
+                        let url =
+                              Text.pack $
+                                "/news/"
+                                  <> show (id message)
+                                  <> "/"
+                                  <> Text.unpack filename
+
                         li_ []
                           . a_ [class_ "card-link", href_ url]
                           $ toHtml filename
@@ -91,8 +97,8 @@ renderSingleMessage
                 a_ [class_ "link-primary me-3", href_ editHref] "Ändern"
                 a_ [class_ "link-danger me-3", href_ deleteHref] "Löschen"
 
-renderFeed :: Time.TimeZone -> Bool -> [(Message (Html ()), [Text])] -> LayoutStub
-renderFeed zone userIsAdmin msgs =
+renderFeed :: Bool -> [(Message (Html ()) Time.ZonedTime, [Text])] -> LayoutStub
+renderFeed userIsAdmin msgs =
   LayoutStub "Willkommen" $
     div_ [class_ "container"] $ do
       div_ [class_ "row row-cols-1 g-4"] $ do
@@ -119,18 +125,22 @@ renderFeed zone userIsAdmin msgs =
           div_ [class_ "row row-cols-1 g-5"] $ do
             mapM_
               ( \(message, filenames) -> do
-                  let Message postId content datetime = message
+                  let editHref =
+                        EditHref $
+                          Text.pack $
+                            "/editieren/" <> show (id message)
 
-                  let editHref = EditHref $ Text.pack $ "/editieren/" <> show postId
-                      deleteHref = DeleteHref $ Text.pack $ "/loeschen/" <> show postId
-                      zoned = Time.utcToZonedTime zone datetime
+                      deleteHref =
+                        DeleteHref $
+                          Text.pack $
+                            "/loeschen/" <> show (id message)
 
                   div_
                     [class_ "col"]
                     ( renderSingleMessage
                         editHref
                         deleteHref
-                        (postId, content, zoned)
+                        message
                         filenames
                         userIsAdmin
                     )
@@ -399,17 +409,20 @@ showFeed ::
   User.Session.Authenticated ->
   m LayoutStub
 showFeed auth = do
-  posts :: [(Message Text, [Text])] <- getAll
-
-  posts' :: [(Message (Html ()), [Text])] <-
-    traverse transformHTML posts
-
   zone <- liftIO $ Time.getCurrentTimeZone
+
+  posts :: [(Message Text Time.UTCTime, [Text])] <- getAll
+
+  posts' :: [(Message (Html ()) Time.ZonedTime, [Text])] <-
+    traverse transformHTML $ map (berlinTime zone) posts
 
   $(logTM) DebugS $ "first post: " <> (showLS $ head posts')
 
-  return $ renderFeed zone (User.Session.isAdmin' auth) posts'
+  return $ renderFeed (User.Session.isAdmin' auth) posts'
   where
+    berlinTime zone (message, filenames) =
+      (message {date = Time.utcToZonedTime zone (date message)}, filenames)
+
     parseMarkdown =
       SanitizeXSS.sanitize
         . MD.commonmarkToHtml [] [MD.extAutolink]
@@ -417,15 +430,13 @@ showFeed auth = do
     -- Parse as Markdown, then add a CSS class to each paragraph
     -- of the resulting HTML
     transformHTML (message, filenames) = do
-      let Message id content date = message
-
       content' <-
         either
           (throwString . Text.unpack)
           (pure . toHtmlRaw)
           . addCardTextClass
-          $ parseMarkdown content
+          $ parseMarkdown (content message)
 
-      let message' = Message id content' date
+      let message' = message {content = content'}
 
       pure (message', filenames)
