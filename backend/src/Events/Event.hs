@@ -79,10 +79,10 @@ makeEvent input =
     (notEmpty $ createEventInputLocation input)
     (Valid $ createEventInputDescription input) of
     FormState (Valid title) (Valid date) (Valid location) (Valid description) ->
-      Right $
+      Right
         ( EventTitle title,
           EventDate date,
-          (createEventInputFamilyAllowed input),
+          createEventInputFamilyAllowed input,
           EventLocation location,
           EventDescription description
         )
