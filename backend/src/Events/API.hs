@@ -34,11 +34,10 @@ import Events.HTML
 import Events.Reply
 import GHC.Exts (sortWith)
 import qualified Katip as K
-import Layout (LayoutStub (..), success)
+import Layout (LayoutStub (..), layout, success, warning)
 import Locale (german)
 import Lucid
-import Network.HTTP.Types (status200)
-import Network.HTTP.Types.Status (status303)
+import Network.HTTP.Types (status200, status303, status404)
 import Network.Wai (pathInfo, responseLBS)
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Middleware.Static as Static
@@ -428,11 +427,13 @@ attachmentsMiddleware ::
   ( UnliftIO.MonadUnliftIO m,
     MonadReader env m,
     MonadThrow m,
+    App.HasSessionDataVaultKey env,
     App.HasDb env
   ) =>
   Wai.MiddlewareT m
 attachmentsMiddleware next req send = do
   conn <- asks App.getDb
+
   case pathInfo req of
     ["events", eventid, filenameArg] -> do
       eventIdParsed <- case readEither $ Text.unpack eventid of
@@ -442,7 +443,17 @@ attachmentsMiddleware next req send = do
       attachment <- dbFetchAttachmentsWithContent conn (EventID eventIdParsed) filenameArg
 
       case attachment of
-        Nothing -> next req send
+        Nothing -> do
+          sessionDataVaultKey <- asks App.getSessionDataVaultKey
+          let vault = Wai.vault req
+              authInfo = User.Session.fromVault sessionDataVaultKey vault
+
+          send
+            . responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
+            . renderBS
+            . layout authInfo Nothing
+            . LayoutStub "Nicht gefunden"
+            $ warning "Nicht Gefunden"
         Just (filename, content) -> do
           case content of
             Just actualContent -> do

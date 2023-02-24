@@ -7,11 +7,15 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as Text
 import Feed.DB
 import Feed.Message
-import Network.HTTP.Types (status200)
+import Layout (LayoutStub (..), layout, warning)
+import Lucid
+import Network.HTTP.Types (status200, status404)
 import Network.Wai (pathInfo, responseLBS)
+import qualified Network.Wai as Wai
 import qualified Network.Wai.Middleware.Static as Static
 import Text.Read (readEither)
 import qualified UnliftIO
+import qualified User.Session
 import qualified Wai
 import Prelude hiding (id)
 
@@ -19,6 +23,7 @@ middleware ::
   ( UnliftIO.MonadUnliftIO m,
     MonadReader env m,
     MonadThrow m,
+    App.HasSessionDataVaultKey env,
     App.HasDb env
   ) =>
   Wai.MiddlewareT m
@@ -38,8 +43,16 @@ middleware next req send = do
 
           case maybeAttachment of
             Nothing -> do
-              let err = "no attachment for feed post: " <> show postId
-              throwString err
+              sessionDataVaultKey <- asks App.getSessionDataVaultKey
+              let vault = Wai.vault req
+                  authInfo = User.Session.fromVault sessionDataVaultKey vault
+
+              send
+                . responseLBS status404 [("Content-Type", "text/html; charset=UTF-8")]
+                . renderBS
+                . layout authInfo Nothing
+                . LayoutStub "Nicht gefunden"
+                $ warning "Nicht Gefunden"
             Just (filename, content) -> do
               let mime = Static.mimeTypes Static.defaultOptions (Text.unpack filename)
 
