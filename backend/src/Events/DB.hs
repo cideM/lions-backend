@@ -246,13 +246,18 @@ dbSaveEvent ::
   SQLite.Connection ->
   (EventTitle, EventDate, Bool, EventLocation, EventDescription) ->
   m EventID
-dbSaveEvent conn (title, date, location, description, familyAllowed) = do
+dbSaveEvent conn (title, date, familyAllowed, location, description) = do
   liftIO $
-    SQLite.execute
+    SQLite.executeNamed
       conn
       [sql|insert into events ( title, date, family_allowed, description, location)
-           values (?,?,?,?,?)|]
-      (title, date, familyAllowed, description, location)
+           values (:title, :date, :familyAllowed, :description, :location)|]
+      [ ":title" := title,
+        ":date" := date,
+        ":family_allowed" := familyAllowed,
+        ":description" := description,
+        ":location" := location
+      ]
 
   id <- liftIO $ SQLite.lastInsertRowId conn
 
