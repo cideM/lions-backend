@@ -61,7 +61,12 @@ import Prelude hiding (id)
 -- getAll is the handler for listing all events in a slightly abbreviated
 -- overview.
 getAll ::
-  (MonadIO m, MonadReader env m, MonadThrow m, App.HasDb env) =>
+  ( MonadIO m,
+    MonadReader env m,
+    MonadThrow m,
+    MonadCatch m,
+    App.HasDb env
+  ) =>
   User.Session.Authenticated ->
   m LayoutStub
 getAll auth = do

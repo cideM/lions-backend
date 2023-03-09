@@ -39,59 +39,66 @@ data DbFetchAllEventsRow = DbFetchAllEventsRow
   }
   deriving (FromRow, Generic)
 
-dbFetchAllEvents :: (MonadThrow m, MonadIO m) => SQLite.Connection -> m [(Event, [Reply])]
+dbFetchAllEvents ::
+  ( MonadThrow m,
+    MonadCatch m,
+    MonadIO m
+  ) =>
+  SQLite.Connection ->
+  m [(Event, [Reply])]
 dbFetchAllEvents conn = do
-  rows <-
-    liftIO $
-      SQLite.query_
-        conn
-        [sql|
-              select events.id, title, date, family_allowed, location, description,
-                     group_concat(event_replies.coming) as coming,
-                     group_concat(event_replies.guests) as guests,
-                     group_concat(event_replies.userid) as userids,
-                     group_concat(users.email) as useremails
-              from events
-              left join event_replies on events.id = eventid
-              left join users on users.id = event_replies.userid
-              group by events.id
-            |]
+  handleAny (\e -> throwString $ "error fetching all events" <> show e) $ do
+    rows <-
+      liftIO $
+        SQLite.query_
+          conn
+          [sql|
+                select events.id, title, date, family_allowed, location, description,
+                       group_concat(event_replies.coming) as coming,
+                       group_concat(event_replies.guests) as guests,
+                       group_concat(event_replies.userid) as userids,
+                       group_concat(users.email) as useremails
+                from events
+                left join event_replies on events.id = eventid
+                left join users on users.id = event_replies.userid
+                group by events.id
+              |]
 
-  let parseCommaInts :: Text -> [Integer]
-      parseCommaInts "" = []
-      parseCommaInts s = map (read . Text.unpack) $ Text.splitOn "," s
+    let parseCommaInts :: Text -> [Integer]
+        parseCommaInts "" = []
+        parseCommaInts s = map (read . Text.unpack) $ Text.splitOn "," s
 
-  let parseRow :: DbFetchAllEventsRow -> Either Text (Event, [Reply])
-      parseRow DbFetchAllEventsRow {..} = do
-        -- Each event reply or RSVP consists of 3 values:
-        -- - whether you're coming or not, which is 1 or 0 in the DB, but a bool in Haskell
-        -- - the number of guests you're bringing
-        -- - the user ID of the current reply/RSVP
-        --
-        -- We're constructing them by joining the event_replies table
-        -- to event, and then we aggregate the value of **each column**
-        -- by concatenating them with a comma. It gives us a
-        -- column-centric view. On the Haskell side, we parse each list
-        -- of comma-separated integers and then we equip them with
-        -- their respective newtype wrappers.
-        coming <- traverse parseReplyComingFromNumber . parseCommaInts $ fromMaybe "" comingStr
+    let parseRow :: DbFetchAllEventsRow -> Either Text (Event, [Reply])
+        parseRow DbFetchAllEventsRow {..} = do
+          -- Each event reply or RSVP consists of 3 values:
+          -- - whether you're coming or not, which is 1 or 0 in the DB, but a bool in Haskell
+          -- - the number of guests you're bringing
+          -- - the user ID of the current reply/RSVP
+          --
+          -- We're constructing them by joining the event_replies table
+          -- to event, and then we aggregate the value of **each column**
+          -- by concatenating them with a comma. It gives us a
+          -- column-centric view. On the Haskell side, we parse each list
+          -- of comma-separated integers and then we equip them with
+          -- their respective newtype wrappers.
+          coming <- traverse parseReplyComingFromNumber . parseCommaInts $ fromMaybe "" comingStr
 
-        emails <- case emailsStr of
-          Nothing -> return []
-          Just "" -> return []
-          Just s -> traverse User.Email.parseFromText $ Text.splitOn "," s
+          emails <- case emailsStr of
+            Nothing -> return []
+            Just "" -> return []
+            Just s -> traverse User.Email.parseFromText $ Text.splitOn "," s
 
-        let userIds = map (User.Id.Id . fromIntegral) . parseCommaInts $ fromMaybe "" userIdsStr
-            guests = map ReplyGuests . parseCommaInts $ fromMaybe "" guestsStr
+          let userIds = map (User.Id.Id . fromIntegral) . parseCommaInts $ fromMaybe "" userIdsStr
+              guests = map ReplyGuests . parseCommaInts $ fromMaybe "" guestsStr
 
-        let event = (id, title, date, familyAllowed == 1, location, description)
-            replies = zipWith4 Reply coming emails userIds guests
+          let event = (id, title, date, familyAllowed == 1, location, description)
+              replies = zipWith4 Reply coming emails userIds guests
 
-        return (event, replies)
+          return (event, replies)
 
-  case traverse parseRow rows of
-    Left err -> throwString $ Text.unpack err
-    Right parsedRows -> return parsedRows
+    case traverse parseRow rows of
+      Left err -> throwString $ "error parsing rows" <> Text.unpack err
+      Right parsedRows -> return parsedRows
 
 dbFetchEvent ::
   (MonadThrow m, MonadIO m) =>
