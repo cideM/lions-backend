@@ -14,7 +14,7 @@ processes = []
   # * LIONS_AWS_SES_ACCESS_KEY
   # * LIONS_AWS_SES_SECRET_ACCESS_KEY
   LITESTREAM_BUCKET = "lions-achern-litestream-replica-1"
-  LITESTREAM_RESTORE_PATH = "prod"
+  LITESTREAM_RESTORE_PATH = "fly-members-1"
   LITESTREAM_REPLICATE_PATH = "fly-members-1"
   LIONS_SQLITE_PATH = "/usr/local/lib/sqlite/sqlite.db"
   LIONS_LOG_LEVEL = "info"

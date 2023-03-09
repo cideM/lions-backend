@@ -47,7 +47,7 @@ dbFetchAllEvents ::
   SQLite.Connection ->
   m [(Event, [Reply])]
 dbFetchAllEvents conn = do
-  handleAny (\e -> throwString $ "error fetching all events" <> show e) $ do
+  handleAny (\e -> throwString $ "error fetching all events: " <> show e) $ do
     rows <-
       liftIO $
         SQLite.query_
@@ -97,7 +97,7 @@ dbFetchAllEvents conn = do
           return (event, replies)
 
     case traverse parseRow rows of
-      Left err -> throwString $ "error parsing rows" <> Text.unpack err
+      Left err -> throwString $ "error parsing rows: " <> Text.unpack err
       Right parsedRows -> return parsedRows
 
 dbFetchEvent ::
