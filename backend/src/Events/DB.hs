@@ -251,7 +251,7 @@ dbSaveEvent conn (title, date, familyAllowed, location, description) = do
     SQLite.executeNamed
       conn
       [sql|insert into events ( title, date, family_allowed, description, location)
-           values (:title, :date, :familyAllowed, :description, :location)|]
+           values (:title, :date, :family_allowed, :description, :location)|]
       [ ":title" := title,
         ":date" := date,
         ":family_allowed" := familyAllowed,
