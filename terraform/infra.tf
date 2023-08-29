@@ -1,5 +1,4 @@
 # https://www.digitalocean.com/community/tutorials/how-to-use-terraform-with-digitalocean
-variable "do_token" {}
 variable "pvt_key" {}
 
 terraform {
@@ -10,11 +9,6 @@ terraform {
   }
 
   required_providers {
-    digitalocean = {
-      source  = "digitalocean/digitalocean"
-      version = "1.22.2"
-    }
-
     aws = {
       source  = "hashicorp/aws"
       version = "~> 2.70"
@@ -24,14 +18,6 @@ terraform {
 
 provider "aws" {
   region = "eu-central-1"
-}
-
-provider "digitalocean" {
-  token = var.do_token
-}
-
-data "digitalocean_ssh_key" "terraform" {
-  name = "FB desktop"
 }
 
 resource "aws_route53_zone" "lions-primary" {
@@ -236,32 +222,3 @@ resource "aws_s3_bucket" "log_bucket" {
 }
 POLICY
 }
-
-
-#########################
-#      DIGITAL OCEAN    #
-#########################
-
-# I created this manually because it uses a NixOS image build with Nix and
-# uploaded manually
-
-# resource "digitalocean_droplet" "lions-api" {
-#   name               = "lions-api"
-#   region             = "fra1"
-#   size               = "s-1vcpu-1gb"
-#   private_networking = true
-#   ssh_keys = [
-#     data.digitalocean_ssh_key.terraform.id
-#   ]
-#   connection {
-#     host        = self.ipv4_address
-#     user        = "root"
-#     type        = "ssh"
-#     private_key = file(var.pvt_key)
-#     timeout     = "2m"
-#   }
-# }
-
-# output "droplet-ip" {
-#   value = digitalocean_droplet.lions-api.ipv4_address
-# }
