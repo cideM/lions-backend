@@ -102,6 +102,11 @@ resource "aws_s3_bucket" "litestream-replica-1" {
     }
 }
 
+resource "aws_athena_database" "logs_database" {
+  name   = "lions_logs_database"
+  bucket = aws_s3_bucket.log_bucket.id
+}
+
 resource "aws_s3_bucket" "terraform-state-storage-s3" {
     bucket = "lions-achern-terraform-remote-state-storage-s3"
 
