@@ -1,6 +1,3 @@
-# https://www.digitalocean.com/community/tutorials/how-to-use-terraform-with-digitalocean
-variable "pvt_key" {}
-
 terraform {
   backend "s3" {
     bucket = "lions-achern-terraform-remote-state-storage-s3"
@@ -11,7 +8,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 2.70"
+      version = "~> 5.17.0"
     }
   }
 }
@@ -79,7 +76,7 @@ resource "aws_ses_domain_dkim" "lions" {
 # $ AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= aws s3 ls lions-achern-litestream-replica-1
 module "s3_user" {
   source = "cloudposse/iam-s3-user/aws"
-  version     = "0.15.2"
+  version     = "1.2.0"
   name         = "litestream_user"
   s3_actions   = ["s3:*"]
   s3_resources = [
@@ -100,11 +97,6 @@ output "litestream_user_access_key_secret" {
 
 resource "aws_s3_bucket" "litestream-replica-1" {
     bucket = "lions-achern-litestream-replica-1"
-
-    versioning {
-      enabled = true
-    }
-
     lifecycle {
       prevent_destroy = true
     }
@@ -113,13 +105,43 @@ resource "aws_s3_bucket" "litestream-replica-1" {
 resource "aws_s3_bucket" "terraform-state-storage-s3" {
     bucket = "lions-achern-terraform-remote-state-storage-s3"
 
-    versioning {
-      enabled = true
-    }
-
     lifecycle {
       prevent_destroy = true
     }
+}
+
+resource "aws_s3_bucket_versioning" "litestream-versioning" {
+  bucket = aws_s3_bucket.litestream-replica-1.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "tfstate-versioning" {
+  bucket = aws_s3_bucket.terraform-state-storage-s3.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "versioning-bucket-config" {
+  bucket = aws_s3_bucket.litestream-replica-1.id
+  depends_on = [aws_s3_bucket_versioning.litestream-versioning]
+
+  rule {
+    id = "config"
+
+    filter {
+      prefix = "fly-members-1/"
+    }
+
+    noncurrent_version_expiration {
+      newer_noncurrent_versions = 5
+      noncurrent_days = 5
+    }
+
+    status = "Enabled"
+  }
 }
 
 resource "aws_route53_record" "_amazonses_dkim_record" { 
@@ -172,53 +194,56 @@ resource "aws_iam_user" "admin" {
   name = "Admin"
 }
 
+resource "aws_s3_bucket_policy" "logs" {
+  bucket = aws_s3_bucket.log_bucket.id
+  policy = <<POLICY
+  {
+      "Version": "2012-10-17",
+      "Statement": [
+          {
+              "Sid": "AWSCloudTrailAclCheck20150319",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "cloudtrail.amazonaws.com"
+              },
+              "Action": "s3:GetBucketAcl",
+              "Resource": "arn:aws:s3:::lions-achern-log-bucket"
+          },
+          {
+              "Sid": "AWSCloudTrailWrite20150319",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "cloudtrail.amazonaws.com"
+              },
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::lions-achern-log-bucket/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
+              "Condition": {
+                  "StringEquals": {
+                      "s3:x-amz-acl": "bucket-owner-full-control"
+                  }
+              }
+          },
+          {
+              "Sid": "AWSCloudTrailWrite20150319",
+              "Effect": "Allow",
+              "Principal": {
+                  "Service": [
+                      "cloudtrail.amazonaws.com"
+                  ]
+              },
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::lions-achern-log-bucket/AWSLogs/o-z1m4oiv8ia/*",
+              "Condition": {
+                  "StringEquals": {
+                      "s3:x-amz-acl": "bucket-owner-full-control"
+                  }
+              }
+          }
+      ]
+  }
+  POLICY
+}
+
 resource "aws_s3_bucket" "log_bucket" {
   bucket = "lions-achern-log-bucket"
-
-  policy = <<POLICY
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "AWSCloudTrailAclCheck20150319",
-            "Effect": "Allow",
-            "Principal": {
-              "Service": "cloudtrail.amazonaws.com"
-            },
-            "Action": "s3:GetBucketAcl",
-            "Resource": "arn:aws:s3:::lions-achern-log-bucket"
-        },
-        {
-            "Sid": "AWSCloudTrailWrite20150319",
-            "Effect": "Allow",
-            "Principal": {
-              "Service": "cloudtrail.amazonaws.com"
-            },
-            "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::lions-achern-log-bucket/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
-            "Condition": {
-                "StringEquals": {
-                    "s3:x-amz-acl": "bucket-owner-full-control"
-                }
-            }
-        },
-        {
-            "Sid": "AWSCloudTrailWrite20150319",
-            "Effect": "Allow",
-            "Principal": {
-                "Service": [
-                    "cloudtrail.amazonaws.com"
-                ]
-            },
-            "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::lions-achern-log-bucket/AWSLogs/o-z1m4oiv8ia/*",
-            "Condition": {
-                "StringEquals": {
-                    "s3:x-amz-acl": "bucket-owner-full-control"
-                }
-            }
-        }
-    ]
-}
-POLICY
 }
