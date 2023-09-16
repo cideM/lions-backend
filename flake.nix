@@ -13,7 +13,9 @@
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
-        pkgs = import nixpkgs {inherit system;};
+        pkgs = import nixpkgs {
+          inherit system;
+        };
       in rec {
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
@@ -23,21 +25,31 @@
             go-migrate
             awscli2
             sqlite-interactive
-            cabal2nix
             litestream
             flyctl
+            alejandra
+            terraform
+
             nodePackages.typescript-language-server
             nodePackages.prettier
-            ormolu
-            ghcid
-            (haskell.packages.ghc810.ghcWithPackages (hpkgs:
-              with hpkgs; [
-                cabal-install
-                cabal-fmt
-                hlint
-                fast-tags
-              ]))
-            terraform # Remove this and properly document the AWS stuff then also remove all DO stuff when I'm using fly
+
+            cabal2nix
+            haskellPackages.ormolu
+            haskellPackages.ghcid
+            haskellPackages.cabal-install
+            haskellPackages.cabal-fmt
+            haskellPackages.hlint
+            haskellPackages.fast-tags
+            # GHC 92+ should have the new record syntax
+            haskell.compiler.ghc810
+
+            # Failed to build zlib-0.6.3.0. The failure occurred during the configure step.
+            # Build log ( /Users/fbs/.cache/cabal/logs/ghc-8.10.7/zlb-0.6.3.0-47c3bb32.log
+            # ):
+            # Configuring library for zlib-0.6.3.0..
+            # Error: .cabal-wrapped: Missing dependency on a foreign library:
+            # * Missing (or bad) C library: z
+            zlib
           ];
         };
       }
