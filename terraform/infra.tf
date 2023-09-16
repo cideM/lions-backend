@@ -247,3 +247,10 @@ resource "aws_s3_bucket_policy" "logs" {
 resource "aws_s3_bucket" "log_bucket" {
   bucket = "lions-achern-log-bucket"
 }
+
+resource "aws_s3_bucket_logging" "access_logs" {
+  bucket = aws_s3_bucket.litestream-replica-1.id
+
+  target_bucket = aws_s3_bucket.log_bucket.id
+  target_prefix = "access_logs/"
+}
