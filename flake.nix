@@ -15,6 +15,7 @@
       system: let
         pkgs = import nixpkgs {
           inherit system;
+          config.allowUnfree = true;
         };
       in rec {
         devShell = pkgs.mkShell {
