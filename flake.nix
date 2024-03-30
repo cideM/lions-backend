@@ -13,9 +13,16 @@
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
+        goMigrateSqlite = self: super: {
+          go-migrate = super.go-migrate.overrideAttrs (old: {
+            tags = old.tags ++ ["sqlite3"];
+          });
+        };
+
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
+          overlays = [goMigrateSqlite];
         };
       in rec {
         devShell = pkgs.mkShell {
