@@ -1,5 +1,8 @@
 module Password.Reset.Handlers (post, get) where
 
+import qualified Amazonka as AWS
+import qualified Amazonka.SES as SES
+import qualified Amazonka.SES.Types as SES
 import qualified App
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -9,10 +12,7 @@ import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Katip as K
 import Layout (LayoutStub (..), success)
-import Lens.Micro (set)
 import Lucid
-import qualified Network.AWS as AWS
-import qualified Network.AWS.SES as SES
 import qualified Network.Wai as Wai
 import qualified Password.Reset.Form
 import qualified Password.Reset.Token as Token
@@ -82,24 +82,22 @@ post req = do
       recipient
       (EmailHtml htmlContent)
       (EmailPlainText plainContent)
-      title =
+      title = do
+        let envFrankfurt = awsEnv {AWS.region = AWS.Frankfurt}
+
         let message =
-              SES.message
-                (SES.content title)
-                ( set
-                    SES.bHTML
-                    (Just $ SES.content htmlContent)
-                    (set SES.bText (Just $ SES.content plainContent) SES.body)
+              SES.newMessage
+                (SES.newContent title)
+                ( SES.newBody
+                    { SES.html = Just $ SES.newContent htmlContent,
+                      SES.text = Just $ SES.newContent plainContent
+                    }
                 )
-         in liftIO
-              . AWS.runResourceT
-              . AWS.runAWS awsEnv
-              . AWS.within AWS.Frankfurt
-              . AWS.send
-              $ SES.sendEmail
-                "hello@lions-achern.de"
-                (set SES.dToAddresses [recipient] SES.destination)
-                message
+
+        let destination = SES.newDestination {SES.toAddresses = Just [recipient]}
+
+        liftIO . AWS.runResourceT . AWS.send envFrankfurt $
+          SES.newSendEmail "hello@lions-achern.de" destination message
 
     formInvalid = layout . Password.Reset.Form.render . Just
 
