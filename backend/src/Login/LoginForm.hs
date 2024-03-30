@@ -37,15 +37,15 @@ render :: Authentication -> FormInput -> FormState -> LayoutStub
 render auth FormInput {..} FormState {..} =
   if isAuthenticated auth
     then LayoutStub "Login" $ do
-      div_ [class_ "container p-3 d-flex justify-content-center"] $
-        div_ [class_ "row col-md-6 col-12"] $ do
+      div_ [class_ "container-lg p-3 d-flex justify-content-center"] $
+        div_ [class_ "row col-12 col-lg-8"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Du bist bereits eingelogged!"
           form_ [class_ "p-0", method_ "post", action_ "/logout"] $ do
             button_ [class_ "btn btn-primary", type_ "submit", autofocus_] "Ausloggen"
     else do
       LayoutStub "Login" $
-        div_ [class_ "container-md d-flex justify-content-center p-3"] $ do
-          form_ [class_ "col-md-6 col-12", method_ "post", action_ "/login"] $ do
+        div_ [class_ "container-lg d-flex justify-content-center p-3"] $ do
+          form_ [class_ "col-12 col-lg-8", method_ "post", action_ "/login"] $ do
             div_ [class_ "row row-cols-8 g-2"] $ do
               div_ [class_ "mb-3 form-floating"] $ do
                 let (className, errMsg) = processField loginStateEmail

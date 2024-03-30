@@ -107,6 +107,7 @@ library
 
   exposed-modules:
     Lib
+    Activities.API
     Events.API
     Events.HTML
     Events.DB

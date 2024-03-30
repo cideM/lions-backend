@@ -1,4 +1,4 @@
-module Form (notEmpty, processField, validDate, FormFieldState (..)) where
+module Form (notEmpty, processField, validDate, FormFieldState (..), fieldIsValid) where
 
 import Data.Maybe (isJust)
 import Data.Text (Text)

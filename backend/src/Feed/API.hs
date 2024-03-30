@@ -100,7 +100,7 @@ renderSingleMessage
 renderFeed :: Bool -> [(Message (Html ()) Time.ZonedTime, [Text])] -> LayoutStub
 renderFeed userIsAdmin msgs =
   LayoutStub "Willkommen" $
-    div_ [class_ "container"] $ do
+    div_ [class_ "container-lg"] $ do
       div_ [class_ "row row-cols-1 g-4"] $ do
         div_ [class_ "col"] $ do
           when userIsAdmin $
@@ -152,7 +152,7 @@ renderFeed userIsAdmin msgs =
 pageLayout :: Text -> Html () -> LayoutStub
 pageLayout title content =
   LayoutStub title $
-    div_ [class_ "container p-2"] $ do
+    div_ [class_ "container-lg p-2"] $ do
       h1_ [class_ "h4 mb-3"] $ toHtml title
       content
 
