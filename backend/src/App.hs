@@ -12,6 +12,8 @@ module App
   )
 where
 
+import qualified Amazonka as AWS
+import qualified Amazonka.Auth as AWSAuth
 import Control.Exception.Safe
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..))
@@ -25,7 +27,6 @@ import qualified Data.Vault.Lazy as Vault
 import qualified Database.SQLite.Simple as SQLite
 import Katip
 import qualified Katip as K
-import qualified Network.AWS as AWS
 import qualified Request.Types
 import System.Environment (getEnv)
 import System.IO (stdout)
@@ -145,9 +146,9 @@ withAppEnv f = do
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
 
   awsEnv <- do
-    let aKey = AWS.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
-        sKey = AWS.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
-    awsEnv <- AWS.newEnv (AWS.FromKeys aKey sKey)
+    let aKey = AWSAuth.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
+        sKey = AWSAuth.SecretKey (encodeUtf8 (Text.pack mailAwsSecretAccessKey))
+    (awsEnv :: AWSAuth.Env) <- AWS.newEnv (pure . AWSAuth.fromKeys aKey sKey)
     return awsEnv
 
   sessionKey <- ClientSession.getKey sessionKeyFile
