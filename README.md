@@ -55,6 +55,11 @@ Then you can just do `docker compose up --build` and everything should just work
 
 To restore the DB from S3 to your local file system use `litestream restore -o $LIONS_SQLITE_PATH s3://$LITESTREAM_BUCKET/$LITESTREAM_RESTORE_PATH`
 
+### Migrations
+
+- create: `migrate -database "sqlite3://$LIONS_SQLITE_PATH" -path backend/migrations create -dir backend/migrations -ext sql -seq add_activities`
+- version: `migrate -database "sqlite3://$LIONS_SQLITE_PATH" -path backend/migrations version`
+
 ## Deploy
 
 `flyctl deploy`
