@@ -1,7 +1,5 @@
 # Website for the LIONS Club Achern, Germany
 
-**If you somehow stumbled upon this randomly then look at `./backend/src/Events/*.hs` for what I want the entire application to look like!**
-
 This website used to be a [playground for functional programming](https://www.fbrs.io/fp/) but I've since removed a few of the more niche technologies, such as:
 * NixOS
 * Nix for building the apps
