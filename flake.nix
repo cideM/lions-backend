@@ -48,8 +48,7 @@
             haskellPackages.cabal-fmt
             haskellPackages.hlint
             haskellPackages.fast-tags
-            # GHC 92+ should have the new record syntax
-            haskell.compiler.ghc810
+            ghc
 
             # Failed to build zlib-0.6.3.0. The failure occurred during the configure step.
             # Build log ( /Users/fbs/.cache/cabal/logs/ghc-8.10.7/zlb-0.6.3.0-47c3bb32.log

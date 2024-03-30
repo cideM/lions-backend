@@ -40,9 +40,9 @@ firebaseHashPw ::
   Either Text Text
 firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
   case ( do
-           userSaltDec <- mapLeft (\err -> "error decoding user salt: " <> err) $ decodeBase64 userSalt
-           signerKeyDec <- mapLeft (\err -> "error decoding signer key: " <> err) $ decodeBase64 signerKey
-           saltSepDec <- mapLeft (\err -> "error decoding salt separator: " <> err) $ decodeBase64 saltSep
+           userSaltDec <- mapLeft (\err -> "error decoding user salt: " <> err) $ decodeBase64Untyped userSalt
+           signerKeyDec <- mapLeft (\err -> "error decoding signer key: " <> err) $ decodeBase64Untyped signerKey
+           saltSepDec <- mapLeft (\err -> "error decoding salt separator: " <> err) $ decodeBase64Untyped saltSep
            return (userSaltDec, signerKeyDec, saltSepDec)
        ) of
     Left e -> Left e
@@ -58,7 +58,7 @@ firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
        in case cipherInit derivedKey of
             CryptoFailed e -> Left $ "error in cipherInit: " <> (Text.pack $ show e)
             CryptoPassed context ->
-              Right . encodeBase64 $ ctrCombine context (nullIV :: IV AES256) signerKeyDec
+              Right . Text.pack . show . encodeBase64 $ ctrCombine context (nullIV :: IV AES256) signerKeyDec
 
 verifyPassword ::
   BS.ByteString -> -- Project's base64_signer_key
