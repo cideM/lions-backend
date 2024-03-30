@@ -47,8 +47,6 @@ middleware nextApp req send = do
 
   runExceptT (login encKey vaultKey req) >>= \case
     Left e -> do
-      $(logTM) DebugS $ showLS e
-
       -- The user doesn't have a valid session. To prevent infinite redirects,
       -- we need to match on the route.
       case Wai.pathInfo req of
@@ -60,7 +58,6 @@ middleware nextApp req send = do
           nextApp req send
         _ -> send $ Wai.responseBuilder Types.status302 [("Location", "/login")] ""
     Right req' -> do
-      $(logTM) DebugS "successful login from cookie"
       nextApp req' send
   where
     login encKey vaultKey request = do

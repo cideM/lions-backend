@@ -2,6 +2,7 @@
 
 module Server (app) where
 
+import qualified Activities.API as Activities
 import qualified App
 import Control.Exception.Safe
 import Control.Monad ((>=>))
@@ -13,14 +14,14 @@ import qualified Data.Vault.Lazy as Vault
 import Events.API (EventID (..))
 import qualified Events.API as EventsAPI
 import qualified Feed.API as FeedAPI
-import qualified Feed.Middleware as FeedAttachmentsMiddleware
 import qualified Feed.Message
+import qualified Feed.Middleware as FeedAttachmentsMiddleware
 import Katip
 import Layout (ActiveNavLink (..), LayoutStub (..), layout, warning)
 import qualified Logging
 import qualified Login.Login as Login
 import Lucid
-import Network.HTTP.Types (status200, status403, status404, status500)
+import Network.HTTP.Types (status200, status403, status404, status405, status500)
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Middleware.Gzip as Gzip
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
@@ -185,6 +186,50 @@ routes req send = do
                   EventsAPI.postUpdate req (EventID parsed)
                     >=> send200 . layout' (Just Events)
               _ -> send404
+      ["activities"] -> do
+        case Wai.requestMethod req of
+          "GET" -> authenticatedOnly' $ Activities.getAll >=> send200 . layout' (Just Activities)
+          _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
+      ["activities", "create"] -> do
+        case Wai.requestMethod req of
+          "GET" -> adminOnly' $ Activities.getCreate >=> send200 . layout' (Just Activities)
+          "POST" -> adminOnly' $ Activities.postCreate req >=> send200 . layout' (Just Activities)
+          _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
+      ["activities", activityId, "times", timeId, "delete"] -> do
+        case readEither (Text.unpack activityId) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for activity ID as int: " <> activityId
+          Right (parsedActivityId :: Int) ->
+            case readEither (Text.unpack timeId) of
+              Left _ -> throwString . Text.unpack $ "couldn't parse route param for time ID as int: " <> timeId
+              Right (parsedTimeId :: Int) ->
+                case Wai.requestMethod req of
+                  "GET" -> authenticatedOnly' $ Activities.getConfirmDeleteTime parsedActivityId parsedTimeId >=> send200 . layout' (Just Activities)
+                  "POST" -> authenticatedOnly' $ Activities.postDeleteTime parsedActivityId parsedTimeId  >=> send200 . layout' (Just Activities)
+                  _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
+      ["activities", i, "edit"] -> do
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for activity ID as int: " <> i
+          Right (parsed :: Int) ->
+            case Wai.requestMethod req of
+              "GET" -> adminOnly' $ Activities.getEdit parsed >=> send200 . layout' (Just Activities)
+              "POST" -> adminOnly' $ Activities.postEdit parsed req >=> send200 . layout' (Just Activities)
+              _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
+      ["activities", i, "delete"] -> do
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for activity ID as int: " <> i
+          Right (parsed :: Int) ->
+            case Wai.requestMethod req of
+              "GET" -> adminOnly' $ Activities.getConfirmDelete parsed >=> send200 . layout' (Just Activities)
+              "POST" -> adminOnly' $ Activities.postDelete parsed >=> send200 . layout' (Just Activities)
+              _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
+      ["activities", i] -> do
+        case readEither (Text.unpack i) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for activity ID as int: " <> i
+          Right (parsed :: Int) ->
+            case Wai.requestMethod req of
+              "GET" -> authenticatedOnly' $ Activities.get parsed req >=> send200 . layout' (Just Activities)
+              "POST" -> authenticatedOnly' $ Activities.postAddTime parsed req >=> send200 . layout' (Just Activities)
+              _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
       ["loeschen", i] ->
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for welcome message ID as int: " <> i
