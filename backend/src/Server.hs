@@ -195,17 +195,14 @@ routes req send = do
           "GET" -> adminOnly' $ Activities.getCreate >=> send200 . layout' (Just Activities)
           "POST" -> adminOnly' $ Activities.postCreate req >=> send200 . layout' (Just Activities)
           _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
-      ["activities", activityId, "times", timeId, "delete"] -> do
-        case readEither (Text.unpack activityId) of
-          Left _ -> throwString . Text.unpack $ "couldn't parse route param for activity ID as int: " <> activityId
-          Right (parsedActivityId :: Int) ->
-            case readEither (Text.unpack timeId) of
-              Left _ -> throwString . Text.unpack $ "couldn't parse route param for time ID as int: " <> timeId
-              Right (parsedTimeId :: Int) ->
-                case Wai.requestMethod req of
-                  "GET" -> authenticatedOnly' $ Activities.getConfirmDeleteTime parsedActivityId parsedTimeId >=> send200 . layout' (Just Activities)
-                  "POST" -> authenticatedOnly' $ Activities.postDeleteTime parsedActivityId parsedTimeId  >=> send200 . layout' (Just Activities)
-                  _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
+      ["activities", _, "times", timeId, "delete"] -> do
+        case readEither (Text.unpack timeId) of
+          Left _ -> throwString . Text.unpack $ "couldn't parse route param for time ID as int: " <> timeId
+          Right (parsedTimeId :: Int) ->
+            case Wai.requestMethod req of
+              "GET" -> authenticatedOnly' $ Activities.getConfirmDeleteTime parsedTimeId >=> send200 . layout' (Just Activities)
+              "POST" -> authenticatedOnly' $ Activities.postDeleteTime parsedTimeId >=> send200 . layout' (Just Activities)
+              _ -> render status405 . layout' Nothing . LayoutStub "Fehler" $ mempty
       ["activities", i, "edit"] -> do
         case readEither (Text.unpack i) of
           Left _ -> throwString . Text.unpack $ "couldn't parse route param for activity ID as int: " <> i

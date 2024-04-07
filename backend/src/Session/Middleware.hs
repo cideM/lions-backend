@@ -46,7 +46,7 @@ middleware nextApp req send = do
   encKey <- asks App.getSessionEncryptionKey
 
   runExceptT (login encKey vaultKey req) >>= \case
-    Left e -> do
+    Left _ -> do
       -- The user doesn't have a valid session. To prevent infinite redirects,
       -- we need to match on the route.
       case Wai.pathInfo req of
