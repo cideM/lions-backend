@@ -16,7 +16,7 @@ import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Time as Time
 import qualified Database.SQLite.Simple as SQLite
 import Database.SQLite.Simple.FromRow
@@ -24,10 +24,9 @@ import Database.SQLite.Simple.QQ (sql)
 import Form (FormFieldState (..))
 import GHC.Generics
 import qualified Katip as K
-import Layout (LayoutStub (..), ariaCurrent_, describedBy_, layout, success, warning)
+import Layout (LayoutStub (..), ariaCurrent_, describedBy_, success, warning)
 import Locale (german)
 import Lucid
-import qualified Network.HTTP.Types as Types
 import qualified Network.HTTP.Types.URI as URI
 import qualified Network.Wai as Wai
 import Text.Printf (printf)
@@ -85,7 +84,7 @@ loadWorkTime conn workTimeId = do
     _ -> throwString "more than one row returned"
 
 loadWorkTimes :: (MonadThrow m, MonadCatch m, MonadIO m) => SQLite.Connection -> Int -> m [WorkTime]
-loadWorkTimes conn activityId = do
+loadWorkTimes conn activityId_ = do
   rows <-
     liftIO $
       SQLite.query
@@ -94,7 +93,7 @@ loadWorkTimes conn activityId = do
              from activity_times
              join users on activity_times.user_id = users.id
              where activity_id = ?|]
-        (SQLite.Only activityId)
+        (SQLite.Only activityId_)
   workTimes <- forM rows $ \WorkTimeDbRow {..} -> do
     dateParsed <- case parseDateFromDb date of
       Nothing -> throwString $ "could not parse date: " <> Text.unpack date
@@ -107,7 +106,7 @@ processWorkTimes userIdInt workTimes = do
   let ownTimes = sortByDateDesc $ filter (\WorkTime {userId} -> userId == userIdInt) workTimes
       otherTimesGroupedByUser =
         Map.fromListWith (<>)
-          . map (\t@WorkTime {userId, userEmail, ..} -> ((userId, userEmail), [t]))
+          . map (\t@WorkTime {userId, userEmail} -> ((userId, userEmail), [t]))
           $ filter (\WorkTime {userId} -> userId /= userIdInt) workTimes
   (ownTimes, otherTimesGroupedByUser)
 
@@ -115,8 +114,8 @@ data Activity = Activity
   { id :: Int,
     name :: Text,
     description :: Maybe Text,
-    location :: Text,
-    date :: Time.UTCTime
+    location :: Maybe Text,
+    date :: Maybe Time.UTCTime
   }
   deriving (Show)
 
@@ -124,8 +123,8 @@ data ActivityDbRow = ActivityDbRow
   { id :: Int,
     name :: Text,
     description :: Maybe Text,
-    location :: Text,
-    date :: Text
+    location :: Maybe Text,
+    date :: Maybe Text
   }
   deriving (FromRow, Generic, Show)
 
@@ -142,9 +141,11 @@ load conn activityId = do
   case rows of
     [] -> return Nothing
     [ActivityDbRow {..}] -> do
-      dateParsed <- case parseDateFromDb date of
-        Nothing -> throwString $ "could not parse date: " <> Text.unpack date
-        Just dateParsed -> return dateParsed
+      dateParsed <- case date of
+        Nothing -> return Nothing
+        Just justDate -> case parseDateFromDb justDate of
+          Nothing -> throwString $ "could not parse date: " <> Text.unpack justDate
+          Just dateParsed -> return $ Just dateParsed
       return . Just $ Activity {date = dateParsed, ..}
     _ -> throwString "more than one row returned"
 
@@ -152,16 +153,18 @@ loadAll :: (MonadThrow m, MonadCatch m, MonadIO m) => SQLite.Connection -> m [Ac
 loadAll conn = do
   rows <- liftIO $ SQLite.query_ conn [sql|select id, name, description, location, date from activities|]
   activities <- forM rows $ \ActivityDbRow {..} -> do
-    dateParsed <- case parseDateFromDb date of
-      Nothing -> throwString $ "could not parse date: " <> Text.unpack date
-      Just dateParsed -> return dateParsed
+    dateParsed <- case date of
+      Nothing -> return Nothing
+      Just justDate -> case parseDateFromDb justDate of
+        Nothing -> throwString $ "could not parse date: " <> Text.unpack justDate
+        Just dateParsed -> return $ Just dateParsed
     return Activity {date = dateParsed, ..}
   return activities
 
 minutesToHoursAndMinutes :: Int -> (Int, Int)
 minutesToHoursAndMinutes minutes = (minutes `div` 60, minutes `mod` 60)
 
-data RenderActivityTabs = AddTime | ShowTimes
+data RenderActivityTabs = AddTime | ShowTimes | ShowSummary
   deriving (Eq)
 
 renderActivity ::
@@ -182,8 +185,14 @@ renderActivity canEdit activeTab input ownTimes otherTimes activity@Activity {..
               div_ $
                 a_ [href_ [i|/activities/#{id}/edit|], class_ "btn btn-sm btn-secondary", role_ "button"] "Bearbeiten"
             h1_ [class_ "m-0"] (toHtml name)
-            p_ [class_ "text-body-secondary m-0"] (toHtml $ formatDate date)
-            p_ [class_ "text-body-secondary m-0"] (toHtml $ location)
+            case date of
+              Nothing -> mempty
+              Just justDate ->
+                p_ [class_ "text-body-secondary m-0"] (toHtml $ formatDate justDate)
+            case location of
+              Nothing -> mempty
+              Just justLocation ->
+                p_ [class_ "text-body-secondary m-0"] (toHtml $ justLocation)
           div_ $ do
             p_ (toHtml $ fromMaybe "" description)
       div_ [class_ "col-12 col-md-7"] $ do
@@ -210,6 +219,16 @@ renderActivity canEdit activeTab input ownTimes otherTimes activity@Activity {..
                     ariaCurrent_ $ if activeTab == ShowTimes then "true" else "false"
                   ]
                   "Details"
+              li_ [class_ "nav-item"] $
+                a_
+                  [ class_ $ "nav-link" <> if activeTab == ShowSummary then " active" else "",
+                    href_ . decodeUtf8 $
+                      URI.renderQuery
+                        True
+                        [("active_tab", Just "show_summary")],
+                    ariaCurrent_ $ if activeTab == ShowSummary then "true" else "false"
+                  ]
+                  "Zusammenfassung"
           div_ [class_ "card-body"] $ do
             case activeTab of
               AddTime -> do
@@ -279,21 +298,22 @@ renderActivity canEdit activeTab input ownTimes otherTimes activity@Activity {..
                         th_ [scope_ "col"] "Datum"
                         th_ [scope_ "col"] "hh:mm"
                         th_ [scope_ "col"] ""
-                    forM_ ownTimes $ \WorkTime {..} -> do
+                    forM_ ownTimes $ \wt -> do
                       let activityId = activity.id
+                          worktimeId = wt.id
                       tbody_ $ do
                         tr_ $ do
-                          td_ (toHtml . Text.pack $ Time.formatTime german "%d.%m.%Y" date)
-                          td_ $ toHtml (printf "%02d:%02d" hours minutes :: String)
+                          td_ (toHtml . Text.pack $ Time.formatTime german "%d.%m.%Y" wt.date)
+                          td_ $ toHtml (printf "%02d:%02d" wt.hours wt.minutes :: String)
                           td_ $ do
                             a_
-                              [ href_ [i|/activities/#{activityId}/times/#{id}/delete|],
+                              [ href_ [i|/activities/#{activityId}/times/#{worktimeId}/delete|],
                                 class_ "btn btn-sm btn-danger",
                                 role_ "button"
                               ]
                               "Löschen"
                 div_ [class_ "d-flex flex-column"] $ do
-                  h2_ [class_ "h5"] "Gesamtzeiten anderer"
+                  h2_ [class_ "h5"] "Zeiten anderer"
                   forM_ (Map.toList otherTimes) $ \((userId, userEmail), times) -> do
                     div_ [class_ "d-flex gap-2"] $ do
                       h3_ [class_ "h6 m-0"] $ do
@@ -304,10 +324,18 @@ renderActivity canEdit activeTab input ownTimes otherTimes activity@Activity {..
                           th_ [scope_ "col"] "Datum"
                           th_ [scope_ "col"] "hh:mm"
                       tbody_ $ do
-                        forM_ times $ \WorkTime {..} -> do
+                        forM_ times $ \wt -> do
                           tr_ $ do
-                            td_ (toHtml . Text.pack $ Time.formatTime german "%d.%m.%Y" date)
-                            td_ $ toHtml (printf "%02d:%02d" hours minutes :: String)
+                            td_ (toHtml . Text.pack $ Time.formatTime german "%d.%m.%Y" wt.date)
+                            td_ $ toHtml (printf "%02d:%02d" wt.hours wt.minutes :: String)
+              ShowSummary -> do
+                let otherTimesAsList :: [WorkTime] = concatMap snd $ Map.toList otherTimes
+                    allTimes :: [WorkTime] = ownTimes <> otherTimesAsList
+                    totalTimeInMinutes = foldr (\WorkTime {hours, minutes} acc -> acc + hours * 60 + minutes) 0 allTimes
+                    (totalHours, totalMinutes) = minutesToHoursAndMinutes totalTimeInMinutes
+                    numberOfPeople = length allTimes
+                div_ [class_ "d-flex flex-column"] $ do
+                  p_ [i|Insgesamt wurden #{totalHours} Stunden und #{totalMinutes} Minuten von #{numberOfPeople} Personen eingetragen.|]
 
 renderAll :: Bool -> [Activity] -> Html ()
 renderAll canCreate activities = do
@@ -317,18 +345,26 @@ renderAll canCreate activities = do
         div_ $
           a_ [href_ "/activities/create", class_ "btn btn-sm btn-primary", role_ "button"] "Neue Activity"
       h1_ [class_ "h3 m-0"] "Activities"
-    div_ [class_ "d-flex flex-column gap-1"] $ do
+    div_ [class_ "d-flex flex-column gap-3"] $ do
       forM_ activities $ \Activity {..} -> do
-        let dateFormatted = formatDate date
         article_ [class_ "card"] $ do
-          p_ [class_ "card-header"] (toHtml dateFormatted)
+          case date of
+            Nothing -> mempty
+            Just justDate -> do
+              p_ [class_ "card-header"] (toHtml $ formatDate justDate)
           div_ [class_ "card-body"] $ do
             h2_ [class_ "card-title h4"] (toHtml name)
-            p_ [class_ "card-subtitle text-body-secondary mb-2"] (toHtml location)
-            p_ (toHtml (fromMaybe "" description))
+            case location of
+              Nothing -> mempty
+              Just justLocation -> do
+                p_ [class_ "card-subtitle text-body-secondary mb-2"] (toHtml justLocation)
+            case description of
+              Nothing -> mempty
+              Just justDesc ->
+                p_ (toHtml justDesc)
           div_ [class_ "card-footer d-flex gap-2 justify-content-between"] $ do
             when canCreate $ do
-              div_ [class_ "d-flex gap-1"] $ do
+              div_ [class_ "d-flex gap-2"] $ do
                 a_ [href_ [i|/activities/#{id}/delete|], class_ "btn btn-sm btn-danger", role_ "button"] "Löschen"
                 a_ [href_ [i|/activities/#{id}/edit|], class_ "btn btn-sm btn-secondary", role_ "button"] "Bearbeiten"
               a_ [href_ [i|/activities/#{id}|], class_ "btn btn-sm btn-primary align-self-end", role_ "button"] "Öffnen"
@@ -400,6 +436,9 @@ parseDateFormInput date = Time.parseTimeM True german "%d.%m.%Y %R" (Text.unpack
 formatDate :: Time.UTCTime -> Text
 formatDate = Text.pack . Time.formatTime german "%A, %d. %B %Y %R %p"
 
+formatDateInput :: Time.UTCTime -> Text
+formatDateInput = Text.pack . Time.formatTime german "%d.%m.%Y %R"
+
 data Field input parsed = Field
   { value :: input,
     state :: FormFieldState parsed
@@ -448,8 +487,8 @@ parseInputAddTimeForm params =
 data InputActivityForm = InputActivityForm
   { name :: Field Text Text,
     description :: Field (Maybe Text) (Maybe Text),
-    location :: Field Text Text,
-    date :: Field Text Time.UTCTime
+    location :: Field (Maybe Text) (Maybe Text),
+    date :: Field (Maybe Text) (Maybe Time.UTCTime)
   }
 
 parseInputActivityForm :: Map.Map Text Text -> InputActivityForm
@@ -465,22 +504,16 @@ parseInputActivityForm params =
               "" -> Invalid "Titel darf nicht leer sein"
               _ -> Valid title
           }
-      locationField =
-        Field
-          { value = location,
-            state = case location of
-              "" -> Invalid "Ort darf nicht leer sein"
-              _ -> Valid location
-          }
+      locationField = Field {value = (Just location), state = Valid (Just location)}
       descriptionField = Field {value = description, state = Valid description}
       dateField =
         Field
-          { value = date,
+          { value = (Just date),
             state = case date of
-              "" -> Invalid "Datum darf nicht leer sein"
+              "" -> Valid Nothing
               date_ -> case parseDateFormInput date_ of
                 Nothing -> Invalid "Datum ungültig"
-                Just parsedDate -> Valid parsedDate
+                Just parsedDate -> Valid (Just parsedDate)
           }
    in InputActivityForm {name = titleField, description = descriptionField, location = locationField, date = dateField}
 
@@ -536,8 +569,7 @@ renderForm mode input = do
                 _ -> "",
             id_ "location",
             name_ "location",
-            value_ input.location.value,
-            required_ "required"
+            value_ $ fromMaybe "" input.location.value
           ]
         case input.location.state of
           Invalid msg -> label_ [for_ "location", class_ "invalid-feedback"] (toHtml msg)
@@ -554,8 +586,7 @@ renderForm mode input = do
             pattern_ "\\d{2}.\\d{2}.\\d{4} \\d{2}:\\d{2}",
             id_ "date",
             name_ "date",
-            required_ "required",
-            value_ input.date.value,
+            value_ $ fromMaybe "" input.date.value,
             describedBy_ "dateDescription"
           ]
         label_ [for_ "date", class_ "form-text"] "Bitte als Format '12.01.2022 15:00' verwenden."
@@ -620,8 +651,8 @@ getCreate _ = do
   K.katipAddNamespace "activities.getCreate" $ do
     let titleField = Field {value = "", state = NotValidated}
         descriptionField = Field {value = Nothing, state = Valid Nothing}
-        locationField = Field {value = "", state = NotValidated}
-        dateField = Field {value = "", state = NotValidated}
+        locationField = Field {value = Nothing, state = NotValidated}
+        dateField = Field {value = Nothing, state = NotValidated}
         input = InputActivityForm {name = titleField, description = descriptionField, location = locationField, date = dateField}
     return . LayoutStub "Neue Activity" $ renderForm Create input
 
@@ -646,7 +677,7 @@ getEdit activityId _ = do
         let titleField = Field {value = name, state = Valid name}
             descriptionField = Field {value = description, state = NotValidated}
             locationField = Field {value = location, state = NotValidated}
-            dateField = Field {value = formatDate date, state = NotValidated}
+            dateField = Field {value = (formatDateInput <$> date), state = NotValidated}
             input =
               InputActivityForm
                 { name = titleField,
@@ -757,11 +788,10 @@ saveTime ::
   Time.UTCTime ->
   Int ->
   Int ->
-  m WorkTime
+  m ()
 saveTime conn activityId userId date hours minutes = do
   liftIO $ SQLite.execute conn "insert into activity_times (activity_id, user_id, date, hours, minutes) values (?, ?, ?, ?, ?)" (activityId, userId, date, hours, minutes)
-  rowId <- liftIO $ SQLite.lastInsertRowId conn
-  return WorkTime {id = fromIntegral rowId, activityId, userId, date, hours, minutes}
+  return ()
 
 sortByDateDesc :: [WorkTime] -> [WorkTime]
 sortByDateDesc = reverse . sortOn (\WorkTime {..} -> date)
@@ -770,6 +800,7 @@ getActiveTabFromRequest :: Wai.Request -> RenderActivityTabs
 getActiveTabFromRequest request =
   case Wai.queryString request of
     [("active_tab", Just "show_times")] -> ShowTimes
+    [("active_tab", Just "show_summary")] -> ShowSummary
     _ -> AddTime
 
 postAddTime ::
@@ -850,10 +881,9 @@ getConfirmDeleteTime ::
     MonadThrow m
   ) =>
   Int ->
-  Int ->
   User.Session.Authenticated ->
   m LayoutStub
-getConfirmDeleteTime activityId timeId auth = do
+getConfirmDeleteTime timeId auth = do
   K.katipAddNamespace "activities.getConfirmDeleteTime" $ do
     let Session {sessionUserId} = User.Session.get' auth
         userIdInt = User.Id.unId sessionUserId
@@ -882,10 +912,9 @@ postDeleteTime ::
     MonadThrow m
   ) =>
   Int ->
-  Int ->
   User.Session.Authenticated ->
   m LayoutStub
-postDeleteTime activityId timeId auth = do
+postDeleteTime timeId auth = do
   K.katipAddNamespace "activities.postDeleteTime" $ do
     let Session {sessionUserId} = User.Session.get' auth
         userIdInt = User.Id.unId sessionUserId
