@@ -42,7 +42,7 @@ data WorkTime = WorkTime
     activityId :: Int,
     userId :: Int,
     userEmail :: Text,
-    date :: Time.UTCTime,
+    date :: Maybe Time.UTCTime,
     hours :: Int,
     minutes :: Int
   }
@@ -53,7 +53,7 @@ data WorkTimeDbRow = WorkTimeDbRow
     activityId :: Int,
     userId :: Int,
     userEmail :: Text,
-    date :: Text,
+    date :: Maybe Text,
     hours :: Int,
     minutes :: Int
   }
@@ -77,9 +77,11 @@ loadWorkTime conn workTimeId = do
   case rows of
     [] -> return Nothing
     [WorkTimeDbRow {..}] -> do
-      dateParsed <- case parseDateFromDb date of
-        Nothing -> throwString $ "could not parse date: " <> Text.unpack date
-        Just dateParsed -> return dateParsed
+      dateParsed <- case date of
+        Nothing -> return Nothing
+        Just justDate -> case parseDateFromDb justDate of
+          Nothing -> throwString $ "could not parse date: " <> Text.unpack justDate
+          Just dateParsed -> return $ Just dateParsed
       return . Just $ WorkTime {date = dateParsed, ..}
     _ -> throwString "more than one row returned"
 
@@ -95,9 +97,11 @@ loadWorkTimes conn activityId_ = do
              where activity_id = ?|]
         (SQLite.Only activityId_)
   workTimes <- forM rows $ \WorkTimeDbRow {..} -> do
-    dateParsed <- case parseDateFromDb date of
-      Nothing -> throwString $ "could not parse date: " <> Text.unpack date
-      Just dateParsed -> return dateParsed
+    dateParsed <- case date of
+      Nothing -> return Nothing
+      Just justDate -> case parseDateFromDb justDate of
+        Nothing -> throwString $ "could not parse date: " <> Text.unpack justDate
+        Just dateParsed -> return $ Just dateParsed
     return WorkTime {date = dateParsed, ..}
   return workTimes
 
@@ -248,8 +252,7 @@ renderActivity canEdit activeTab input ownTimes otherTimes activity@Activity {..
                             _ -> "",
                         id_ "date",
                         name_ "date",
-                        value_ input.date.value,
-                        required_ "required"
+                        value_ $ fromMaybe "" input.date.value
                       ]
                     case input.date.state of
                       Invalid msg -> label_ [for_ "date", class_ "invalid-feedback"] (toHtml msg)
@@ -303,7 +306,10 @@ renderActivity canEdit activeTab input ownTimes otherTimes activity@Activity {..
                           worktimeId = wt.id
                       tbody_ $ do
                         tr_ $ do
-                          td_ (toHtml . Text.pack $ Time.formatTime german "%d.%m.%Y" wt.date)
+                          td_ $ do
+                            case wt.date of
+                              Nothing -> mempty
+                              Just date_ -> toHtml (Time.formatTime german "%d.%m.%Y" date_)
                           td_ $ toHtml (printf "%02d:%02d" wt.hours wt.minutes :: String)
                           td_ $ do
                             a_
@@ -326,7 +332,10 @@ renderActivity canEdit activeTab input ownTimes otherTimes activity@Activity {..
                       tbody_ $ do
                         forM_ times $ \wt -> do
                           tr_ $ do
-                            td_ (toHtml . Text.pack $ Time.formatTime german "%d.%m.%Y" wt.date)
+                            td_ $ do
+                              case wt.date of
+                                Nothing -> mempty
+                                Just date_ -> toHtml (Time.formatTime german "%d.%m.%Y" date_)
                             td_ $ toHtml (printf "%02d:%02d" wt.hours wt.minutes :: String)
               ShowSummary -> do
                 let otherTimesAsList :: [WorkTime] = concatMap snd $ Map.toList otherTimes
@@ -394,7 +403,7 @@ get activityId request auth = do
           let currentUserIsAdmin = User.Session.isAdmin' auth
           let input =
                 InputAddTimeForm
-                  { date = Field {value = "", state = NotValidated},
+                  { date = Field {value = Nothing, state = NotValidated},
                     hours = Field {value = "0", state = NotValidated},
                     minutes = Field {value = "0", state = NotValidated}
                   }
@@ -445,40 +454,43 @@ data Field input parsed = Field
   }
 
 data InputAddTimeForm = InputAddTimeForm
-  { date :: Field Text Time.UTCTime,
+  { date :: Field (Maybe Text) (Maybe Time.UTCTime),
     hours :: Field Text Int,
     minutes :: Field Text Int
   }
 
 parseInputAddTimeForm :: Map.Map Text Text -> InputAddTimeForm
 parseInputAddTimeForm params =
-  let date = fromMaybe "" $ Map.lookup "date" params
+  let date = Map.lookup "date" params
       hours = fromMaybe "" $ Map.lookup "hours" params
       minutes = fromMaybe "" $ Map.lookup "minutes" params
       dateField =
         Field
           { value = date,
             state = case date of
-              "" -> Invalid "Datum darf nicht leer sein"
-              date_ -> case (Time.parseTimeM True german "%Y-%m-%d" $ Text.unpack date_) of
+              Nothing -> Valid Nothing
+              Just "" -> Valid Nothing
+              Just date_ -> case (Time.parseTimeM True german "%Y-%m-%d" $ Text.unpack date_) of
                 Nothing -> Invalid "Datum ungültig"
-                Just parsedDate -> Valid parsedDate
+                Just parsedDate -> Valid $ Just parsedDate
           }
       hoursField =
         Field
           { value = hours,
-            state = case hours of
-              "" -> Invalid "Stunden dürfen nicht leer sein"
-              hours_ -> case reads (Text.unpack hours_) of
+            state = case (hours, minutes) of
+              ("", "") -> Invalid "Stunden und Minuten dürfen nicht beide leer sein"
+              ("0", "0") -> Invalid "Stunden und Minuten dürfen nicht beide 0 sein"
+              (hours_, _) -> case reads (Text.unpack hours_) of
                 [(hoursParsed, "")] -> if hoursParsed >= 0 then Valid hoursParsed else Invalid "Stunden müssen positiv sein"
                 _ -> Invalid "Stunden müssen eine ganze Zahl sein"
           }
       minutesField =
         Field
           { value = minutes,
-            state = case minutes of
-              "" -> Invalid "Minuten dürfen nicht leer sein"
-              minutes_ -> case reads (Text.unpack minutes_) of
+            state = case (hours, minutes) of
+              ("", "") -> Invalid "Stunden und Minuten dürfen nicht beide leer sein"
+              ("0", "0") -> Invalid "Stunden und Minuten dürfen nicht beide 0 sein"
+              (_, minutes_) -> case reads (Text.unpack minutes_) of
                 [(minutesParsed, "")] -> if minutesParsed >= 0 then Valid minutesParsed else Invalid "Minuten müssen positiv sein"
                 _ -> Invalid "Minuten müssen eine ganze Zahl sein"
           }
@@ -786,7 +798,7 @@ saveTime ::
   SQLite.Connection ->
   Int ->
   Int ->
-  Time.UTCTime ->
+  Maybe Time.UTCTime ->
   Int ->
   Int ->
   m ()
@@ -848,7 +860,7 @@ postAddTime activityId request auth = do
                   (ownTimes, otherTimes) <- processWorkTimes userIdInt <$> loadWorkTimes conn activityId
                   let emptyInput =
                         InputAddTimeForm
-                          { date = Field {value = "", state = NotValidated},
+                          { date = Field {value = Nothing, state = NotValidated},
                             hours = Field {value = "0", state = NotValidated},
                             minutes = Field {value = "0", state = NotValidated}
                           }
@@ -899,7 +911,10 @@ getConfirmDeleteTime timeId auth = do
           else do
             return . LayoutStub "Zeit löschen" $ do
               div_ [class_ "container-lg d-flex flex-column gap-3"] $ do
-                p_ [class_ "alert alert-danger", role_ "alert"] [i|Soll die Zeit vom #{Time.formatTime german "%d.%m.%Y" date} wirklich gelöscht werden?|]
+                let msg = case date of
+                      Nothing -> "Soll die Zeit wirklich gelöscht werden?"
+                      Just justDate -> [i|Soll die Zeit vom #{Time.formatTime german "%d.%m.%Y" justDate} wirklich gelöscht werden?|]
+                p_ [class_ "alert alert-danger", role_ "alert"] msg
                 form_ [class_ "d-flex flex-row justify-content-end gap-3", action_ [i|/activities/#{activityId}/times/#{timeId}/delete|], method_ "post"] $ do
                   button_ [class_ "btn btn-danger", type_ "submit"] "Löschen"
                   a_ [href_ [i|/activities/#{activityId}|], class_ "btn btn-secondary", role_ "button"] "Abbrechen"
@@ -931,5 +946,8 @@ postDeleteTime timeId auth = do
             deleteWorkTime conn timeId
             return . LayoutStub "Zeit löschen" $ do
               div_ [class_ "container-lg d-flex flex-column gap-3"] $ do
-                p_ [class_ "alert alert-success", role_ "alert"] [i|Zeit vom #{Time.formatTime german "%d.%m.%Y" date} gelöscht|]
+                let msg = case date of
+                      Nothing -> "Zeit gelöscht"
+                      Just justDate -> [i|Zeit vom #{Time.formatTime german "%d.%m.%Y" justDate} gelöscht|]
+                p_ [class_ "alert alert-success", role_ "alert"] msg
                 a_ [href_ [i|/activities/#{activityId}?active_tab=show_times|], class_ "btn btn-primary", role_ "button"] "Zurück"
