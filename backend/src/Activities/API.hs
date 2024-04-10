@@ -554,10 +554,10 @@ renderForm mode input = do
         textarea_
           [ class_ $ "form-control",
             id_ "description",
-            name_ "description",
-            value_ (fromMaybe "" input.description.value)
+            name_ "description"
           ]
-          ""
+          . toHtml
+          $ fromMaybe "" input.description.value
       div_ [class_ "d-flex flex-column"] $ do
         label_ [for_ "location", class_ "form-label"] "Ort"
         input_
@@ -673,7 +673,8 @@ getEdit activityId _ = do
     maybeActivity <- load conn activityId
     case maybeActivity of
       Nothing -> throwString "Activity nicht gefunden"
-      Just Activity {..} -> do
+      Just activity@Activity {..} -> do
+        K.logLocM K.DebugS $ "activity found: " <> K.logStr (show activity)
         let titleField = Field {value = name, state = Valid name}
             descriptionField = Field {value = description, state = NotValidated}
             locationField = Field {value = location, state = NotValidated}
