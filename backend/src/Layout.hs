@@ -91,7 +91,7 @@ layout
                             [("/", "Startseite", Just Welcome)]
                               <> [("/veranstaltungen", "Veranstaltungen", Just Events)]
                               <> [("/nutzer", "Mitglieder", Just Members)]
-                              <> (if currentUserIsAdmin then [("/activities", "Activities", Just Activities)] else [])
+                              <> [("/activities", "Activities", Just Activities)]
                               <> [("/login", "Login", Just Login)]
                               <> case User.Session.get auth of
                                 Nothing -> mempty
