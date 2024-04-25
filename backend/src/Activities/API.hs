@@ -376,7 +376,7 @@ renderAll canCreate activities = do
               div_ [class_ "d-flex gap-2"] $ do
                 a_ [href_ [i|/activities/#{id}/delete|], class_ "btn btn-sm btn-danger", role_ "button"] "Löschen"
                 a_ [href_ [i|/activities/#{id}/edit|], class_ "btn btn-sm btn-secondary", role_ "button"] "Bearbeiten"
-              a_ [href_ [i|/activities/#{id}|], class_ "btn btn-sm btn-primary align-self-end", role_ "button"] "Öffnen"
+            a_ [href_ [i|/activities/#{id}|], class_ "btn btn-sm btn-primary align-self-end", role_ "button"] "Öffnen"
 
 get ::
   ( MonadIO m,
