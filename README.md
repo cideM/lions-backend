@@ -47,6 +47,14 @@ export AWS_DEFAULT_REGION="eu-central-1"
 
 Then you can just do `docker compose up --build` and everything should just work.
 
+### Maintenance mode
+
+Setting `LIONS_MAINTENANCE=1` makes the server answer every request with a
+503 and a short maintenance notice. Static files are still served so the
+notice renders with the usual layout. In production, toggle it with
+`flyctl secrets set LIONS_MAINTENANCE=1` and `flyctl secrets unset LIONS_MAINTENANCE`,
+both of which restart the machines with the new value.
+
 ## Tips & Tricks
 
 * You can start from a blank slate by just removing the Docker volume for SQLite. At the next start, Litestream will download the production backup.

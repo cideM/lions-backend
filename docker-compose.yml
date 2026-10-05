@@ -20,6 +20,7 @@ services:
       - LIONS_SQLITE_PATH=/var/www/db/sqlite.db
       - LIONS_SERVER_LISTEN_ADDR=0.0.0.0
       - LIONS_LOG_LEVEL
+      - LIONS_MAINTENANCE
       - LIONS_SESSION_KEY_FILE=/var/www/session
       - LIONS_SCRYPT_SIGNER_KEY
       - LIONS_SCRYPT_SALT_SEP

@@ -125,6 +125,7 @@ library
     Logging
     Login.Login
     Login.LoginForm
+    Maintenance
     Password.Password
     Password.Reset.Token
     Password.Reset.Handlers
