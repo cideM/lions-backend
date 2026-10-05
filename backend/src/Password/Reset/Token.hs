@@ -13,7 +13,9 @@ where
 import qualified App
 import Control.Error hiding (tryIO, tryJust)
 import Control.Exception.Safe
+import Control.Monad (unless, when)
 import Control.Monad.Except
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Crypto.KDF.BCrypt (hashPassword)
 import qualified Crypto.Random

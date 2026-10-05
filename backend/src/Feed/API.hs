@@ -17,7 +17,8 @@ import qualified App
 import qualified CMarkGFM as MD
 import Control.Error hiding (err)
 import Control.Exception.Safe
-import Control.Monad.Except
+import Control.Monad (forM_, when)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Control.Monad.Trans.Resource as Resource
 import qualified Data.Map.Strict as Map

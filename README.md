@@ -70,4 +70,46 @@ To restore the DB from S3 to your local file system use `litestream restore -o $
 
 ## Deploy
 
-`flyctl deploy`
+> **Warning: this app must run on exactly one Fly machine.**
+>
+> The database is a SQLite file on a volume and Litestream replicates it to
+> S3. Neither works with more than one machine: each machine gets its own
+> volume, so writes end up split across unrelated databases, sessions created
+> on one machine are unknown to the other, and two Litestream processes
+> writing to the same S3 path corrupt the backup. This happened in 2026, see
+> the "fly.io, SQLite and Litestream" note below.
+>
+> Fly creates a second machine by default on `fly deploy` and `fly scale`,
+> and there is no `fly.toml` setting to prevent it. Always deploy like this:
+
+```sh
+flyctl scale count 1 -y -a lions
+flyctl deploy --ha=false -a lions
+```
+
+Before and after deploying, check that there is a single machine and a
+single volume:
+
+```sh
+flyctl status -a lions
+flyctl volumes list -a lions
+```
+
+If a second machine shows up, stop it immediately with
+`flyctl machine stop <id> -a lions`, then figure out which volume holds the
+newer data before destroying anything.
+
+### fly.io, SQLite and Litestream
+
+* Litestream is a single node disaster recovery tool, not replication between
+  live servers. Fly's own guidance is to run a single machine with
+  `--ha=false` ([community answer by the Litestream
+  author](https://community.fly.io/t/am-i-right-in-assuming-that-if-youre-using-litestream-not-litefs-that-you-should-only-run-one-machine/13842)).
+* `--ha=false` only prevents new machines from being created. An existing
+  extra machine stays, which is why the `scale count 1` step comes first.
+* Litestream's [production tips](https://litestream.io/tips/) warn that
+  multiple applications replicating into the same bucket and path can make
+  the replica impossible to restore.
+* Litestream's `restore -if-db-not-exists` in `entrypoint.sh` means a fresh
+  machine silently starts with a full copy of the data, so a second machine
+  looks healthy and is hard to notice.

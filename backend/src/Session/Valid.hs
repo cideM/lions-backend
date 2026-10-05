@@ -9,6 +9,7 @@ where
 
 import qualified App
 import Control.Monad.Except
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Text (Text)
 import qualified Data.Text as Text
