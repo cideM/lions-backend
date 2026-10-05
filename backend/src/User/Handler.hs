@@ -13,7 +13,9 @@ where
 import qualified App
 import Control.Error
 import Control.Exception.Safe
+import Control.Monad (when)
 import Control.Monad.Except
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader.Class (MonadReader, asks)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map

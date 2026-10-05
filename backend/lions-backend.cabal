@@ -27,7 +27,8 @@ common deps
     , amazonka
     , amazonka-ses
     , base                   >= 4.17.0.0
-    , base64
+    -- Scrypt.hs uses decodeBase64Untyped, which only exists from 1.0 on
+    , base64                 >= 1.0
     , data-default
     , bytestring
     , clientsession

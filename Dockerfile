@@ -1,4 +1,6 @@
-ARG HASKELL_VERSION=9.4.8
+# base64 >= 1.0 (needed by Scrypt.hs) requires base >= 4.18, i.e. GHC 9.6.
+# bullseye, because the buster apt repositories have been archived.
+ARG HASKELL_VERSION=9.6.7-bullseye
 ARG NODEJS_VERSION=19
 ARG ALPINE_VERSION=3.16
 ARG GO_VERSION=1.19
@@ -27,7 +29,9 @@ WORKDIR /opt/app
 RUN cabal update
 # Add just the .cabal file to capture dependencies
 COPY ./backend/lions-backend.cabal /opt/app/app.cabal
-RUN apt-get update && apt-get -y install libscrypt-dev
+# libscrypt-dev used to be installed here, but the backend uses cryptonite's
+# pure Haskell scrypt. The image is based on Debian buster, whose apt
+# repositories have been archived, so the install would fail anyway.
 # Docker will cache this command as a layer, freeing us up to
 # modify source code without re-installing dependencies
 # (unless the .cabal file changes!)
