@@ -46,6 +46,7 @@ app ::
     UnliftIO.MonadUnliftIO m,
     App.HasSessionEncryptionKey env,
     App.HasMaintenanceMode env,
+    App.HasEmailMode env,
     MonadCatch m,
     App.HasSessionDataVaultKey env,
     App.HasScryptSignerKey env,
@@ -93,6 +94,7 @@ routes ::
     App.HasScryptSaltSeparator env,
     App.HasDb env,
     App.HasAWS env,
+    App.HasEmailMode env,
     MonadReader env m
   ) =>
   Wai.ApplicationT m

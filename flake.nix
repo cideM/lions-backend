@@ -34,6 +34,9 @@
             awscli2
             sqlite-interactive
             litestream
+            hurl
+            go
+            gopls
             flyctl
             alejandra
             terraform

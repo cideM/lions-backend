@@ -10,6 +10,8 @@ module App
     HasRequestIdVaultKey (..),
     HasSessionEncryptionKey (..),
     HasMaintenanceMode (..),
+    HasEmailMode (..),
+    EmailMode (..),
   )
 where
 
@@ -58,6 +60,8 @@ data Env = Env
     envSessionEncryptionKey :: ClientSession.Key,
     -- When set, every request is answered with a maintenance notice
     envMaintenanceMode :: Bool,
+    -- Whether emails are sent through SES or only written to the log
+    envEmailMode :: EmailMode,
     envLogNamespace :: K.Namespace,
     envLogContext :: K.LogContexts,
     envLogEnv :: K.LogEnv
@@ -135,6 +139,21 @@ instance HasMaintenanceMode Bool where
 instance HasMaintenanceMode Env where
   getMaintenanceMode = envMaintenanceMode
 
+-- | How outgoing email is delivered. 'EmailLog' is for local development and
+-- the black box tests: the message is logged instead of sent, so no AWS
+-- credentials are needed.
+data EmailMode = EmailSes | EmailLog
+  deriving (Show, Eq)
+
+class HasEmailMode a where
+  getEmailMode :: a -> EmailMode
+
+instance HasEmailMode EmailMode where
+  getEmailMode = id
+
+instance HasEmailMode Env where
+  getEmailMode = envEmailMode
+
 instance K.Katip (App Env) where
   getLogEnv = asks envLogEnv
   localLogEnv f (App m) = App (local (\s -> s {envLogEnv = f (envLogEnv s)}) m)
@@ -154,8 +173,13 @@ withAppEnv f = do
   sessionKeyFile <- getEnv "LIONS_SESSION_KEY_FILE"
   signerKey <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SIGNER_KEY"
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
-  mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
-  mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
+  -- Optional. "log" writes emails to the log instead of sending them, in
+  -- which case the SES credentials are not needed.
+  emailMode <-
+    maybe EmailSes (\v -> if Text.toLower (Text.strip (Text.pack v)) == "log" then EmailLog else EmailSes)
+      <$> lookupEnv "LIONS_EMAIL_MODE"
+  mailAwsAccessKey <- fromMaybe "" <$> lookupEnv "LIONS_AWS_SES_ACCESS_KEY"
+  mailAwsSecretAccessKey <- fromMaybe "" <$> lookupEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
 
   -- Optional. Any value other than empty, "0" or "false" enables maintenance
   -- mode, so that it can be toggled with "flyctl secrets set/unset".
@@ -206,6 +230,7 @@ withAppEnv f = do
                     envRequestIdVaultKey = requestIdVaultKey,
                     envSessionEncryptionKey = sessionKey,
                     envMaintenanceMode = maintenanceMode,
+                    envEmailMode = emailMode,
                     envLogNamespace = ns,
                     envLogContext = ctx,
                     envLogEnv = logEnv
