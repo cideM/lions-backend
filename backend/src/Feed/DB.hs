@@ -114,7 +114,9 @@ delete ::
   m ()
 delete (Id id) = do
   conn <- asks App.getDb
-  liftIO $ SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]
+  liftIO . SQLite.withTransaction conn $ do
+    SQLite.execute conn "DELETE FROM feed_attachments WHERE postid = ?" [id]
+    SQLite.execute conn "DELETE FROM welcome_text WHERE id = ?" [id]
 
 save ::
   ( MonadIO m,

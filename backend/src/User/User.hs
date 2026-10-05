@@ -241,9 +241,15 @@ delete ::
   m ()
 delete (User.Id userid) = do
   conn <- asks App.getDb
-  liftIO $ SQLite.execute conn "DELETE FROM users WHERE id = ?" [userid]
-  liftIO $ SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" [userid]
-  liftIO $ SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" [userid]
+  -- Foreign keys are enforced, so rows referencing the user go first. Not all
+  -- of them cascade (sessions, reset_tokens, activity_times).
+  liftIO . SQLite.withTransaction conn $ do
+    SQLite.execute conn "DELETE FROM sessions WHERE userid = ?" [userid]
+    SQLite.execute conn "DELETE FROM reset_tokens WHERE userid = ?" [userid]
+    SQLite.execute conn "DELETE FROM activity_times WHERE user_id = ?" [userid]
+    SQLite.execute conn "DELETE FROM event_replies WHERE userid = ?" [userid]
+    SQLite.execute conn "DELETE FROM user_roles WHERE userid = ?" [userid]
+    SQLite.execute conn "DELETE FROM users WHERE id = ?" [userid]
 
 getAll ::
   ( MonadIO m,
