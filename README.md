@@ -47,6 +47,12 @@ export AWS_DEFAULT_REGION="eu-central-1"
 
 Then you can just do `docker compose up --build` and everything should just work.
 
+### Email in development
+
+Setting `LIONS_EMAIL_MODE=log` writes outgoing email (currently only the
+password reset link) to the log instead of sending it through SES. The SES
+credentials are then optional. The black box tests run with this setting.
+
 ### Maintenance mode
 
 Setting `LIONS_MAINTENANCE=1` makes the server answer every request with a
@@ -54,6 +60,17 @@ Setting `LIONS_MAINTENANCE=1` makes the server answer every request with a
 notice renders with the usual layout. In production, toggle it with
 `flyctl secrets set LIONS_MAINTENANCE=1` and `flyctl secrets unset LIONS_MAINTENANCE`,
 both of which restart the machines with the new value.
+
+## Tests
+
+`go test ./test/` runs the black box suite in `test/hurl/` against the Docker
+image `lions-test` (build it with `docker build -t lions-test .`). Every Hurl
+file gets its own server and its own copy of the fixture database, which is
+built from the migrations and `test/fixture/seed.sql`. See `test/README.md`
+for how the assertions are written and the header of `test/blackbox_test.go`
+for the sidecar files and how to point the harness at a different server,
+such as a locally running binary. `hurl` and `go` are part of the nix dev
+shell.
 
 ## Tips & Tricks
 

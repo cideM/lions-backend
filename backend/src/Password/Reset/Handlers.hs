@@ -29,6 +29,7 @@ post ::
     UnliftIO.MonadUnliftIO m,
     K.KatipContext m,
     App.HasAWS env,
+    App.HasEmailMode env,
     App.HasDb env,
     MonadThrow m
   ) =>
@@ -36,6 +37,7 @@ post ::
   m LayoutStub
 post req = do
   awsEnv <- asks App.getAWSEnv
+  emailMode <- asks App.getEmailMode
 
   K.katipAddNamespace "password_reset_post" $ do
     params <- liftIO $ parseParams req
@@ -58,14 +60,20 @@ post req = do
               let resetHost = "https://mitglieder.lions-achern.de"
                   resetLink = resetHost <> "/passwort/aendern?token=" <> token
 
-              _ <-
-                liftIO $
-                  sendMail
-                    awsEnv
-                    emailAddr
-                    (EmailHtml $ makeHtmlEmail resetLink)
-                    (EmailPlainText $ makePlainEmail resetLink)
-                    "Passwort Zurücksetzen"
+              case emailMode of
+                App.EmailLog ->
+                  K.katipAddContext (K.sl "reset_link" resetLink) $
+                    K.logLocM K.InfoS "email mode is log, not sending password reset email"
+                App.EmailSes -> do
+                  _ <-
+                    liftIO $
+                      sendMail
+                        awsEnv
+                        emailAddr
+                        (EmailHtml $ makeHtmlEmail resetLink)
+                        (EmailPlainText $ makePlainEmail resetLink)
+                        "Passwort Zurücksetzen"
+                  pure ()
 
               return . layout $ success "Email mit Link wurde verschickt!"
   where
