@@ -16,7 +16,8 @@ ENV CGO_ENABLED=1
 # Pinned, because @latest broke the build when migrate started requiring a newer Go
 RUN go install -tags 'sqlite3' -ldflags '-linkmode external -extldflags "-static"' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.20.1
 
-FROM litestream/litestream AS litestream
+# Pinned: "latest" moved from 0.3 to 0.5 unnoticed, which changes the replica format.
+FROM litestream/litestream:0.5.17 AS litestream
 
 FROM public.ecr.aws/docker/library/node:${NODEJS_VERSION}-alpine${ALPINE_VERSION} as client
 WORKDIR /opt/app
