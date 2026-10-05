@@ -48,7 +48,9 @@
             haskellPackages.cabal-fmt
             haskellPackages.hlint
             haskellPackages.fast-tags
-            ghc
+            # amazonka caps base below 4.19, so anything newer than 9.6 cannot
+            # even resolve dependencies. Matches the Dockerfile.
+            haskell.compiler.ghc96
 
             # Failed to build zlib-0.6.3.0. The failure occurred during the configure step.
             # Build log ( /Users/fbs/.cache/cabal/logs/ghc-8.10.7/zlb-0.6.3.0-47c3bb32.log
