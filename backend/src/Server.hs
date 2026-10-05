@@ -19,6 +19,7 @@ import qualified Feed.Middleware as FeedAttachmentsMiddleware
 import Katip
 import Layout (ActiveNavLink (..), LayoutStub (..), layout, warning)
 import qualified Logging
+import qualified Maintenance
 import qualified Login.Login as Login
 import Lucid
 import Network.HTTP.Types (status200, status403, status404, status405, status500)
@@ -44,6 +45,7 @@ app ::
     App.HasRequestIdVaultKey env,
     UnliftIO.MonadUnliftIO m,
     App.HasSessionEncryptionKey env,
+    App.HasMaintenanceMode env,
     MonadCatch m,
     App.HasSessionDataVaultKey env,
     App.HasScryptSignerKey env,
@@ -65,6 +67,9 @@ app request send =
       middlewares =
         (Wai.liftMiddleware gzipMiddleware)
           . (Wai.liftMiddleware $ staticPolicy (addBase "public"))
+          -- Must come after the static middleware so that the maintenance
+          -- page can still load its stylesheet and logo.
+          . Maintenance.middleware
           . Request.middleware
           -- It's important that the attachments middleware comes after the session
           -- middleware, so that the event attachments are not accessible by the

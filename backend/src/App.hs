@@ -9,6 +9,7 @@ module App
     HasSessionDataVaultKey (..),
     HasRequestIdVaultKey (..),
     HasSessionEncryptionKey (..),
+    HasMaintenanceMode (..),
   )
 where
 
@@ -28,7 +29,7 @@ import qualified Database.SQLite.Simple as SQLite
 import Katip
 import qualified Katip as K
 import qualified Request.Types
-import System.Environment (getEnv)
+import System.Environment (getEnv, lookupEnv)
 import System.IO (stdout)
 import qualified UnliftIO
 import qualified User.Session
@@ -55,6 +56,8 @@ data Env = Env
     envSessionDataVaultKey :: User.Session.VaultKey,
     envRequestIdVaultKey :: Request.Types.IdVaultKey,
     envSessionEncryptionKey :: ClientSession.Key,
+    -- When set, every request is answered with a maintenance notice
+    envMaintenanceMode :: Bool,
     envLogNamespace :: K.Namespace,
     envLogContext :: K.LogContexts,
     envLogEnv :: K.LogEnv
@@ -123,6 +126,15 @@ instance HasSessionEncryptionKey ClientSession.Key where
 instance HasSessionEncryptionKey Env where
   getSessionEncryptionKey = envSessionEncryptionKey
 
+class HasMaintenanceMode a where
+  getMaintenanceMode :: a -> Bool
+
+instance HasMaintenanceMode Bool where
+  getMaintenanceMode = id
+
+instance HasMaintenanceMode Env where
+  getMaintenanceMode = envMaintenanceMode
+
 instance K.Katip (App Env) where
   getLogEnv = asks envLogEnv
   localLogEnv f (App m) = App (local (\s -> s {envLogEnv = f (envLogEnv s)}) m)
@@ -144,6 +156,12 @@ withAppEnv f = do
   saltSep <- encodeUtf8 . Text.pack <$> getEnv "LIONS_SCRYPT_SALT_SEP"
   mailAwsAccessKey <- getEnv "LIONS_AWS_SES_ACCESS_KEY"
   mailAwsSecretAccessKey <- getEnv "LIONS_AWS_SES_SECRET_ACCESS_KEY"
+
+  -- Optional. Any value other than empty, "0" or "false" enables maintenance
+  -- mode, so that it can be toggled with "flyctl secrets set/unset".
+  maintenanceMode <-
+    maybe False (\v -> Text.toLower (Text.strip (Text.pack v)) `notElem` ["", "0", "false"])
+      <$> lookupEnv "LIONS_MAINTENANCE"
 
   awsEnv <- do
     let aKey = AWSAuth.AccessKey (encodeUtf8 (Text.pack mailAwsAccessKey))
@@ -187,6 +205,7 @@ withAppEnv f = do
                     envSessionDataVaultKey = sessionDataVaultKey,
                     envRequestIdVaultKey = requestIdVaultKey,
                     envSessionEncryptionKey = sessionKey,
+                    envMaintenanceMode = maintenanceMode,
                     envLogNamespace = ns,
                     envLogContext = ctx,
                     envLogEnv = logEnv
