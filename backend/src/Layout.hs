@@ -14,6 +14,7 @@ module Layout
   )
 where
 
+import Control.Monad (when)
 import Data.String.Interpolate (i)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -51,7 +52,6 @@ layout
   auth
   activeNavLink
   (LayoutStub {layoutStubTitle = pageTitle, layoutStubContent = pageContent}) = do
-    let currentUserIsAdmin = User.Session.isAdmin auth
     doctype_ *> do
       html_ [lang_ "de-DE"] $ do
         head_ $ do
@@ -92,13 +92,17 @@ layout
                               <> [("/veranstaltungen", "Veranstaltungen", Just Events)]
                               <> [("/nutzer", "Mitglieder", Just Members)]
                               <> [("/activities", "Activities", Just Activities)]
-                              <> [("/login", "Login", Just Login)]
+                              <> [("/login", "Login", Just Login) | not (User.Session.isAuthenticated auth)]
                               <> case User.Session.get auth of
                                 Nothing -> mempty
                                 Just User.Session.Session {..} ->
                                   let (User.Id.Id uid) = sessionUserId
                                    in [([i|/nutzer/#{uid}|], "Mein Profil", Just Profile)]
                       mapM_ f links
+                      -- Logging out is a POST, so it is a form that looks like a link.
+                      when (User.Session.isAuthenticated auth) $
+                        form_ [class_ "d-flex", method_ "post", action_ "/logout"] $
+                          button_ [class_ "nav-link btn btn-link", type_ "submit"] "Ausloggen"
             div_ [class_ "py-4 content"] pageContent
             script_ [src_ "/index.js"] ("" :: Text.Text)
             script_ [src_ "/bootstrap.bundle.min.js"] ("" :: Text.Text)
