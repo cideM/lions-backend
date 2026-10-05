@@ -3,14 +3,18 @@
 ARG HASKELL_VERSION=9.6.7-bullseye
 ARG NODEJS_VERSION=19
 ARG ALPINE_VERSION=3.16
-ARG GO_VERSION=1.19
+ARG GO_VERSION=1.25
 ARG DEBIAN_VERSION=bullseye
 
 ARG CABAL_OPTIM="-O1"
 
-FROM public.ecr.aws/docker/library/golang:${GO_VERSION}-${DEBIAN_VERSION} as go-migrate
+# Current Go images are not published for bullseye anymore, so migrate is
+# built on bookworm and linked statically to run inside the bullseye based
+# Haskell image below.
+FROM public.ecr.aws/docker/library/golang:${GO_VERSION}-bookworm as go-migrate
 ENV CGO_ENABLED=1
-RUN go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+# Pinned, because @latest broke the build when migrate started requiring a newer Go
+RUN go install -tags 'sqlite3' -ldflags '-linkmode external -extldflags "-static"' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.20.1
 
 FROM litestream/litestream AS litestream
 
