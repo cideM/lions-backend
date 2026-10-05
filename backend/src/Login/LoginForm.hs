@@ -41,7 +41,7 @@ render auth FormInput {..} FormState {..} =
         div_ [class_ "row col-12 col-lg-8"] $ do
           p_ [class_ "alert alert-secondary", role_ "alert"] "Du bist bereits eingelogged!"
           form_ [class_ "p-0", method_ "post", action_ "/logout"] $ do
-            button_ [class_ "btn btn-primary", type_ "submit", autofocus_] "Ausloggen"
+            button_ [class_ "btn btn-primary", type_ "submit"] "Ausloggen"
     else do
       LayoutStub "Login" $
         div_ [class_ "container-lg d-flex justify-content-center p-3"] $ do
