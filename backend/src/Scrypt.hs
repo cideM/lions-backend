@@ -22,6 +22,7 @@ import Crypto.Error (CryptoFailable (..))
 import Crypto.KDF.Scrypt (Parameters (..), generate)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Base64.Types (extractBase64)
 import Data.ByteString.Base64
 import Data.Text
 import qualified Data.Text as Text
@@ -58,7 +59,9 @@ firebaseHashPw userSalt signerKey saltSep memcost rounds pw =
        in case cipherInit derivedKey of
             CryptoFailed e -> Left $ "error in cipherInit: " <> (Text.pack $ show e)
             CryptoPassed context ->
-              Right . Text.pack . show . encodeBase64 $ ctrCombine context (nullIV :: IV AES256) signerKeyDec
+              -- base64 >= 1.0 wraps the result in a newtype whose Show instance
+              -- is not the plain string, which silently broke every Firebase login.
+              Right . extractBase64 . encodeBase64 $ ctrCombine context (nullIV :: IV AES256) signerKeyDec
 
 verifyPassword ::
   BS.ByteString -> -- Project's base64_signer_key
