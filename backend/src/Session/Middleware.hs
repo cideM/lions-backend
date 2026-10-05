@@ -46,7 +46,16 @@ middleware nextApp req send = do
   encKey <- asks App.getSessionEncryptionKey
 
   runExceptT (login encKey vaultKey req) >>= \case
-    Left _ -> do
+    Left loginError -> do
+      -- Missing cookies are normal for visitors who never logged in, the
+      -- other cases mean a cookie was presented and rejected.
+      let severity = case loginError of
+            NoCookies -> DebugS
+            NoSessionCookie -> DebugS
+            InvalidSession -> InfoS
+            _ -> WarningS
+      katipAddContext (sl "reason" (show loginError) <> sl "request_path" (Encoding.decodeUtf8 $ Wai.rawPathInfo req)) $
+        $(logTM) severity "no valid session, redirecting to login"
       -- The user doesn't have a valid session. To prevent infinite redirects,
       -- we need to match on the route.
       case Wai.pathInfo req of
