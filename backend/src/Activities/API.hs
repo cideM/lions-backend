@@ -136,8 +136,10 @@ parseDateFromDb :: Text -> Maybe Time.UTCTime
 parseDateFromDb date = Time.parseTimeM True german "%Y-%m-%d %T" (Text.unpack date)
 
 delete :: (MonadThrow m, MonadCatch m, MonadIO m) => SQLite.Connection -> Int -> m ()
-delete conn activityId = do
-  liftIO $ SQLite.execute conn [sql|delete from activities where id = ?|] (SQLite.Only activityId)
+delete conn activityId =
+  liftIO . SQLite.withTransaction conn $ do
+    SQLite.execute conn [sql|delete from activity_times where activity_id = ?|] (SQLite.Only activityId)
+    SQLite.execute conn [sql|delete from activities where id = ?|] (SQLite.Only activityId)
 
 load :: (MonadThrow m, MonadCatch m, MonadIO m) => SQLite.Connection -> Int -> m (Maybe Activity)
 load conn activityId = do
